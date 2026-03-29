@@ -4,7 +4,7 @@
   "title": "Funded Throughput Scorecard v1",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema", "generatedAt", "repository", "inputs", "coverage", "fundingWindow", "summary"],
+  "required": ["schema", "generatedAt", "repository", "inputs", "coverage", "fundingWindow", "throughputWindow", "summary"],
   "properties": {
     "schema": { "const": "priority/funded-throughput-scorecard@v1" },
     "generatedAt": { "type": "string", "format": "date-time" },
@@ -65,6 +65,22 @@
         "selectionMode": { "$ref": "#/$defs/nullableString" },
         "calibrationWindowId": { "$ref": "#/$defs/nullableString" },
         "reconciledAt": { "$ref": "#/$defs/nullableString" }
+      }
+    },
+    "throughputWindow": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "currentCycleIdleStatus",
+        "currentCycleIdleSource",
+        "currentCycleIdleObservedAt",
+        "currentCycleIdleNextWakeCondition"
+      ],
+      "properties": {
+        "currentCycleIdleStatus": { "enum": ["observed", "missing"] },
+        "currentCycleIdleSource": { "$ref": "#/$defs/nullableString" },
+        "currentCycleIdleObservedAt": { "$ref": "#/$defs/nullableDateTime" },
+        "currentCycleIdleNextWakeCondition": { "$ref": "#/$defs/nullableString" }
       }
     },
     "summary": {
@@ -145,6 +161,10 @@
   "$defs": {
     "nullableString": {
       "type": ["string", "null"]
+    },
+    "nullableDateTime": {
+      "type": ["string", "null"],
+      "format": "date-time"
     },
     "inputRef": {
       "type": "object",

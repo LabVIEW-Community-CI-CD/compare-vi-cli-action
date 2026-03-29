@@ -71,7 +71,7 @@ jobs:
   preflight:
     name: Preflight (self-hosted)
     if: ${{ inputs.skip_run != 'true' }}
-    runs-on: [self-hosted, Windows, X64]
+    runs-on: [self-hosted, Windows, X64, comparevi, capability-ingress]
     timeout-minutes: 3
     env:
       CLEAN_LV_BEFORE: ${{ vars.CLEAN_LV_BEFORE || 'true' }}
@@ -98,17 +98,17 @@ jobs:
         shell: pwsh
         run: |
           $defaultCli = 'C:\Program Files\National Instruments\Shared\LabVIEW Compare\LVCompare.exe'
-          $x86Cli     = 'C:\Program Files (x86)\National Instruments\Shared\LabVIEW Compare\LVCompare.exe'
           $candidates = @()
           if ($env:LVCOMPARE_PATH) { $candidates += $env:LVCOMPARE_PATH }
-          $candidates += @($defaultCli, $x86Cli)
+          $candidates += $defaultCli
           $cli = $null
           foreach ($p in $candidates) {
             if ($p -and (Test-Path -LiteralPath $p)) { $cli = $p; break }
           }
           if (-not $cli) {
             $tried = ($candidates | Where-Object { $_ }) -join '; '
-            Write-Host ("::error::LVCompare.exe not found. Tried: {0}" -f $tried)
+            Write-Host ("::error::LVCompare.exe not found on the generic ingress surface. Tried: {0}" -f $tried)
+            Write-Host '::error::pester-reusable does not silently fall back to Program Files (x86); use LVCOMPARE_PATH or an explicit specialized LV32 workflow when that surface is required.'
             exit 1
           } else {
             Write-Host ("Resolved LVCompare path: {0}" -f $cli)
@@ -132,7 +132,7 @@ jobs:
   pester:
     name: Pester (self-hosted)
     if: ${{ inputs.skip_run != 'true' }}
-    runs-on: [self-hosted, Windows, X64]
+    runs-on: [self-hosted, Windows, X64, comparevi, capability-ingress]
     # No job-level timeout; rely on probes/guards for determinism
     needs: [normalize, preflight]
     env:

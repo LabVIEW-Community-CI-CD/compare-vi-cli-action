@@ -174,7 +174,13 @@ export function buildGraphqlArgs(query, variables = {}) {
     if (value == null) {
       continue;
     }
-    args.push('-f', `${key}=${String(value)}`);
+    const flag =
+      typeof value === 'boolean' ||
+      typeof value === 'number' ||
+      typeof value === 'bigint'
+        ? '-F'
+        : '-f';
+    args.push(flag, `${key}=${String(value)}`);
   }
   return args;
 }

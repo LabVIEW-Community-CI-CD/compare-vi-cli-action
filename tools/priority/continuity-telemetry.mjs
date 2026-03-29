@@ -260,7 +260,8 @@ function inspectDeliveryState(repoRoot, now, thresholds) {
       blockerClass: payload?.activeLane?.blockerClass || payload?.activeLane?.execution?.details?.blockerClass || null,
       nextWakeCondition: payload?.activeLane?.nextWakeCondition || payload?.activeLane?.execution?.details?.nextWakeCondition || null,
       prUrl: payload?.activeLane?.prUrl || null,
-      activeLaneIssue: payload?.activeLane?.issue ?? null
+      activeLaneIssue: payload?.activeLane?.issue ?? null,
+      repoContextPivot: normalizeRepoContextPivot(payload?.activeLane?.repoContextPivot)
     }
   });
 }
@@ -286,9 +287,40 @@ function inspectObserverHeartbeat(repoRoot, now, thresholds) {
       blockerClass: payload?.activeLane?.blockerClass || payload?.activeLane?.execution?.details?.blockerClass || null,
       nextWakeCondition: payload?.activeLane?.nextWakeCondition || payload?.activeLane?.execution?.details?.nextWakeCondition || null,
       prUrl: payload?.activeLane?.prUrl || null,
-      activeLaneIssue: payload?.activeLane?.issue ?? null
+      activeLaneIssue: payload?.activeLane?.issue ?? null,
+      repoContextPivot: normalizeRepoContextPivot(payload?.activeLane?.repoContextPivot)
     }
   });
+}
+
+function normalizeRepoContextPivot(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return null;
+  }
+
+  const normalized = {
+    currentRepository: typeof value.currentRepository === 'string' && value.currentRepository.trim() ? value.currentRepository.trim() : null,
+    currentOwnerRepository:
+      typeof value.currentOwnerRepository === 'string' && value.currentOwnerRepository.trim()
+        ? value.currentOwnerRepository.trim()
+        : null,
+    nextOwnerRepository:
+      typeof value.nextOwnerRepository === 'string' && value.nextOwnerRepository.trim()
+        ? value.nextOwnerRepository.trim()
+        : null,
+    nextAction: typeof value.nextAction === 'string' && value.nextAction.trim() ? value.nextAction.trim() : null,
+    ownerDecisionSource:
+      typeof value.ownerDecisionSource === 'string' && value.ownerDecisionSource.trim()
+        ? value.ownerDecisionSource.trim()
+        : null,
+    pivotStatus: typeof value.pivotStatus === 'string' && value.pivotStatus.trim() ? value.pivotStatus.trim() : null,
+    brokerSelectionSource:
+      typeof value.brokerSelectionSource === 'string' && value.brokerSelectionSource.trim()
+        ? value.brokerSelectionSource.trim()
+        : null
+  };
+
+  return Object.values(normalized).some((entry) => entry !== null) ? normalized : null;
 }
 
 function evaluateTurnBoundary({
@@ -342,23 +374,36 @@ function evaluateTurnBoundary({
   const prUrl = deliveryMatch ? deliveryState.prUrl
     : observerMatch ? observerHeartbeat.prUrl
       : null;
-  const supervisedInBackground = Boolean(wakeCondition || blockerClass || prUrl);
+  const repoContextPivot = deliveryMatch ? deliveryState.repoContextPivot
+    : observerMatch ? observerHeartbeat.repoContextPivot
+      : null;
+  const pivotSupervised = Boolean(repoContextPivot?.nextOwnerRepository && repoContextPivot?.nextAction);
+  const effectiveSource = pivotSupervised ? 'repo-context-pivot' : source;
+  const effectiveWakeCondition = pivotSupervised ? null : (wakeCondition || null);
+  const supervisedInBackground = Boolean(wakeCondition || blockerClass || prUrl || pivotSupervised);
   const supervisionState = supervisedInBackground ? 'supervised-background' : 'live-follow-through-required';
   const reason = supervisedInBackground
-    ? `standing issue #${issue} still has active work pending but is already supervised${wakeCondition ? ` and waiting for '${wakeCondition}'` : blockerClass ? ` under blocker class '${blockerClass}'` : prUrl ? ' through an active PR lane' : ''}`
+    ? pivotSupervised
+      ? `standing issue #${issue} is already supervised through repo-context pivot ownership toward '${repoContextPivot.nextOwnerRepository}' with next action '${repoContextPivot.nextAction}'`
+      : `standing issue #${issue} still has active work pending but is already supervised${wakeCondition ? ` and waiting for '${wakeCondition}'` : blockerClass ? ` under blocker class '${blockerClass}'` : prUrl ? ' through an active PR lane' : ''}`
     : deliveryMatch || observerMatch
       ? `standing issue #${issue} still has active work pending and no wake condition is recorded`
       : `standing issue #${issue} remains active; ending the turn here risks an idle gap`;
   const pendingActions = supervisedInBackground
-    ? [
-        wakeCondition
-          ? `Resume when wake condition '${wakeCondition}' is satisfied for standing issue #${issue}.`
-          : blockerClass
-            ? `Resume when blocker class '${blockerClass}' clears for standing issue #${issue}.`
-            : prUrl
-              ? `Resume when the active PR lane changes state for standing issue #${issue}.`
-              : `Keep supervising standing issue #${issue} through the background control plane.`
-      ]
+    ? pivotSupervised
+      ? [
+          `Keep the brokered pivot toward '${repoContextPivot.nextOwnerRepository}' supervised for standing issue #${issue}.`,
+          `Resume when repo-context action '${repoContextPivot.nextAction}' changes state for standing issue #${issue}.`
+        ]
+      : [
+          wakeCondition
+            ? `Resume when wake condition '${wakeCondition}' is satisfied for standing issue #${issue}.`
+            : blockerClass
+              ? `Resume when blocker class '${blockerClass}' clears for standing issue #${issue}.`
+              : prUrl
+                ? `Resume when the active PR lane changes state for standing issue #${issue}.`
+                : `Keep supervising standing issue #${issue} through the background control plane.`
+        ]
     : [
         `Keep the live lane active on standing issue #${issue} before ending the turn.`,
         'Delegate or stage the next concrete follow-through step so the standing lane does not go dark.'
@@ -370,8 +415,8 @@ function evaluateTurnBoundary({
     operatorTurnEndWouldCreateIdleGap: !supervisedInBackground,
     operatorPromptRequiredToResume: !supervisedInBackground,
     activeLaneIssue: issue,
-    wakeCondition: wakeCondition || null,
-    source,
+    wakeCondition: effectiveWakeCondition,
+    source: effectiveSource,
     reason,
     pendingActions
   };

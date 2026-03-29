@@ -9,6 +9,7 @@
     "schema": { "const": "priority/runtime-worker-task-packet@v1" },
     "generatedAt": { "type": "string", "format": "date-time" },
     "cycle": { "type": ["integer", "null"], "minimum": 1 },
+    "runtimeEpochId": { "type": ["string", "null"] },
     "laneId": { "type": ["string", "null"] },
     "repository": { "type": "string" },
     "status": { "type": "string" },

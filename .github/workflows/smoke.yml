@@ -44,9 +44,12 @@ on:
         type: string
         default: ""
 
+permissions:
+  contents: read
+
 jobs:
   preflight:
-    runs-on: [self-hosted, Windows, X64]
+    runs-on: [self-hosted, Windows, X64, comparevi, capability-ingress]
     timeout-minutes: 3
     steps:
       - uses: actions/checkout@v5
@@ -62,7 +65,7 @@ jobs:
           Write-Host 'Preflight OK: LVCompare present; LabVIEW not running.'
 
   compare:
-    runs-on: [self-hosted, Windows, X64]
+    runs-on: [self-hosted, Windows, X64, comparevi, capability-ingress]
     needs: preflight
     timeout-minutes: 3
     env:
@@ -232,4 +235,3 @@ jobs:
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.event.inputs.sample_id || github.ref }}
   cancel-in-progress: true
-

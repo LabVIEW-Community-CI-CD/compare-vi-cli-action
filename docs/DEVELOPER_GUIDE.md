@@ -3,6 +3,19 @@
 
 Quick reference for building, testing, and releasing the LVCompare composite action.
 
+## Workflow criticality
+
+Before editing `.github/workflows/**`, classify the target lane with
+[`WORKFLOW_CRITICALITY_MAP.md`](./WORKFLOW_CRITICALITY_MAP.md).
+
+- Tier 1 and Tier 2 workflows should be treated as release-path or product-path
+  changes and should carry explicit validation evidence.
+- Tier 3 workflows are maintainer/operator lanes; keep changes narrow and
+  update runbook or policy documentation when the operating model changes.
+- Tier 4 workflows are supporting proofs or diagnostics. They are useful, but
+  they are not the baseline support contract unless another checked-in document
+  explicitly promotes them into a gate.
+
 ## Testing
 
 - **Unit tests** (no LabVIEW required)
@@ -177,10 +190,14 @@ Quick reference for building, testing, and releasing the LVCompare composite act
   `gh issue create/edit`. Omit `--output` to print to STDOUT.
 - `pwsh -NoLogo -NoProfile -File tools/Post-IssueComment.ps1 -Issue <number> -BodyFile issue-comment.md`
   Posts GitHub issue comments through `--body-file` by default so multiline Markdown survives PowerShell and mixed
-  Windows/WSL shells without backtick-escape drift.
+  Windows/WSL shells without backtick-escape drift. The wrapper also appends the
+  checked-in durable budget hook by default; pass `-SkipBudgetHook` only when a
+  test or break-glass path must suppress the attestation.
 - `pwsh -NoLogo -NoProfile -File tools/Post-PullRequestComment.ps1 -PullRequest <number> -Repo <owner/repo> -BodyFile pr-comment.md`
   Posts GitHub pull-request comments through `--body-file` by default so multiline Markdown survives PowerShell and
-  mixed Windows/WSL shells without backtick-escape drift.
+  mixed Windows/WSL shells without backtick-escape drift. The wrapper also
+  appends the checked-in durable budget hook by default; pass `-SkipBudgetHook`
+  only when a test or break-glass path must suppress the attestation.
 - `node tools/priority/github-helper.mjs snippet --issue 531 --prefix Fixes`  
   Emits an auto-link snippet (defaults to `Fixes #531`) you can drop into PR descriptions so GitHub auto-closes the issue.
 - `node tools/npm/run-script.mjs priority:project:portfolio:apply -- --url <issue-or-pr-url> --use-config`  
@@ -307,16 +324,35 @@ For Docker/Desktop VI history validation, run fast-loop lanes explicitly:
 
 ## Release checklist
 
-1. Update `CHANGELOG.md`
-2. Tag (semantic version, e.g. `v0.6.0`)
-3. Push tag (release workflow auto-generates notes)
-4. Update README usage examples to latest tag
-5. Verify marketplace listing once published
+This checklist is intentionally high-level. Treat the following as the
+authoritative release procedure and helper surface:
+
+- [`RELEASE_OPERATIONS_RUNBOOK.md`](./RELEASE_OPERATIONS_RUNBOOK.md)
+- [`release/PR_NOTES.md`](./release/PR_NOTES.md)
+- [`release/TAG_PREP_CHECKLIST.md`](./release/TAG_PREP_CHECKLIST.md)
+
+For each cut:
+
+1. Align `CHANGELOG.md`, version surfaces, and any checked-in release helper
+   docs to the target release line.
+2. Create and validate the release branch with
+   `node tools/npm/run-script.mjs release:branch -- <version>` (or the dry-run
+   helper when rehearsing).
+3. Finalize through the release helpers, then verify signing readiness,
+   required checks, and protected-environment approvals before authoritative
+   publication.
+4. Confirm the published release assets, checksums, and release notes match the
+   intended `rc` or stable release line.
+5. Update stable consumer-facing examples after stable promotion. Do not treat
+   RC tags as default downstream pins unless the release note explicitly says
+   to do so.
 
 ## Branching model
 
-- `develop` is the integration branch. All standing-priority work lands here via squash merges (linear history).
-- `main` reflects the latest release. Use release branches to promote changes from `develop` to `main`.
+- `develop` is the canonical integration branch and the queue-managed landing
+  surface for standing work.
+- `main` is the protected release branch. Treat it as a promotion surface, not
+  the default feature target.
 - For standing-priority work, create the plane-appropriate lane branch and merge back with squash once checks are green:
   - `issue/personal-<number>-<slug>` for the personal authoring plane
   - `issue/origin-<number>-<slug>` for the org-fork review plane
@@ -326,27 +362,37 @@ For Docker/Desktop VI history validation, run fast-loop lanes explicitly:
   `node tools/npm/run-script.mjs priority:branch:rename -- --issue <number>`. The helper derives the slug from the
   issue title, renames the local branch, pushes the new name to any remotes that carried the old branch, retargets the
   matching PR, and (unless you pass `--keep-remote`) deletes the stale remote ref.
-- Use short-lived `feature/<slug>` branches when parallel threads are needed. Rebase on `develop` frequently and
-  open PRs with `node tools/npm/run-script.mjs priority:pr`.
+- Use short-lived `feature/<slug>` branches only for deliberate rehearsal or
+  parallel experiment threads. Lane branches remain the default standing-work
+  vehicle. Rebase on `develop` frequently and open PRs with
+  `node tools/npm/run-script.mjs priority:pr`.
+- Merge eligibility for `develop` and `main` follows the live GitHub rulesets,
+  required checks, and merge-queue policy. Use
+  `node tools/npm/run-script.mjs priority:policy` or
+  `node tools/npm/run-script.mjs priority:policy:snapshot` when you need the
+  current state; do not treat this guide as the sole source of truth for
+  repository settings.
 - When preparing a release:
   1. Create `release/<version>` from `develop` with `node tools/npm/run-script.mjs release:branch`. The helper bumps `package.json`,
-    pushes the branch to your fork, and opens a PR targeting `main`. Use `node tools/npm/run-script.mjs release:branch:dry`
+     pushes the branch to your fork, and opens a PR targeting `main`. Use `node tools/npm/run-script.mjs release:branch:dry`
      when you want to rehearse the flow without touching remotes.
   2. Finish release-only work on feature branches targeting `release/<version>`.
-  3. Merge the release branch into `main`, create the draft release, then fast-forward `develop`
-     with `node tools/npm/run-script.mjs release:finalize -- <version>`. The helper fast-forwards `main`, creates a
-     draft GitHub release, fast-forwards `develop`, and records metadata under `tests/results/_agent/release/`.
-     Use `node tools/npm/run-script.mjs release:finalize:dry` to rehearse the flow without pushing.
-     - Finalize now requires the release branch metadata artifact (`release-<tag>-branch.json`) to be present before it
-       cuts a draft tag, and it verifies both branch/finalize artifacts are retained under
-        `tests/results/_agent/release/`.
-     - The finalize helper blocks if the release PR has pending or failing checks; set
-       `RELEASE_FINALIZE_SKIP_CHECKS=1` (or `RELEASE_FINALIZE_ALLOW_MERGED=1` / `RELEASE_FINALIZE_ALLOW_DIRTY=1`) to
-       override in emergencies.
-     - If `main` and the release branch no longer share history (for example, after cutting over to a new repository
-       baseline), rerun the helper with `RELEASE_FINALIZE_ALLOW_RESET=1` so it can reset `main` to the release tip and
-       push with `--force-with-lease`. Leave the variable unset during normal releases so unintended history rewrites
-       are blocked.
+  3. Use [`RELEASE_OPERATIONS_RUNBOOK.md`](./RELEASE_OPERATIONS_RUNBOOK.md),
+     [`release/PR_NOTES.md`](./release/PR_NOTES.md), and
+     [`release/TAG_PREP_CHECKLIST.md`](./release/TAG_PREP_CHECKLIST.md) as the
+     authoritative finalize/publication procedure.
+  4. Use `node tools/npm/run-script.mjs release:finalize -- <version>` (or
+     `release:finalize:dry`) only after the release branch checks, evidence
+     artifacts, and signing-readiness requirements are satisfied.
+     - Finalize requires the release branch metadata artifact
+       (`release-<tag>-branch.json`) before it cuts a draft tag, and it
+       verifies both branch/finalize artifacts are retained under
+       `tests/results/_agent/release/`.
+     - The finalize helper blocks on pending or failing release PR checks by
+       default. Use `RELEASE_FINALIZE_SKIP_CHECKS=1`,
+       `RELEASE_FINALIZE_ALLOW_MERGED=1`, `RELEASE_FINALIZE_ALLOW_DIRTY=1`, or
+       `RELEASE_FINALIZE_ALLOW_RESET=1` only for explicitly reviewed emergency
+       recovery cases, not routine release work.
 - When rehearsing feature branch work, use `node tools/npm/run-script.mjs feature:branch:dry -- my-feature` and
   `node tools/npm/run-script.mjs feature:finalize:dry -- my-feature` to simulate branch creation and finalization
   without touching remotes.
@@ -361,6 +407,9 @@ For Docker/Desktop VI history validation, run fast-loop lanes explicitly:
 - Configure required reviewers in GitHub environment settings so deployment acknowledgement is explicit and review
   requests can be approved through GitHub web/mobile:
   Settings -> Environments -> `production` / `monthly-stability-release` -> Required reviewers.
+- In the current single-maintainer state, those environment reviewer roles may map to the same owner account; treat
+  the protected environment as an explicit acknowledgement checkpoint with recorded evidence, not as proof of
+  multi-person release approval.
 - Run `node tools/npm/run-script.mjs priority:deployment:gate-policy` to verify the protected promotion environments enforce
   required reviewers and admin-bypass policy; report path:
   `tests/results/_agent/deployments/environment-gate-policy.json`.
@@ -476,11 +525,12 @@ For Docker/Desktop VI history validation, run fast-loop lanes explicitly:
     Auto mode activates on release windows, open `release/*` PRs, or `release-burst` labels, and backs off for
     30 minutes whenever the throughput controller enters `stabilize`.
   For queue-aware release proposals, run `node tools/npm/run-script.mjs priority:release:conductor -- --dry-run`.
-  Apply mode requires `RELEASE_CONDUCTOR_ENABLED=1`; if signing material is unavailable, the conductor remains
-  proposal-only and emits evidence without mutating tags.
-  Hosted `schedule` and `workflow_run` conductor lanes stay proposal-only when apply mode is disabled, and dry-runs
-  record advisory-only queue-evidence / no-recent-success diagnostics instead of failing for missing queue artifacts or
-  idle dwell windows.
+  Apply mode requires `RELEASE_CONDUCTOR_ENABLED=1`; if signing material is unavailable, the conductor now fails closed
+  before tag creation and emits readiness evidence without mutating tags.
+  Hosted `schedule` conductor lanes stay proposal-only, and hosted `workflow_run` conductor lanes also stay
+  proposal-only because the trigger does not carry explicit release version inputs. Use `workflow_dispatch` for
+  authoritative apply or protected-tag-safe replay, and expect dry-runs to record advisory-only queue-evidence /
+  no-recent-success diagnostics instead of failing for missing queue artifacts or idle dwell windows.
   Use `node tools/npm/run-script.mjs priority:remediation:slo` to compute remediation SLO governance metrics
   (MTTD, route latency, MTTR by priority, reopen rate, queue/trunk/release signals) and emit
   `tests/results/_agent/slo/remediation-slo-report.json` plus governor state
@@ -657,6 +707,9 @@ pwsh -File tools/Print-AgentHandoff.ps1 -ApplyToggles -AutoTrim
   `node tools/npm/run-script.mjs priority:handoff`, which now prints the
   entrypoint index alongside the standing-priority snapshot and other handoff
   summaries.
+- Refresh the compact hot/warm durable memory view directly with
+  `node tools/npm/run-script.mjs priority:context:concentrate`, which writes
+  `tests/results/_agent/handoff/sagan-context-concentrator.json`.
 - The overall future-agent handoff contract is summarized in
   [`docs/knowledgebase/Agent-Handoff-Surfaces.md`](./knowledgebase/Agent-Handoff-Surfaces.md).
 - See [`WATCHER_TELEMETRY_DX.md`](./WATCHER_TELEMETRY_DX.md) for automation response expectations.
@@ -694,8 +747,9 @@ pwsh -File scripts/CompareVI.ps1 `
   uploads artifacts identical to the `/vi-stage` workflow.
 - `/vi-stage` and `/vi-history` commands remain available for both upstream and fork contributions. They now re-use the
   fetch helper so they can operate on fork heads safely.
-- PR approval is no longer automated; merge queue admission relies on required checks and repository branch policy
-  (currently `0` required reviewers on queue-managed branches).
+- PR approval is not automated. Merge-queue admission and merge eligibility
+  follow the live required checks, rulesets, and protected-branch policy. Do
+  not rely on a hard-coded reviewer count in this document.
 - Deployment acknowledgement for protected promotion flows now uses GitHub Actions environment reviewers
   (`production`, `monthly-stability-release`) so approval notifications can be handled through GitHub's built-in
   deployment review UI (web/mobile).

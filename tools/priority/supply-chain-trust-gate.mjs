@@ -32,8 +32,10 @@ const FAILURE_HINTS = {
   'tag-ref-lookup-failed': 'Unable to resolve release tag via GitHub API. Confirm tag exists and token has repo read access.',
   'tag-object-lookup-failed': 'Unable to resolve annotated tag object via GitHub API. Confirm tag object availability.',
   'tag-signature-parse-failed': 'Tag signature payload could not be parsed. Re-run and inspect gh api output.',
-  'tag-not-annotated': 'Release tag is lightweight/non-annotated. Create a signed annotated tag for release.',
-  'tag-signature-unverified': 'Release tag signature is not verified. Sign the tag and re-run the release.',
+  'tag-not-annotated':
+    'Release tag is lightweight/non-annotated. Run priority:release:signing:readiness first; if the target tag already backs an immutable published GitHub Release, do not rerun repair_existing_tag on the same tag. Use the protected-tag authority path or publish a new authoritative tag. Otherwise, rerun .github/workflows/release-conductor.yml with repair_existing_tag = true to recreate the same release tag as a signed annotated tag.',
+  'tag-signature-unverified':
+    'Release tag signature is not verified. Run priority:release:signing:readiness first; if the target tag already backs an immutable published GitHub Release, do not rerun repair_existing_tag on the same tag. Use the protected-tag authority path or publish a new authoritative tag. Otherwise, rerun .github/workflows/release-conductor.yml with repair_existing_tag = true to repair the same release tag before rerunning release.',
   'attestation-cli-unavailable': 'GitHub CLI is unavailable. Install/enable gh on runner before trust gate.',
   'attestation-output-parse-failed': 'Attestation verification output was not valid JSON. Re-run verification and inspect gh logs.',
   'attestation-unverified': 'Artifact attestation verification failed. Confirm attest-build-provenance step and signer workflow.',
@@ -825,10 +827,22 @@ function appendSummary(report, reportPath) {
   if (report.failures.length > 0) {
     lines.push('', '| Code | Target | Message |', '| --- | --- | --- |');
     for (const failure of report.failures) {
-      lines.push(`| \`${failure.code}\` | \`${failure.target || 'n/a'}\` | ${failure.message.replace(/\|/g, '\\|')} |`);
+      lines.push(
+        `| <code>${escapeSummaryTableCell(failure.code)}</code> | <code>${escapeSummaryTableCell(failure.target || 'n/a')}</code> | ${escapeSummaryTableCell(failure.message)} |`
+      );
     }
   }
   fs.appendFileSync(summaryPath, `${lines.join('\n')}\n`, 'utf8');
+}
+
+export function escapeSummaryTableCell(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/`/g, '&#96;')
+    .replace(/\|/g, '&#124;')
+    .replace(/\r\n|\r|\n/g, '<br>');
 }
 
 function writeReport(filePath, payload) {

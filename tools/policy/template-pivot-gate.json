@@ -6,9 +6,12 @@
   "targetBranch": "develop",
   "templateDependency": {
     "repository": "LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate",
-    "version": "v0.1.1",
-    "ref": "v0.1.1",
-    "cookiecutterVersion": "2.7.1"
+    "resolutionMode": "supported-proof-authority",
+    "cookiecutterVersion": "2.7.1",
+    "requiredAuthoritySource": "supported-template-proof",
+    "requireCanonicalHeadAlignment": true,
+    "requiredExecutionPlane": "hosted-github-actions",
+    "requiredLaneId": "supported-template-proof"
   },
   "queueEmpty": {
     "requiredSchema": "standing-priority/no-standing@v1",

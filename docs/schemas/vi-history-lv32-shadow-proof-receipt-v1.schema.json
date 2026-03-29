@@ -1,0 +1,185 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://labview-community-ci-cd.github.io/compare-vi-cli-action/schemas/vi-history-lv32-shadow-proof-receipt-v1.schema.json",
+  "title": "VI History LV32 Shadow Proof Receipt v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "generatedAt",
+    "repository",
+    "sourceCommitSha",
+    "lane",
+    "runner",
+    "headless",
+    "hostPlane",
+    "verification"
+  ],
+  "properties": {
+    "schema": {
+      "type": "string",
+      "const": "priority/vi-history-lv32-shadow-proof-receipt@v1"
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "repository": {
+      "type": "string",
+      "pattern": "^[^/]+/[^/]+$"
+    },
+    "sourceCommitSha": {
+      "type": "string",
+      "minLength": 7
+    },
+    "lane": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "const": "vi-history-scenarios-windows-lv32"
+        }
+      }
+    },
+    "runner": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "requiredLabels",
+        "actualLabels",
+        "labelsMatched"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "requiredLabels": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "actualLabels": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "labelsMatched": {
+          "type": "boolean"
+        }
+      }
+    },
+    "headless": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "required",
+        "enforced",
+        "executionMode"
+      ],
+      "properties": {
+        "required": {
+          "type": "boolean",
+          "const": true
+        },
+        "enforced": {
+          "type": "boolean"
+        },
+        "executionMode": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "hostPlane": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "native32Status",
+        "reportPath",
+        "labviewPath",
+        "cliPath",
+        "comparePath"
+      ],
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": [
+            "ready",
+            "blocked",
+            "unavailable"
+          ]
+        },
+        "native32Status": {
+          "type": "string",
+          "enum": [
+            "ready",
+            "blocked",
+            "unavailable"
+          ]
+        },
+        "reportPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "labviewPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "cliPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "comparePath": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "verification": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "summaryPath",
+        "reportPath"
+      ],
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": [
+            "pass",
+            "fail",
+            "blocked"
+          ]
+        },
+        "runUrl": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "summaryPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "reportPath": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    }
+  }
+}

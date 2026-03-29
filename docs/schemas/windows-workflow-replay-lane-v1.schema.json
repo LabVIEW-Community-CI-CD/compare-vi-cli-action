@@ -1,0 +1,170 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.labview-community-ci-cd.example/compare-vi-cli-action/windows-workflow-replay-lane-v1.schema.json",
+  "title": "Windows Workflow Replay Lane Receipt",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "schemaVersion",
+    "generatedAt",
+    "repoRoot",
+    "git",
+    "replay",
+    "windows",
+    "artifacts",
+    "result"
+  ],
+  "properties": {
+    "schema": {
+      "const": "windows-workflow-replay-lane@v1"
+    },
+    "schemaVersion": {
+      "type": "string",
+      "minLength": 1
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "repoRoot": {
+      "type": "string",
+      "minLength": 1
+    },
+    "git": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "headSha",
+        "branch",
+        "upstreamDevelopMergeBase",
+        "dirtyTracked"
+      ],
+      "properties": {
+        "headSha": {
+          "type": ["string", "null"]
+        },
+        "branch": {
+          "type": ["string", "null"]
+        },
+        "upstreamDevelopMergeBase": {
+          "type": ["string", "null"]
+        },
+        "dirtyTracked": {
+          "type": "boolean"
+        }
+      }
+    },
+    "replay": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "mode",
+        "executionSurface",
+        "helperPath"
+      ],
+      "properties": {
+        "mode": {
+          "type": "string",
+          "minLength": 1
+        },
+        "executionSurface": {
+          "enum": ["desktop-local", "github-hosted-windows"]
+        },
+        "helperPath": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "windows": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "image",
+        "allowUnavailable",
+        "command"
+      ],
+      "properties": {
+        "image": {
+          "type": "string",
+          "minLength": 1
+        },
+        "allowUnavailable": {
+          "type": "boolean"
+        },
+        "command": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "entry",
+            "args",
+            "sanitizedShellCommand"
+          ],
+          "properties": {
+            "entry": {
+              "type": "string",
+              "minLength": 1
+            },
+            "args": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "sanitizedShellCommand": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        }
+      }
+    },
+    "artifacts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "receiptPath",
+        "preflightReportPath"
+      ],
+      "properties": {
+        "receiptPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "preflightReportPath": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "exitCode",
+        "preflightStatus",
+        "failureClass",
+        "errorMessage"
+      ],
+      "properties": {
+        "status": {
+          "enum": ["passed", "failed", "unavailable"]
+        },
+        "exitCode": {
+          "type": "integer"
+        },
+        "preflightStatus": {
+          "type": ["string", "null"]
+        },
+        "failureClass": {
+          "type": ["string", "null"]
+        },
+        "errorMessage": {
+          "type": ["string", "null"]
+        }
+      }
+    }
+  }
+}

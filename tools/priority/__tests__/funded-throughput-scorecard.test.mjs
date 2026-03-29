@@ -74,11 +74,23 @@ function buildThroughputScorecard({
   totalTerminalPullRequestCount = 5,
   mergedPullRequestCount = 4,
   hostedWaitEscapeCount = 2,
-  concurrentLaneActiveCount = 2
+  concurrentLaneActiveCount = 2,
+  currentCycleIdleStatus = 'missing',
+  currentCycleIdleSource = null,
+  currentCycleIdleObservedAt = null,
+  currentCycleIdleNextWakeCondition = null
 } = {}) {
   return {
     schema: 'priority/throughput-scorecard@v1',
     repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+    workerPool: {
+      currentCycleIdleAuthority: {
+        status: currentCycleIdleStatus,
+        source: currentCycleIdleSource,
+        observedAt: currentCycleIdleObservedAt,
+        nextWakeCondition: currentCycleIdleNextWakeCondition
+      }
+    },
     delivery: {
       totalTerminalPullRequestCount,
       mergedPullRequestCount,
@@ -129,6 +141,7 @@ test('runFundedThroughputScorecard reports operational validated throughput per 
   assert.equal(result.report.summary.metrics.laneMinutesAllocatedPerFundedUsd, 1.2);
   assert.equal(result.report.summary.metrics.hostedWaitEscapesPerFundedUsd, 0.1);
   assert.equal(result.report.fundingWindow.windowClass, 'operational');
+  assert.equal(result.report.throughputWindow.currentCycleIdleStatus, 'missing');
   assert.deepEqual(result.report.coverage.implementedMetricCodes, [
     'validated-merged-prs-per-funded-dollar',
     'issues-closed-per-funded-dollar',
@@ -193,6 +206,48 @@ test('runFundedThroughputScorecard warns when the funding window is calibration-
   assert.equal(result.report.summary.metrics.promotionEvidencePerFundedUsd, 0.2);
   assert.equal(result.report.summary.metrics.laneMinutesAllocatedPerFundedUsd, 2.4);
   assert.equal(result.report.summary.metrics.heuristicUsdDelta, null);
+});
+
+test('runFundedThroughputScorecard records current-cycle idle posture and suppresses zero-validated-throughput pressure for fresh idle turns', () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'funded-throughput-scorecard-idle-'));
+  const costRollupPath = path.join(tempDir, 'agent-cost-rollup.json');
+  const throughputScorecardPath = path.join(tempDir, 'throughput-scorecard.json');
+
+  writeJson(costRollupPath, buildCostRollup({
+    totalUsd: 8,
+    exactUsd: 8,
+    estimatedUsd: 0,
+    actualUsdConsumed: 8,
+    heuristicUsdDelta: 0,
+    heuristicUsdDeltaRatio: 0
+  }));
+  writeJson(
+    throughputScorecardPath,
+    buildThroughputScorecard({
+      totalTerminalPullRequestCount: 0,
+      mergedPullRequestCount: 0,
+      hostedWaitEscapeCount: 0,
+      concurrentLaneActiveCount: 0,
+      currentCycleIdleStatus: 'observed',
+      currentCycleIdleSource: 'delivery-agent-state',
+      currentCycleIdleObservedAt: '2026-03-26T14:00:00.000Z',
+      currentCycleIdleNextWakeCondition: 'future-agent-may-pivot'
+    })
+  );
+
+  const result = runFundedThroughputScorecard({
+    costRollupPath,
+    throughputScorecardPath,
+    now: new Date('2026-03-26T14:05:00.000Z')
+  });
+
+  assert.equal(result.report.summary.status, 'warn');
+  assert.deepEqual(result.report.summary.reasons, ['current-cycle-idle-window']);
+  assert.equal(result.report.summary.recommendation, 'observe-funded-window');
+  assert.equal(result.report.throughputWindow.currentCycleIdleStatus, 'observed');
+  assert.equal(result.report.throughputWindow.currentCycleIdleSource, 'delivery-agent-state');
+  assert.equal(result.report.throughputWindow.currentCycleIdleNextWakeCondition, 'future-agent-may-pivot');
+  assert.ok(!result.report.summary.reasons.includes('zero-validated-throughput'));
 });
 
 test('runFundedThroughputScorecard warns cleanly instead of dividing by zero when no funded spend has been observed', () => {

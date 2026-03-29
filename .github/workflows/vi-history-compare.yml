@@ -59,9 +59,12 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.event.inputs.sample_id || github.ref }}
   cancel-in-progress: false
 
+permissions:
+  contents: read
+
 jobs:
   preflight:
-    runs-on: [self-hosted, Windows, X64]
+    runs-on: [self-hosted, Windows, X64, comparevi, capability-ingress]
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v5
@@ -77,7 +80,7 @@ jobs:
           Write-Host 'Preflight OK: LVCompare present; LabVIEW not running.'
 
   compare-history:
-    runs-on: [self-hosted, Windows, X64]
+    runs-on: [self-hosted, Windows, X64, comparevi, capability-ingress]
     needs: preflight
     timeout-minutes: 60
     env:
@@ -149,4 +152,3 @@ jobs:
           snapshot-path: tests/results/runner-unblock-snapshot.json
           cleanup: ${{ env.UNBLOCK_GUARD == '1' }}
           process-names: 'conhost,pwsh,LabVIEW,LVCompare'
-

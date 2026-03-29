@@ -6,6 +6,7 @@ import os from 'node:os';
 import path from 'node:path';
 import {
   DEFAULT_REPORT_PATH,
+  escapeSummaryTableCell,
   evaluateLocalIntegrity,
   parseArgs,
   parseChecksumManifest,
@@ -264,6 +265,11 @@ test('verifyAttestations reports gh unavailable and retry classifier catches tra
   assert.equal(result.results[0].verified, false);
 });
 
+test('escapeSummaryTableCell neutralizes markdown and html control characters', () => {
+  const escaped = escapeSummaryTableCell('line `one` | <tag> & detail\r\nline two');
+  assert.equal(escaped, 'line &#96;one&#96; &#124; &lt;tag&gt; &amp; detail<br>line two');
+});
+
 test('verifyReleaseTagSignature passes for verified annotated tag', async () => {
   const runner = (_command, args) => {
     if (args[0] === '--version') {
@@ -349,6 +355,15 @@ test('verifyReleaseTagSignature fails for unsigned tag', async () => {
   });
 
   assert.ok(result.failures.some((failure) => failure.code === 'tag-signature-unverified'));
+  assert.ok(
+    result.failures.some(
+      (failure) =>
+        failure.code === 'tag-signature-unverified' &&
+        String(failure.hint).includes('priority:release:signing:readiness') &&
+        String(failure.hint).includes('repair_existing_tag = true') &&
+        String(failure.hint).includes('immutable published GitHub Release')
+    )
+  );
   assert.equal(result.status.verified, false);
   assert.equal(result.status.reason, 'unsigned');
 });
@@ -380,6 +395,15 @@ test('verifyReleaseTagSignature fails for lightweight tag', async () => {
   });
 
   assert.ok(result.failures.some((failure) => failure.code === 'tag-not-annotated'));
+  assert.ok(
+    result.failures.some(
+      (failure) =>
+        failure.code === 'tag-not-annotated' &&
+        String(failure.hint).includes('priority:release:signing:readiness') &&
+        String(failure.hint).includes('repair_existing_tag = true') &&
+        String(failure.hint).includes('immutable published GitHub Release')
+    )
+  );
   assert.equal(result.status.annotated, false);
   assert.equal(result.status.reason, 'not-annotated');
 });

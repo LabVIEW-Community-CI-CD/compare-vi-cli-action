@@ -380,10 +380,46 @@ function createGovernorPortfolioEvidence(governorPortfolioSummary) {
     currentOwnerRepository: asOptional(governorPortfolioSummary.summary?.currentOwnerRepository),
     nextOwnerRepository: asOptional(governorPortfolioSummary.summary?.nextOwnerRepository),
     nextAction: asOptional(governorPortfolioSummary.summary?.nextAction),
+    brokerSelectedIssueNumber: Number.isInteger(governorPortfolioSummary.summary?.brokerSelectedIssueNumber)
+      ? governorPortfolioSummary.summary.brokerSelectedIssueNumber
+      : null,
+    brokerSelectedIssueUrl: asOptional(governorPortfolioSummary.summary?.brokerSelectedIssueUrl),
+    brokerSelectedIssueTitle: asOptional(governorPortfolioSummary.summary?.brokerSelectedIssueTitle),
+    brokerProviderId: asOptional(governorPortfolioSummary.summary?.brokerProviderId),
+    brokerSlotId: asOptional(governorPortfolioSummary.summary?.brokerSlotId),
+    brokerSelectionSource: asOptional(governorPortfolioSummary.summary?.brokerSelectionSource),
     ownerDecisionSource: asOptional(governorPortfolioSummary.summary?.ownerDecisionSource),
     templateMonitoringStatus: asOptional(governorPortfolioSummary.summary?.templateMonitoringStatus),
     supportedProofStatus: asOptional(governorPortfolioSummary.summary?.supportedProofStatus),
     repoGraphStatus: asOptional(governorPortfolioSummary.summary?.repoGraphStatus),
+    workerPoolAuthoritySource: asOptional(governorPortfolioSummary.summary?.workerPoolAuthoritySource),
+    workerPoolTargetSlotCount: Number.isInteger(governorPortfolioSummary.summary?.workerPoolTargetSlotCount)
+      ? governorPortfolioSummary.summary.workerPoolTargetSlotCount
+      : null,
+    workerPoolOccupiedSlotCount: Number.isInteger(governorPortfolioSummary.summary?.workerPoolOccupiedSlotCount)
+      ? governorPortfolioSummary.summary.workerPoolOccupiedSlotCount
+      : null,
+    workerPoolAvailableSlotCount: Number.isInteger(governorPortfolioSummary.summary?.workerPoolAvailableSlotCount)
+      ? governorPortfolioSummary.summary.workerPoolAvailableSlotCount
+      : null,
+    workerPoolReleasedLaneCount: Number.isInteger(governorPortfolioSummary.summary?.workerPoolReleasedLaneCount)
+      ? governorPortfolioSummary.summary.workerPoolReleasedLaneCount
+      : null,
+    workerPoolUtilizationRatio: Number.isFinite(Number(governorPortfolioSummary.summary?.workerPoolUtilizationRatio))
+      ? Number(governorPortfolioSummary.summary.workerPoolUtilizationRatio)
+      : null,
+    workerPoolReleasedCapitalAvailable:
+      governorPortfolioSummary.summary?.workerPoolReleasedCapitalAvailable === true,
+    workerPoolIdleWorkerCapacityAvailable:
+      governorPortfolioSummary.summary?.workerPoolIdleWorkerCapacityAvailable === true,
+    workerPoolUnderfilled: governorPortfolioSummary.summary?.workerPoolUnderfilled === true,
+    workerPoolThroughputStatus: asOptional(governorPortfolioSummary.summary?.workerPoolThroughputStatus),
+    workerPoolThroughputPressureReasons: Array.isArray(
+      governorPortfolioSummary.summary?.workerPoolThroughputPressureReasons
+    )
+      ? governorPortfolioSummary.summary.workerPoolThroughputPressureReasons.map((entry) => String(entry))
+      : [],
+    workerPoolQueueThroughputMode: asOptional(governorPortfolioSummary.summary?.workerPoolQueueThroughputMode),
     portfolioWakeConditionCount: Number.isInteger(governorPortfolioSummary.summary?.portfolioWakeConditionCount)
       ? governorPortfolioSummary.summary.portfolioWakeConditionCount
       : null,
@@ -922,7 +958,39 @@ function buildPortfolioRoutingContext({ governorPortfolioSummary, repository, wa
   const nextOwnerRepository = asOptional(summary?.nextOwnerRepository);
   const governorMode = asOptional(summary?.governorMode);
   const nextAction = asOptional(summary?.nextAction);
+  const brokerSelectedIssueNumber = Number.isInteger(summary?.brokerSelectedIssueNumber)
+    ? summary.brokerSelectedIssueNumber
+    : null;
+  const brokerSelectedIssueUrl = asOptional(summary?.brokerSelectedIssueUrl);
+  const brokerSelectedIssueTitle = asOptional(summary?.brokerSelectedIssueTitle);
+  const brokerProviderId = asOptional(summary?.brokerProviderId);
+  const brokerSlotId = asOptional(summary?.brokerSlotId);
+  const brokerSelectionSource = asOptional(summary?.brokerSelectionSource);
   const ownerDecisionSource = asOptional(summary?.ownerDecisionSource);
+  const workerPoolAuthoritySource = asOptional(summary?.workerPoolAuthoritySource);
+  const workerPoolTargetSlotCount = Number.isInteger(summary?.workerPoolTargetSlotCount)
+    ? summary.workerPoolTargetSlotCount
+    : null;
+  const workerPoolOccupiedSlotCount = Number.isInteger(summary?.workerPoolOccupiedSlotCount)
+    ? summary.workerPoolOccupiedSlotCount
+    : null;
+  const workerPoolAvailableSlotCount = Number.isInteger(summary?.workerPoolAvailableSlotCount)
+    ? summary.workerPoolAvailableSlotCount
+    : null;
+  const workerPoolReleasedLaneCount = Number.isInteger(summary?.workerPoolReleasedLaneCount)
+    ? summary.workerPoolReleasedLaneCount
+    : null;
+  const workerPoolUtilizationRatio = Number.isFinite(Number(summary?.workerPoolUtilizationRatio))
+    ? Number(summary.workerPoolUtilizationRatio)
+    : null;
+  const workerPoolReleasedCapitalAvailable = summary?.workerPoolReleasedCapitalAvailable === true;
+  const workerPoolIdleWorkerCapacityAvailable = summary?.workerPoolIdleWorkerCapacityAvailable === true;
+  const workerPoolUnderfilled = summary?.workerPoolUnderfilled === true;
+  const workerPoolThroughputStatus = asOptional(summary?.workerPoolThroughputStatus);
+  const workerPoolThroughputPressureReasons = Array.isArray(summary?.workerPoolThroughputPressureReasons)
+    ? summary.workerPoolThroughputPressureReasons.map((entry) => String(entry))
+    : [];
+  const workerPoolQueueThroughputMode = asOptional(summary?.workerPoolQueueThroughputMode);
   const wakeHasOwnershipSignal = Boolean(
     wakeEvidence?.recommendedOwnerRepository ||
       wakeEvidence?.decision ||
@@ -946,7 +1014,25 @@ function buildPortfolioRoutingContext({ governorPortfolioSummary, repository, wa
       currentOwnerRepository,
       nextOwnerRepository,
       nextAction,
+      brokerSelectedIssueNumber,
+      brokerSelectedIssueUrl,
+      brokerSelectedIssueTitle,
+      brokerProviderId,
+      brokerSlotId,
+      brokerSelectionSource,
       ownerDecisionSource,
+      workerPoolAuthoritySource,
+      workerPoolTargetSlotCount,
+      workerPoolOccupiedSlotCount,
+      workerPoolAvailableSlotCount,
+      workerPoolReleasedLaneCount,
+      workerPoolUtilizationRatio,
+      workerPoolReleasedCapitalAvailable,
+      workerPoolIdleWorkerCapacityAvailable,
+      workerPoolUnderfilled,
+      workerPoolThroughputStatus,
+      workerPoolThroughputPressureReasons,
+      workerPoolQueueThroughputMode,
       contradiction: false,
       contradictionFields: [],
       allowInjection: true
@@ -963,7 +1049,25 @@ function buildPortfolioRoutingContext({ governorPortfolioSummary, repository, wa
       currentOwnerRepository: null,
       nextOwnerRepository: null,
       nextAction: null,
+      brokerSelectedIssueNumber: null,
+      brokerSelectedIssueUrl: null,
+      brokerSelectedIssueTitle: null,
+      brokerProviderId: null,
+      brokerSlotId: null,
+      brokerSelectionSource: null,
       ownerDecisionSource: null,
+      workerPoolAuthoritySource: null,
+      workerPoolTargetSlotCount: null,
+      workerPoolOccupiedSlotCount: null,
+      workerPoolAvailableSlotCount: null,
+      workerPoolReleasedLaneCount: null,
+      workerPoolUtilizationRatio: null,
+      workerPoolReleasedCapitalAvailable: false,
+      workerPoolIdleWorkerCapacityAvailable: false,
+      workerPoolUnderfilled: false,
+      workerPoolThroughputStatus: null,
+      workerPoolThroughputPressureReasons: [],
+      workerPoolQueueThroughputMode: null,
       contradiction: false,
       contradictionFields: [],
       allowInjection: false
@@ -980,7 +1084,25 @@ function buildPortfolioRoutingContext({ governorPortfolioSummary, repository, wa
       currentOwnerRepository,
       nextOwnerRepository,
       nextAction,
+      brokerSelectedIssueNumber,
+      brokerSelectedIssueUrl,
+      brokerSelectedIssueTitle,
+      brokerProviderId,
+      brokerSlotId,
+      brokerSelectionSource,
       ownerDecisionSource,
+      workerPoolAuthoritySource,
+      workerPoolTargetSlotCount,
+      workerPoolOccupiedSlotCount,
+      workerPoolAvailableSlotCount,
+      workerPoolReleasedLaneCount,
+      workerPoolUtilizationRatio,
+      workerPoolReleasedCapitalAvailable,
+      workerPoolIdleWorkerCapacityAvailable,
+      workerPoolUnderfilled,
+      workerPoolThroughputStatus,
+      workerPoolThroughputPressureReasons,
+      workerPoolQueueThroughputMode,
       contradiction: true,
       contradictionFields: ['recommendedOwnerRepository'],
       allowInjection: false
@@ -997,7 +1119,25 @@ function buildPortfolioRoutingContext({ governorPortfolioSummary, repository, wa
       currentOwnerRepository,
       nextOwnerRepository,
       nextAction,
+      brokerSelectedIssueNumber,
+      brokerSelectedIssueUrl,
+      brokerSelectedIssueTitle,
+      brokerProviderId,
+      brokerSlotId,
+      brokerSelectionSource,
       ownerDecisionSource,
+      workerPoolAuthoritySource,
+      workerPoolTargetSlotCount,
+      workerPoolOccupiedSlotCount,
+      workerPoolAvailableSlotCount,
+      workerPoolReleasedLaneCount,
+      workerPoolUtilizationRatio,
+      workerPoolReleasedCapitalAvailable,
+      workerPoolIdleWorkerCapacityAvailable,
+      workerPoolUnderfilled,
+      workerPoolThroughputStatus,
+      workerPoolThroughputPressureReasons,
+      workerPoolQueueThroughputMode,
       contradiction: false,
       contradictionFields: [],
       allowInjection: false
@@ -1015,7 +1155,25 @@ function buildPortfolioRoutingContext({ governorPortfolioSummary, repository, wa
     currentOwnerRepository,
     nextOwnerRepository,
     nextAction,
+    brokerSelectedIssueNumber,
+    brokerSelectedIssueUrl,
+    brokerSelectedIssueTitle,
+    brokerProviderId,
+    brokerSlotId,
+    brokerSelectionSource,
     ownerDecisionSource,
+    workerPoolAuthoritySource,
+    workerPoolTargetSlotCount,
+    workerPoolOccupiedSlotCount,
+    workerPoolAvailableSlotCount,
+    workerPoolReleasedLaneCount,
+    workerPoolUtilizationRatio,
+    workerPoolReleasedCapitalAvailable,
+    workerPoolIdleWorkerCapacityAvailable,
+    workerPoolUnderfilled,
+    workerPoolThroughputStatus,
+    workerPoolThroughputPressureReasons,
+    workerPoolQueueThroughputMode,
     contradiction: false,
     contradictionFields: [],
     allowInjection: true

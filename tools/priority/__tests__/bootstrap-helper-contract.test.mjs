@@ -63,4 +63,22 @@ test('bootstrap routes standing-priority helper scripts through the resolved hel
     /Invoke-SafeGitReliabilitySummary -RepoRoot \$priorityHelperRepoRoot -WorkingDirectory \$priorityWorkingDirectory/
   );
   assert.match(content, /\$routerPath = Join-Path \$priorityWorkingDirectory 'tests\/results\/_agent\/issue\/router\.json'/);
+  assert.match(content, /if \(-not \$routerIssue\) \{\s*try \{\s*Write-Host '\[bootstrap\] Refreshing queue-empty handoff control-plane surfaces…'/);
+  assert.match(content, /Invoke-Npm -Script 'handoff:entrypoint:check' -AllowFailure:\$true/);
+  assert.match(
+    content,
+    /\$controlPlaneRefreshScript = Join-Path \$priorityWorkingDirectory 'tools\/priority\/Refresh-HandoffControlPlane\.ps1'/
+  );
+  assert.match(
+    content,
+    /& \$controlPlaneRefreshScript[\s\S]*-RepoRoot \$priorityWorkingDirectory[\s\S]*-HelperRepoRoot \$priorityHelperRepoRoot[\s\S]*-ContinuitySummaryPath \$continuityHandoffPath[\s\S]*-OperatorSteeringEventPath \$steeringHandoffPath/
+  );
+  assert.match(
+    content,
+    /& \$controlPlaneRefreshScript[\s\S]*-QueueEmptyReportPath \(Join-Path \$priorityWorkingDirectory 'tests\/results\/_agent\/issue\/no-standing-priority\.json'\)/
+  );
+  assert.match(
+    content,
+    /& \$controlPlaneRefreshScript[\s\S]*-EpisodeDirectory \(Join-Path \$resultsRoot '_agent\/memory\/subagent-episodes'\)/
+  );
 });

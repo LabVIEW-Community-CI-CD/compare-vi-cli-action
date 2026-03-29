@@ -8,6 +8,7 @@ import process from 'node:process';
 import { fileURLToPath } from 'node:url';
 import { parseRemoteUrl, runGhGraphql } from './lib/remote-utils.mjs';
 import { getRepoRoot } from './lib/branch-utils.mjs';
+import { deriveCurrentCycleIdleAuthority } from './lib/current-cycle-idle-authority.mjs';
 import { buildQueueReadinessReport, DEFAULT_READINESS_REPORT_PATH } from './queue-readiness.mjs';
 import { hasDeferredPostMergeBranchCleanup, reconcileDeferredBranchCleanup } from './merge-sync-pr.mjs';
 
@@ -1031,21 +1032,38 @@ function normalizeCount(value) {
   return Math.max(0, Math.trunc(toFiniteNumber(value, 0)));
 }
 
-function buildWorkerOccupancySummary({ runtimeState, runtimeStatePath = DEFAULT_RUNTIME_STATE_PATH } = {}) {
+function buildWorkerOccupancySummary({
+  runtimeState,
+  runtimeStatePath = DEFAULT_RUNTIME_STATE_PATH,
+  currentCycleIdleAuthority = null
+} = {}) {
   const workerPool =
     runtimeState?.workerPool && typeof runtimeState.workerPool === 'object' && !Array.isArray(runtimeState.workerPool)
       ? runtimeState.workerPool
       : null;
+  const idleAuthorityObserved = currentCycleIdleAuthority?.status === 'observed';
+  const targetSlotCount = normalizeCount(workerPool?.targetSlotCount);
+  const staleRuntimeSuppressed =
+    idleAuthorityObserved
+    && (normalizeCount(workerPool?.occupiedSlotCount) > 0 || normalizeCount(runtimeState?.activeCodingLanes) > 0);
 
   return {
     runtimeStatePath,
     available: Boolean(workerPool),
-    targetSlotCount: normalizeCount(workerPool?.targetSlotCount),
-    occupiedSlotCount: normalizeCount(workerPool?.occupiedSlotCount),
-    availableSlotCount: normalizeCount(workerPool?.availableSlotCount),
-    releasedLaneCount: normalizeCount(workerPool?.releasedLaneCount),
-    utilizationRatio: normalizeRatio(workerPool?.utilizationRatio),
-    activeCodingLanes: normalizeCount(runtimeState?.activeCodingLanes)
+    authoritySource: idleAuthorityObserved ? 'current-cycle-idle' : 'delivery-runtime',
+    targetSlotCount,
+    occupiedSlotCount: idleAuthorityObserved ? 0 : normalizeCount(workerPool?.occupiedSlotCount),
+    availableSlotCount: idleAuthorityObserved ? targetSlotCount : normalizeCount(workerPool?.availableSlotCount),
+    releasedLaneCount: idleAuthorityObserved ? 0 : normalizeCount(workerPool?.releasedLaneCount),
+    utilizationRatio: idleAuthorityObserved ? 0 : normalizeRatio(workerPool?.utilizationRatio),
+    activeCodingLanes: idleAuthorityObserved ? 0 : normalizeCount(runtimeState?.activeCodingLanes),
+    staleRuntimeSuppressed,
+    currentCycleIdleAuthority: {
+      status: currentCycleIdleAuthority?.status ?? 'missing',
+      source: currentCycleIdleAuthority?.source ?? null,
+      observedAt: currentCycleIdleAuthority?.observedAt ?? null,
+      nextWakeCondition: currentCycleIdleAuthority?.nextWakeCondition ?? null
+    }
   };
 }
 
@@ -1666,6 +1684,10 @@ export async function runQueueSupervisor(options = {}) {
       resolvedRuntimeStatePath = legacyRuntimeStatePath;
     }
   }
+  const currentCycleIdleAuthority = deriveCurrentCycleIdleAuthority({
+    deliveryRuntimeState: runtimeState,
+    now
+  });
   const governorStateEnvelope = await readOptionalJsonFn(path.resolve(repoRoot, governorStatePath));
   const governorStatePayload =
     governorStateEnvelope && typeof governorStateEnvelope === 'object' && 'payload' in governorStateEnvelope
@@ -1778,7 +1800,8 @@ export async function runQueueSupervisor(options = {}) {
   });
   const workerOccupancy = buildWorkerOccupancySummary({
     runtimeState,
-    runtimeStatePath: resolvedRuntimeStatePath
+    runtimeStatePath: resolvedRuntimeStatePath,
+    currentCycleIdleAuthority
   });
   const queueManagedCandidates = classified.candidates.filter((candidate) => queueManagedBranches.has(candidate.baseRefName));
   const candidateByNumber = new Map(classified.candidates.map((candidate) => [candidate.number, candidate]));

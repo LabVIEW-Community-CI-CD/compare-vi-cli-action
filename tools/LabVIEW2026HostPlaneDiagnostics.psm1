@@ -25,6 +25,147 @@ function Convert-ToPathString {
   return $Value.Trim()
 }
 
+function Get-OptionalMemberValue {
+  param(
+    [AllowNull()]$Object,
+    [Parameter(Mandatory)][string]$Name
+  )
+
+  if ($null -eq $Object) {
+    return $null
+  }
+
+  $property = $Object.PSObject.Properties[$Name]
+  if ($property) {
+    return $property.Value
+  }
+
+  return $null
+}
+
+function Convert-ToCanonicalString {
+  param([AllowNull()]$Value)
+
+  if ($null -eq $Value) {
+    return ''
+  }
+
+  return ([string]$Value).Trim()
+}
+
+function Get-Sha256Hex {
+  param([Parameter(Mandatory)][string]$Value)
+
+  $bytes = [System.Text.Encoding]::UTF8.GetBytes($Value)
+  $hash = [System.Security.Cryptography.SHA256]::HashData($bytes)
+  return ([System.BitConverter]::ToString($hash)).Replace('-', '').ToLowerInvariant()
+}
+
+function Get-HostOperatingSystemFingerprint {
+  $registryPath = 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion'
+  $currentVersion = $null
+  $osInfo = $null
+  $computerSystem = $null
+
+  if ($IsWindows) {
+    try {
+      $currentVersion = Get-ItemProperty -Path $registryPath
+    } catch {}
+
+    try {
+      $osInfo = Get-CimInstance -ClassName Win32_OperatingSystem
+    } catch {}
+
+    try {
+      $computerSystem = Get-CimInstance -ClassName Win32_ComputerSystem
+    } catch {}
+  }
+
+  $platform = if ($IsWindows) { 'windows' } else { 'non-windows' }
+  $version = if ($IsWindows) {
+    Convert-ToCanonicalString (Get-OptionalMemberValue -Object $osInfo -Name 'Version')
+  } else {
+    Convert-ToCanonicalString ([System.Runtime.InteropServices.RuntimeInformation]::OSDescription)
+  }
+  $buildNumber = if ($IsWindows) {
+    $value = Convert-ToCanonicalString (Get-OptionalMemberValue -Object $osInfo -Name 'BuildNumber')
+    if ([string]::IsNullOrWhiteSpace($value)) {
+      $value = Convert-ToCanonicalString (Get-OptionalMemberValue -Object $currentVersion -Name 'CurrentBuildNumber')
+    }
+    $value
+  } else {
+    ''
+  }
+  $ubrRaw = if ($IsWindows) { Get-OptionalMemberValue -Object $currentVersion -Name 'UBR' } else { $null }
+  $ubr = 0
+  if ($null -ne $ubrRaw -and [int]::TryParse(([string]$ubrRaw), [ref]$ubr)) {
+    $ubr = [int]$ubr
+  }
+
+  $canonical = [ordered]@{
+    version = $version
+    buildNumber = $buildNumber
+    ubr = $ubr
+    displayVersion = if ($IsWindows) { Convert-ToCanonicalString (Get-OptionalMemberValue -Object $currentVersion -Name 'DisplayVersion') } else { '' }
+    editionId = if ($IsWindows) { Convert-ToCanonicalString (Get-OptionalMemberValue -Object $currentVersion -Name 'EditionID') } else { '' }
+    installationType = if ($IsWindows) { Convert-ToCanonicalString (Get-OptionalMemberValue -Object $currentVersion -Name 'InstallationType') } else { '' }
+    architecture = if ($IsWindows) {
+      Convert-ToCanonicalString (Get-OptionalMemberValue -Object $osInfo -Name 'OSArchitecture')
+    } else {
+      Convert-ToCanonicalString ([System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture)
+    }
+    systemType = if ($IsWindows) { Convert-ToCanonicalString (Get-OptionalMemberValue -Object $computerSystem -Name 'SystemType') } else { '' }
+    buildLabEx = if ($IsWindows) { Convert-ToCanonicalString (Get-OptionalMemberValue -Object $currentVersion -Name 'BuildLabEx') } else { '' }
+  }
+
+  $fingerprintPayload = [ordered]@{
+    platform = $platform
+    comparisonScope = 'isolated-lane-group'
+    canonical = $canonical
+  }
+  $fingerprintSha256 = Get-Sha256Hex -Value (($fingerprintPayload | ConvertTo-Json -Depth 8 -Compress))
+
+  $caption = if ($IsWindows) { Convert-ToCanonicalString (Get-OptionalMemberValue -Object $osInfo -Name 'Caption') } else { Convert-ToCanonicalString ([System.Runtime.InteropServices.RuntimeInformation]::OSDescription) }
+  $productName = if ($IsWindows) { Convert-ToCanonicalString (Get-OptionalMemberValue -Object $currentVersion -Name 'ProductName') } else { '' }
+  $brandingMismatch = $false
+  if (-not [string]::IsNullOrWhiteSpace($caption) -and -not [string]::IsNullOrWhiteSpace($productName)) {
+    $brandingMismatch = -not [string]::Equals($caption, $productName, [System.StringComparison]::OrdinalIgnoreCase)
+  }
+
+  return [pscustomobject][ordered]@{
+    role = 'canonical-host-baseline'
+    comparisonScope = 'isolated-lane-group'
+    platform = $platform
+    fingerprintSha256 = $fingerprintSha256
+    isolatedLaneGroupId = "host-os-fingerprint:$fingerprintSha256"
+    canonical = [pscustomobject]$canonical
+    advisory = [pscustomobject][ordered]@{
+      caption = $caption
+      productName = $productName
+      currentVersionCompatibility = if ($IsWindows) { Convert-ToCanonicalString (Get-OptionalMemberValue -Object $currentVersion -Name 'CurrentVersion') } else { '' }
+      brandingMismatch = $brandingMismatch
+      installDate = if ($IsWindows -and (Get-OptionalMemberValue -Object $osInfo -Name 'InstallDate')) { ([datetime](Get-OptionalMemberValue -Object $osInfo -Name 'InstallDate')).ToString('o') } else { '' }
+      lastBootUpTime = if ($IsWindows -and (Get-OptionalMemberValue -Object $osInfo -Name 'LastBootUpTime')) { ([datetime](Get-OptionalMemberValue -Object $osInfo -Name 'LastBootUpTime')).ToString('o') } else { '' }
+    }
+    sources = [pscustomobject][ordered]@{
+      registryPath = if ($IsWindows) { $registryPath } else { '' }
+      cimClass = if ($IsWindows) { 'Win32_OperatingSystem' } else { '' }
+      systemClass = if ($IsWindows) { 'Win32_ComputerSystem' } else { '' }
+      comparisonFields = @(
+        'version',
+        'buildNumber',
+        'ubr',
+        'displayVersion',
+        'editionId',
+        'installationType',
+        'architecture',
+        'systemType',
+        'buildLabEx'
+      )
+    }
+  }
+}
+
 function Get-HostPlaneIssues {
   param(
     [bool]$HasLabVIEW,
@@ -161,6 +302,7 @@ function Get-LabVIEW2026HostPlaneReport {
     host = [ordered]@{
       os = if ($IsWindows) { 'windows' } else { 'non-windows' }
       computerName = [Environment]::MachineName
+      osFingerprint = Get-HostOperatingSystemFingerprint
     }
     runner = [ordered]@{
       hostIsRunner = $true

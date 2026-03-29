@@ -11,6 +11,7 @@
     "cycle": { "type": ["integer", "null"], "minimum": 1 },
     "runtimeAdapter": { "type": ["string", "null"] },
     "repository": { "type": ["string", "null"] },
+    "runtimeEpochId": { "type": ["string", "null"] },
     "laneId": { "type": ["string", "null"] },
     "issue": { "type": ["integer", "null"], "minimum": 1 },
     "status": { "type": "string" },

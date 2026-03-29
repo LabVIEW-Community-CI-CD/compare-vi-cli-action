@@ -14,9 +14,12 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
   cli-compare:
-    runs-on: [self-hosted, Windows, X64]
+    runs-on: [self-hosted, Windows, X64, comparevi, capability-ingress, labview-2026, lv32]
     env:
       # Headless + safe UI behaviour
       LV_SUPPRESS_UI: '1'
@@ -30,23 +33,38 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      - name: Validate LabVIEW CLI presence
+      - name: Validate native LV32 host-plane readiness
+        id: host_plane
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $defaultCli = 'C:\Program Files (x86)\National Instruments\Shared\LabVIEW CLI\LabVIEWCLI.exe'
-          $cli = $env:LABVIEW_CLI_PATH
-          if ([string]::IsNullOrWhiteSpace($cli)) { $cli = $defaultCli }
+          $reportPath = node tools/npm/run-script.mjs env:labview:2026:host-planes
+          if ($LASTEXITCODE -ne 0) {
+            exit $LASTEXITCODE
+          }
+          $report = Get-Content -LiteralPath $reportPath -Raw | ConvertFrom-Json -Depth 12
+          if ($report.native.planes.x32.status -ne 'ready') {
+            Write-Host "::error::LabVIEW 2026 native x32 host plane is not ready. Observed status: $($report.native.planes.x32.status)"
+            exit 1
+          }
+          $cli = [string]$report.native.planes.x32.cliPath
+          if ([string]::IsNullOrWhiteSpace($cli)) {
+            Write-Host '::error::LabVIEW CLI path missing from the native x32 host-plane report.'
+            exit 1
+          }
           if (-not (Test-Path -LiteralPath $cli -PathType Leaf)) {
             Write-Host "::error::LabVIEWCLI.exe not found. Checked: $cli"
-            Write-Host 'Install LabVIEW 2025 Q3 or later (includes LabVIEW CLI), or set LABVIEW_CLI_PATH.'
+            Write-Host 'Repair the canonical LabVIEW 2026 host plane before trusting this specialized LV32 lane.'
             exit 1
           }
           "cli=$cli" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "reportPath=$reportPath" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
 
       - name: Run LabVIEW CLI Compare
         id: compare
         uses: ./
+        env:
+          LABVIEW_CLI_PATH: ${{ steps.host_plane.outputs.cli }}
         with:
           base: VI1.vi
           head: VI2.vi
@@ -64,8 +82,8 @@ jobs:
         if: always()
         shell: pwsh
         run: |
+          Write-Host "hostPlane = ${{ steps.host_plane.outputs.reportPath }}"
           Write-Host "diff      = ${{ steps.compare.outputs.diff }}"
           Write-Host "exitCode  = ${{ steps.compare.outputs.exitCode }}"
           Write-Host "cliPath   = ${{ steps.compare.outputs.cliPath }}"
           Write-Host "command   = ${{ steps.compare.outputs.command }}"
-

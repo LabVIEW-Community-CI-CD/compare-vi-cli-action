@@ -63,8 +63,29 @@ function createGovernorPortfolioSummary({
   nextOwnerRepository = 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
   governorMode = 'compare-governance-work',
   nextAction = 'continue-compare-governance-work',
+  brokerSelectedIssueNumber = null,
+  brokerSelectedIssueUrl = null,
+  brokerSelectedIssueTitle = null,
+  brokerProviderId = null,
+  brokerSlotId = null,
+  brokerSelectionSource = null,
   ownerDecisionSource = 'compare-governor-summary',
-  status = 'active'
+  status = 'active',
+  workerPoolAuthoritySource = 'queue-supervisor',
+  workerPoolTargetSlotCount = 4,
+  workerPoolOccupiedSlotCount = 3,
+  workerPoolAvailableSlotCount = 1,
+  workerPoolReleasedLaneCount = 1,
+  workerPoolUtilizationRatio = 0.75,
+  workerPoolReleasedCapitalAvailable = true,
+  workerPoolIdleWorkerCapacityAvailable = true,
+  workerPoolUnderfilled = true,
+  workerPoolThroughputStatus = null,
+  workerPoolThroughputPressureReasons = [],
+  workerPoolQueueThroughputMode = 'stabilize',
+  viHistoryDistributorDependencyStatus = 'unknown',
+  viHistoryDistributorDependencyExternalBlocker = null,
+  viHistoryDistributorDependencyPublicationState = null
 } = {}) {
   return {
     schema: 'priority/autonomous-governor-portfolio-summary-report@v1',
@@ -81,11 +102,30 @@ function createGovernorPortfolioSummary({
       monitoringStatus: 'active',
       futureAgentAction: 'future-agent-may-pivot',
       governorMode,
-      nextAction
+      nextAction,
+      queueHandoffStatus: null,
+      queueHandoffNextWakeCondition: null,
+      queueHandoffPrUrl: null,
+      queueAuthoritySource: null
     },
     portfolio: {
       repositoryCount: 4,
       repositories: [],
+      dependencies: [
+        {
+          id: 'vi-history-producer-native-distributor',
+          status: viHistoryDistributorDependencyStatus,
+          ownerRepository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+          dependentRepository: 'LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate',
+          requiredCapability: 'vi-history',
+          source: 'compare-release-signing-readiness',
+          releaseSigningStatus: null,
+          releasePublicationState: viHistoryDistributorDependencyPublicationState,
+          signingCapabilityState: null,
+          externalBlocker: viHistoryDistributorDependencyExternalBlocker,
+          detail: 'fixture'
+        }
+      ],
       unsupportedPaths: []
     },
     summary: {
@@ -94,10 +134,36 @@ function createGovernorPortfolioSummary({
       currentOwnerRepository,
       nextOwnerRepository,
       nextAction,
+      brokerSelectedIssueNumber,
+      brokerSelectedIssueUrl,
+      brokerSelectedIssueTitle,
+      brokerProviderId,
+      brokerSlotId,
+      brokerSelectionSource,
       ownerDecisionSource,
       templateMonitoringStatus: 'pass',
       supportedProofStatus: 'pass',
       repoGraphStatus: 'pass',
+      workerPoolAuthoritySource,
+      workerPoolTargetSlotCount,
+      workerPoolOccupiedSlotCount,
+      workerPoolAvailableSlotCount,
+      workerPoolReleasedLaneCount,
+      workerPoolUtilizationRatio,
+      workerPoolReleasedCapitalAvailable,
+      workerPoolIdleWorkerCapacityAvailable,
+      workerPoolUnderfilled,
+      workerPoolThroughputStatus,
+      workerPoolThroughputPressureReasons,
+      workerPoolQueueThroughputMode,
+      queueHandoffStatus: null,
+      queueHandoffNextWakeCondition: null,
+      queueHandoffPrUrl: null,
+      queueAuthoritySource: null,
+      viHistoryDistributorDependencyStatus,
+      viHistoryDistributorDependencyTargetRepository: 'LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate',
+      viHistoryDistributorDependencyExternalBlocker,
+      viHistoryDistributorDependencyPublicationState,
       portfolioWakeConditionCount: 0,
       triggeredWakeConditions: []
     }
@@ -208,6 +274,50 @@ function createInputs(tmpDir, { includeWakeEvidence = true, governorPortfolioSum
     wakeInvestmentAccountingPath
   };
 }
+
+test('runMonitoringWorkInjection preserves broker-selected issue and slot attribution from governor portfolio summary', async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'monitoring-work-injection-broker-attribution-'));
+  const inputs = createInputs(tmpDir, {
+    governorPortfolioSummaryOverride: createGovernorPortfolioSummary({
+      currentOwnerRepository: 'LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate',
+      nextOwnerRepository: 'LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate',
+      nextAction: 'resume-template-consumer-rail',
+      ownerDecisionSource: 'repo-context-pivot',
+      brokerSelectedIssueNumber: 52,
+      brokerSelectedIssueUrl: 'https://github.com/LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate/issues/52',
+      brokerSelectedIssueTitle: '[comparevi]: template consumer rail',
+      brokerProviderId: 'local-codex',
+      brokerSlotId: 'slot-template-1',
+      brokerSelectionSource: 'released-waiting-state-marketplace'
+    })
+  });
+
+  const { report } = await runMonitoringWorkInjection({
+    repoRoot: tmpDir,
+    policyPath: inputs.policyPath,
+    queueEmptyReportPath: inputs.queuePath,
+    monitoringModePath: inputs.monitoringPath,
+    governorPortfolioSummaryPath: inputs.governorPortfolioSummaryPath,
+    hostSignalPath: inputs.hostSignalPath,
+    wakeAdjudicationPath: inputs.wakeAdjudicationPath,
+    wakeWorkSynthesisPath: inputs.wakeWorkSynthesisPath,
+    wakeInvestmentAccountingPath: inputs.wakeInvestmentAccountingPath
+  });
+
+  assert.equal(report.evidence.governorPortfolio.brokerSelectedIssueNumber, 52);
+  assert.equal(
+    report.evidence.governorPortfolio.brokerSelectedIssueUrl,
+    'https://github.com/LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate/issues/52'
+  );
+  assert.equal(report.evidence.governorPortfolio.brokerSelectedIssueTitle, '[comparevi]: template consumer rail');
+  assert.equal(report.evidence.governorPortfolio.brokerProviderId, 'local-codex');
+  assert.equal(report.evidence.governorPortfolio.brokerSlotId, 'slot-template-1');
+  assert.equal(report.evidence.governorPortfolio.brokerSelectionSource, 'released-waiting-state-marketplace');
+  assert.equal(report.portfolioRouting.brokerSelectedIssueNumber, 52);
+  assert.equal(report.portfolioRouting.brokerProviderId, 'local-codex');
+  assert.equal(report.portfolioRouting.brokerSlotId, 'slot-template-1');
+  assert.equal(report.portfolioRouting.brokerSelectionSource, 'released-waiting-state-marketplace');
+});
 
 test('runMonitoringWorkInjection reports no-trigger when queue is not empty', async () => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'monitoring-work-injection-noop-'));
@@ -402,6 +512,8 @@ test('runMonitoringWorkInjection creates a compare governance issue from actiona
   assert.equal(report.selectedRule.resolvedDedupeMarker, 'monitoring-work-injector:compare-governance-wake:reconcile-downstream-branch-target-provenance');
   assert.equal(report.evidence.wake.decision, 'compare-governance-work');
   assert.equal(report.portfolioRouting.status, 'owner-match');
+  assert.equal(report.evidence.governorPortfolio.workerPoolAuthoritySource, 'queue-supervisor');
+  assert.equal(report.portfolioRouting.workerPoolReleasedCapitalAvailable, true);
   assert.ok(ghCalls.some((entry) => entry.startsWith('issue create')));
 });
 

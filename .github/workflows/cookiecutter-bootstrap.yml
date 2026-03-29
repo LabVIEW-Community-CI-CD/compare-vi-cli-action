@@ -232,13 +232,13 @@ jobs:
         run: npm ci
 
       - name: Download Linux bootstrap artifact
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v8
         with:
           name: cookiecutter-bootstrap-linux
           path: tests/results/_agent
 
       - name: Download Windows bootstrap artifact
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v8
         with:
           name: cookiecutter-bootstrap-windows
           path: tests/results/_agent
@@ -282,7 +282,7 @@ jobs:
 
       - name: Upload template verification report
         if: ${{ always() }}
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v7
         with:
           name: template-agent-verification-${{ github.run_id }}
           path: tests/results/_agent/promotion/template-agent-verification-report.json

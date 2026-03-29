@@ -1,0 +1,172 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.comparevi.dev/docker-lane-handshake-v1.schema.json",
+  "title": "Docker Lane Handshake v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "generatedAt",
+    "laneId",
+    "resourceKind",
+    "state",
+    "sequence",
+    "heartbeatAt",
+    "host",
+    "request",
+    "grant",
+    "commit",
+    "release"
+  ],
+  "properties": {
+    "schema": {
+      "const": "priority/docker-lane-handshake@v1"
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "laneId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "resourceKind": {
+      "const": "docker-lane"
+    },
+    "state": {
+      "enum": ["requested", "granted", "active", "released"]
+    },
+    "sequence": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "heartbeatAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "host": {
+      "anyOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["isolatedLaneGroupId", "fingerprintSha256", "platform", "computerName", "canonical"],
+          "properties": {
+            "isolatedLaneGroupId": { "type": ["string", "null"] },
+            "fingerprintSha256": { "type": ["string", "null"] },
+            "platform": { "type": ["string", "null"] },
+            "computerName": { "type": ["string", "null"] },
+            "canonical": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["version", "buildNumber", "ubr"],
+              "properties": {
+                "version": { "type": ["string", "null"] },
+                "buildNumber": { "type": ["string", "null"] },
+                "ubr": { "type": ["integer", "null"], "minimum": 0 }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "request": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "requestId",
+        "requestedAt",
+        "agentId",
+        "agentClass",
+        "capabilities",
+        "premiumDualLaneRequested",
+        "operatorId",
+        "operatorAuthorizationRef"
+      ],
+      "properties": {
+        "requestId": { "type": "string", "minLength": 1 },
+        "requestedAt": { "type": "string", "format": "date-time" },
+        "agentId": { "type": "string", "minLength": 1 },
+        "agentClass": { "enum": ["sagan", "subagent", "other"] },
+        "capabilities": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "premiumDualLaneRequested": { "type": "boolean" },
+        "operatorId": { "type": ["string", "null"] },
+        "operatorAuthorizationRef": { "type": ["string", "null"] }
+      }
+    },
+    "grant": {
+      "anyOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "grantedAt",
+            "grantor",
+            "leaseId",
+            "ttlSeconds",
+            "grantedCapabilities",
+            "billableRateMultiplier",
+            "billableRateUsdPerHour",
+            "premiumSaganMode",
+            "policyDecision",
+            "operatorAuthorizationRef"
+          ],
+          "properties": {
+            "grantedAt": { "type": "string", "format": "date-time" },
+            "grantor": { "type": "string", "minLength": 1 },
+            "leaseId": { "type": "string", "minLength": 1 },
+            "ttlSeconds": { "type": "integer", "minimum": 1 },
+            "grantedCapabilities": {
+              "type": "array",
+              "minItems": 1,
+              "items": { "type": "string", "minLength": 1 }
+            },
+            "billableRateMultiplier": { "type": "number", "minimum": 1 },
+            "billableRateUsdPerHour": { "type": "number", "minimum": 0 },
+            "premiumSaganMode": { "type": "boolean" },
+            "policyDecision": { "enum": ["ordinary-docker-lane", "sagan-premium-dual-lane"] },
+            "operatorAuthorizationRef": { "type": ["string", "null"] }
+          }
+        }
+      ]
+    },
+    "commit": {
+      "anyOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["committedAt", "executionCellId", "executionCellLeaseId"],
+          "properties": {
+            "committedAt": { "type": "string", "format": "date-time" },
+            "executionCellId": { "type": ["string", "null"] },
+            "executionCellLeaseId": { "type": ["string", "null"] }
+          }
+        }
+      ]
+    },
+    "release": {
+      "anyOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["releasedAt", "finalStatus", "artifactPaths"],
+          "properties": {
+            "releasedAt": { "type": "string", "format": "date-time" },
+            "finalStatus": { "type": "string", "minLength": 1 },
+            "artifactPaths": {
+              "type": "array",
+              "items": { "type": "string", "minLength": 1 }
+            }
+          }
+        }
+      ]
+    }
+  }
+}

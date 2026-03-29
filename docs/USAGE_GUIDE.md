@@ -3,6 +3,11 @@
 
 Configuration patterns for the LVCompare GitHub Action.
 
+The examples below intentionally pin the latest supported stable release
+(`v0.6.4`). Use newer stable `v0.6.x` tags after they are published; use
+`v0.6.x-rc` tags only when you are deliberately evaluating a future release
+candidate.
+
 ## lvCompareArgs
 
 The `lvCompareArgs` input accepts a raw string or array of flags passed directly to LVCompare.
@@ -39,7 +44,7 @@ If your VIs live under a subfolder, set `working-directory` to avoid long relati
 
 ```yaml
 - name: Compare VIs
-  uses: LabVIEW-Community-CI-CD/compare-vi-cli-action@v0.5.0
+  uses: LabVIEW-Community-CI-CD/compare-vi-cli-action@v0.6.4
   with:
     working-directory: my-project
     base: src/VI1.vi
@@ -150,7 +155,7 @@ Basic success/failure handling:
 ```yaml
 - name: Compare VIs
   id: compare
-  uses: LabVIEW-Community-CI-CD/compare-vi-cli-action@v0.5.0
+  uses: LabVIEW-Community-CI-CD/compare-vi-cli-action@v0.6.4
   with:
     base: VI1.vi
     head: VI2.vi

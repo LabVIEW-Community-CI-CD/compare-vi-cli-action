@@ -5,22 +5,43 @@ Thank you for contributing to `compare-vi-cli-action`!
 
 ## Prerequisites
 
+Baseline repo contribution does not require the full LabVIEW runtime stack.
+Many docs, policy, Node, and workflow changes can be developed and reviewed on
+hosted Linux/macOS or a regular local checkout.
+
+Full compare-path and release-path validation does require the maintained
+runtime:
+
 - Self-hosted Windows runner with LabVIEW 2025 Q3 installed and licensed
-- LVCompare must be installed at the canonical path:
-  `C:\Program Files\National Instruments\Shared\LabVIEW Compare\LVCompare.exe`;
-  `LVCOMPARE_PATH` or `lvComparePath` may be used only if they resolve to this
-  canonical location (no alternative install paths supported)
+- LVCompare at the canonical path:
+  `C:\Program Files\National Instruments\Shared\LabVIEW Compare\LVCompare.exe`
+- `LVCOMPARE_PATH` or `lvComparePath` may be used only when they resolve to
+  that canonical install location
+
+Before broadening a consumer-facing change, read:
+
+- [`docs/SUPPORTED_PRODUCT_BOUNDARY.md`](./docs/SUPPORTED_PRODUCT_BOUNDARY.md)
+- [`docs/WORKFLOW_CRITICALITY_MAP.md`](./docs/WORKFLOW_CRITICALITY_MAP.md)
+- [`SECURITY.md`](./SECURITY.md)
 
 ## Getting Started
 
 - Fork and clone the repo
-- Create a feature branch
+- Branch from `develop` unless a maintainer runbook says otherwise
+- Keep changes narrow and update adjacent contract docs when supported behavior
+  changes
 - Run the staging smoke helper before pushing:
   - `pwsh -File tools/Test-PRVIStagingSmoke.ps1 -DryRun` to preview the plan
   - `node tools/npm/run-script.mjs smoke:vi-stage` to run end-to-end using the baked-in `fixtures/vi-attr`
     attribute diff
   All staging runs post a summary comment and upload `vi-compare-manifest` /
   `vi-staging-XX.zip` artifacts; check the comment for links.
+
+If you are changing release, validation, or governance behavior, also consult:
+
+- [`docs/RELEASE_OPERATIONS_RUNBOOK.md`](./docs/RELEASE_OPERATIONS_RUNBOOK.md)
+- [`docs/WORKFLOW_CRITICALITY_MAP.md`](./docs/WORKFLOW_CRITICALITY_MAP.md)
+- [`docs/MAINTAINER_CONTINUITY_PROFILE.md`](./docs/MAINTAINER_CONTINUITY_PROFILE.md)
 
 ## Action Development Tips
 
@@ -51,9 +72,14 @@ We use a multi-document strategy for comprehensive coverage:
 
 ## Style and Validation
 
-- PRs run markdownlint and actionlint via `.github/workflows/validate.yml`
-- Run `.github/workflows/test-mock.yml` on PRs (windows-latest); use smoke on self-hosted for real LVCompare
-- Keep README examples accurate and executable
+- PRs are governed by the current GitHub rulesets, merge queue, and workflow
+  inventory in [`docs/WORKFLOW_CRITICALITY_MAP.md`](./docs/WORKFLOW_CRITICALITY_MAP.md)
+- Treat `validate.yml`, release-critical workflows, and Tier 2 product
+  validation workflows as the baseline confidence surface for supported changes
+- Use hosted validation for docs/policy/Node/workflow changes and the
+  self-hosted compare lanes only when the change actually touches the compare
+  runtime or release path
+- Keep README and usage-guide examples accurate and executable
 
 ## Testing
 
@@ -76,17 +102,24 @@ $env:LV_HEAD_VI = 'VI2.vi'
 ./Invoke-PesterTests.ps1 -IntegrationMode include
 ```
 
-## Branch Protection (Maintainers)
+## Branch Protection and Merge Policy (Maintainers)
 
-1) In repository settings → Branches → Add rule for `main`
-2) Require status checks to pass before merging:
-   - `Validate`
-   - `Test (mock)`
-3) Optionally require linear history and dismiss stale approvals
+Treat GitHub rulesets and branch settings as the source of truth; do not use
+this file as a hard-coded list of required checks.
+
+- `develop` is the active integration branch for this repository
+- merge behavior may be mediated by the current merge-queue / ruleset
+  configuration
+- required checks and workflow expectations should be kept aligned with:
+  - [`docs/WORKFLOW_CRITICALITY_MAP.md`](./docs/WORKFLOW_CRITICALITY_MAP.md)
+  - [`docs/RELEASE_OPERATIONS_RUNBOOK.md`](./docs/RELEASE_OPERATIONS_RUNBOOK.md)
+  - the live GitHub repository rulesets and protected-branch settings
 
 ## Repository Topics (Maintainers)
 
-- Add topics for discoverability: `labview`, `lvcompare`, `vi`, `composite-action`, `windows`, `github-actions`
+- Keep repository topics aligned with the current product/governance surface:
+  `ci-cd`, `github-actions`, `labview`, `lvcompare`,
+  `release-governance`, `software-assurance`, `workflow-automation`
 
 ## Marketplace Listing (Maintainers)
 
@@ -96,12 +129,23 @@ $env:LV_HEAD_VI = 'VI2.vi'
 
 ## Releases
 
-- Tag semantic versions (e.g., `v0.1.0`); the release workflow reads `CHANGELOG.md` to generate release notes
-- After tagging, ensure README examples reference the latest stable tag
+- Stable releases follow the active `v0.6.x` support line; release candidates
+  use `v0.6.x-rc` tags until stable promotion
+- Keep `package.json`, backend version surfaces, `CHANGELOG.md`, and checked-in
+  release helper docs aligned when a release candidate or stable cut is
+  published
+- Use the current release runbooks/helpers rather than ad hoc tagging:
+  - [`docs/RELEASE_OPERATIONS_RUNBOOK.md`](./docs/RELEASE_OPERATIONS_RUNBOOK.md)
+  - [`docs/release/PR_NOTES.md`](./docs/release/PR_NOTES.md)
+  - [`docs/release/TAG_PREP_CHECKLIST.md`](./docs/release/TAG_PREP_CHECKLIST.md)
+- After a stable tag is published, ensure README examples reference the latest
+  stable supported tag
 
 ## Maintainers
 
-- CODEOWNERS: `@svelderrainruiz`
+- CODEOWNERS route: `@svelderrainruiz`
+- Continuity model:
+  [`docs/MAINTAINER_CONTINUITY_PROFILE.md`](./docs/MAINTAINER_CONTINUITY_PROFILE.md)
 
 ## Git hooks & multi-plane validation
 

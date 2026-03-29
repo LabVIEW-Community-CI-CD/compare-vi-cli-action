@@ -1,0 +1,350 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://labview-community-ci-cd.github.io/compare-vi-cli-action/schemas/sagan-context-concentrator-report-v1.schema.json",
+  "title": "Sagan Context Concentrator Report v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "generatedAt",
+    "repository",
+    "inputs",
+    "sources",
+    "focus",
+    "memory",
+    "episodes",
+    "cost",
+    "summary"
+  ],
+  "properties": {
+    "schema": {
+      "const": "priority/sagan-context-concentrator-report@v1"
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "repository": {
+      "type": ["string", "null"]
+    },
+    "inputs": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "priorityCachePath",
+        "governorSummaryPath",
+        "governorPortfolioSummaryPath",
+        "monitoringModePath",
+        "operatorSteeringEventPath",
+        "episodeDirectoryPath"
+      ],
+      "properties": {
+        "priorityCachePath": { "type": ["string", "null"] },
+        "governorSummaryPath": { "type": ["string", "null"] },
+        "governorPortfolioSummaryPath": { "type": ["string", "null"] },
+        "monitoringModePath": { "type": ["string", "null"] },
+        "operatorSteeringEventPath": { "type": ["string", "null"] },
+        "episodeDirectoryPath": { "type": ["string", "null"] }
+      }
+    },
+    "sources": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "priorityCache",
+        "governorSummary",
+        "governorPortfolioSummary",
+        "monitoringMode",
+        "operatorSteeringEvent",
+        "episodeDirectory"
+      ],
+      "properties": {
+        "priorityCache": { "$ref": "#/$defs/sourcePathState" },
+        "governorSummary": { "$ref": "#/$defs/sourcePathState" },
+        "governorPortfolioSummary": { "$ref": "#/$defs/sourcePathState" },
+        "monitoringMode": { "$ref": "#/$defs/sourcePathState" },
+        "operatorSteeringEvent": { "$ref": "#/$defs/sourcePathState" },
+        "episodeDirectory": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["path", "exists", "fileCount", "validEpisodeCount", "invalidEpisodeCount"],
+          "properties": {
+            "path": { "type": ["string", "null"] },
+            "exists": { "type": "boolean" },
+            "fileCount": { "type": "integer", "minimum": 0 },
+            "validEpisodeCount": { "type": "integer", "minimum": 0 },
+            "invalidEpisodeCount": { "type": "integer", "minimum": 0 }
+          }
+        }
+      }
+    },
+    "focus": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "activeIssue",
+        "currentOwnerRepository",
+        "nextOwnerRepository",
+        "nextAction",
+        "governorMode",
+        "monitoringStatus",
+        "workerPoolAuthoritySource",
+        "workerPoolTargetSlotCount",
+        "workerPoolOccupiedSlotCount",
+        "workerPoolAvailableSlotCount",
+        "workerPoolReleasedLaneCount",
+        "workerPoolUtilizationRatio",
+        "workerPoolReleasedCapitalAvailable",
+        "workerPoolIdleWorkerCapacityAvailable",
+        "workerPoolUnderfilled",
+        "workerPoolThroughputStatus",
+        "workerPoolThroughputPressureReasons",
+        "workerPoolQueueThroughputMode"
+      ],
+      "properties": {
+        "activeIssue": {
+          "type": ["object", "null"],
+          "additionalProperties": false,
+          "required": ["number", "title", "url", "state", "repository"],
+          "properties": {
+            "number": { "type": "integer", "minimum": 1 },
+            "title": { "type": ["string", "null"] },
+            "url": { "type": ["string", "null"] },
+            "state": { "type": ["string", "null"] },
+            "repository": { "type": ["string", "null"] }
+          }
+        },
+        "currentOwnerRepository": { "type": ["string", "null"] },
+        "nextOwnerRepository": { "type": ["string", "null"] },
+        "nextAction": { "type": ["string", "null"] },
+        "brokerSelectedIssueNumber": { "type": ["integer", "null"], "minimum": 1 },
+        "brokerSelectedIssueUrl": { "type": ["string", "null"] },
+        "brokerSelectedIssueTitle": { "type": ["string", "null"] },
+        "brokerProviderId": { "type": ["string", "null"] },
+        "brokerSlotId": { "type": ["string", "null"] },
+        "brokerSelectionSource": { "type": ["string", "null"] },
+        "governorMode": { "type": ["string", "null"] },
+        "monitoringStatus": { "type": ["string", "null"] },
+        "workerPoolAuthoritySource": { "type": ["string", "null"] },
+        "workerPoolTargetSlotCount": { "type": ["integer", "null"], "minimum": 0 },
+        "workerPoolOccupiedSlotCount": { "type": ["integer", "null"], "minimum": 0 },
+        "workerPoolAvailableSlotCount": { "type": ["integer", "null"], "minimum": 0 },
+        "workerPoolReleasedLaneCount": { "type": ["integer", "null"], "minimum": 0 },
+        "workerPoolUtilizationRatio": { "type": ["number", "null"], "minimum": 0 },
+        "workerPoolReleasedCapitalAvailable": { "type": "boolean" },
+        "workerPoolIdleWorkerCapacityAvailable": { "type": "boolean" },
+        "workerPoolUnderfilled": { "type": "boolean" },
+        "workerPoolThroughputStatus": { "type": ["string", "null"] },
+        "workerPoolThroughputPressureReasons": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "workerPoolQueueThroughputMode": { "type": ["string", "null"] }
+      }
+    },
+    "memory": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["hotWorkingSet", "warmMemory", "archiveCount"],
+      "properties": {
+        "hotWorkingSet": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/memoryItem" }
+        },
+        "warmMemory": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/memoryItem" }
+        },
+        "archiveCount": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "episodes": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "totalCount",
+        "validCount",
+        "invalidCount",
+        "invalidEpisodes",
+        "byStatus",
+        "byAgent",
+        "recent"
+      ],
+      "properties": {
+        "totalCount": { "type": "integer", "minimum": 0 },
+        "validCount": { "type": "integer", "minimum": 0 },
+        "invalidCount": { "type": "integer", "minimum": 0 },
+        "invalidEpisodes": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["path", "error"],
+            "properties": {
+              "path": { "type": "string" },
+              "error": { "type": "string" }
+            }
+          }
+        },
+        "byStatus": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["status", "count"],
+            "properties": {
+              "status": { "type": "string" },
+              "count": { "type": "integer", "minimum": 0 }
+            }
+          }
+        },
+        "byAgent": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["agentId", "agentName", "count"],
+            "properties": {
+              "agentId": { "type": "string" },
+              "agentName": { "type": ["string", "null"] },
+              "count": { "type": "integer", "minimum": 0 }
+            }
+          }
+        },
+        "recent": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/episodeDigest" }
+        }
+      }
+    },
+    "cost": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "episodeCountWithCost",
+        "tokenUsd",
+        "operatorLaborUsd",
+        "blendedLowerBoundUsd",
+        "observedDurationSeconds"
+      ],
+      "properties": {
+        "episodeCountWithCost": { "type": "integer", "minimum": 0 },
+        "tokenUsd": { "type": "number", "minimum": 0 },
+        "operatorLaborUsd": { "type": "number", "minimum": 0 },
+        "blendedLowerBoundUsd": { "type": "number", "minimum": 0 },
+        "observedDurationSeconds": { "type": "number", "minimum": 0 }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "concentrationStatus",
+        "currentOwnerRepository",
+        "nextOwnerRepository",
+        "nextAction",
+        "activeIssueNumber",
+        "hotWorkingSetCount",
+        "warmMemoryCount",
+        "archiveCount",
+        "blockerCount",
+        "recentEpisodeCount",
+        "blendedLowerBoundUsd"
+      ],
+      "properties": {
+        "status": { "type": "string", "enum": ["active", "monitoring"] },
+        "concentrationStatus": { "type": "string", "enum": ["pass", "warn", "incomplete"] },
+        "currentOwnerRepository": { "type": ["string", "null"] },
+        "nextOwnerRepository": { "type": ["string", "null"] },
+        "nextAction": { "type": ["string", "null"] },
+        "brokerSelectedIssueNumber": { "type": ["integer", "null"], "minimum": 1 },
+        "brokerSelectedIssueUrl": { "type": ["string", "null"] },
+        "brokerSelectedIssueTitle": { "type": ["string", "null"] },
+        "brokerProviderId": { "type": ["string", "null"] },
+        "brokerSlotId": { "type": ["string", "null"] },
+        "brokerSelectionSource": { "type": ["string", "null"] },
+        "activeIssueNumber": { "type": ["integer", "null"], "minimum": 1 },
+        "hotWorkingSetCount": { "type": "integer", "minimum": 0 },
+        "warmMemoryCount": { "type": "integer", "minimum": 0 },
+        "archiveCount": { "type": "integer", "minimum": 0 },
+        "blockerCount": { "type": "integer", "minimum": 0 },
+        "recentEpisodeCount": { "type": "integer", "minimum": 0 },
+        "blendedLowerBoundUsd": { "type": "number", "minimum": 0 }
+      }
+    }
+  },
+  "$defs": {
+    "sourcePathState": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "exists"],
+      "properties": {
+        "path": { "type": ["string", "null"] },
+        "exists": { "type": "boolean" }
+      }
+    },
+    "memoryItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "kind",
+        "label",
+        "status",
+        "detail",
+        "sourcePath",
+        "updatedAt",
+        "issueNumber",
+        "repository",
+        "agentName",
+        "nextAction"
+      ],
+      "properties": {
+        "id": { "type": ["string", "null"] },
+        "kind": { "type": ["string", "null"] },
+        "label": { "type": ["string", "null"] },
+        "status": { "type": ["string", "null"] },
+        "detail": { "type": ["string", "null"] },
+        "sourcePath": { "type": ["string", "null"] },
+        "updatedAt": { "type": ["string", "null"] },
+        "issueNumber": { "type": ["integer", "null"], "minimum": 1 },
+        "repository": { "type": ["string", "null"] },
+        "agentName": { "type": ["string", "null"] },
+        "nextAction": { "type": ["string", "null"] }
+      }
+    },
+    "episodeDigest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "episodeId",
+        "generatedAt",
+        "agentId",
+        "agentName",
+        "agentRole",
+        "status",
+        "taskSummary",
+        "nextAction",
+        "blocker",
+        "executionPlane",
+        "dockerLaneId",
+        "sourcePath"
+      ],
+      "properties": {
+        "episodeId": { "type": ["string", "null"] },
+        "generatedAt": { "type": ["string", "null"] },
+        "agentId": { "type": ["string", "null"] },
+        "agentName": { "type": ["string", "null"] },
+        "agentRole": { "type": ["string", "null"] },
+        "status": { "type": ["string", "null"] },
+        "taskSummary": { "type": ["string", "null"] },
+        "nextAction": { "type": ["string", "null"] },
+        "blocker": { "type": ["string", "null"] },
+        "executionPlane": { "type": ["string", "null"] },
+        "dockerLaneId": { "type": ["string", "null"] },
+        "sourcePath": { "type": ["string", "null"] }
+      }
+    }
+  }
+}

@@ -37,6 +37,7 @@ $requiredArtifacts = @(
   'tests/results/_agent/handoff/continuity-summary.json',
   'tests/results/_agent/handoff/entrypoint-status.json',
   'tests/results/_agent/handoff/monitoring-mode.json',
+  'tests/results/_agent/handoff/sagan-context-concentrator.json',
   'tests/results/_agent/handoff/autonomous-governor-portfolio-summary.json',
   'tests/results/_agent/handoff/*.json',
   'tests/results/_agent/sessions/*.json'
@@ -51,6 +52,7 @@ $commandCatalog = [ordered]@{
   monitoringMode = 'node tools/npm/run-script.mjs priority:monitoring:mode'
   governorSummary = 'node tools/npm/run-script.mjs priority:governor:summary'
   governorPortfolio = 'node tools/npm/run-script.mjs priority:governor:portfolio'
+  contextConcentrator = 'node tools/npm/run-script.mjs priority:context:concentrate'
 }
 
 $artifactCatalog = [ordered]@{
@@ -62,6 +64,7 @@ $artifactCatalog = [ordered]@{
   entrypointStatus = 'tests/results/_agent/handoff/entrypoint-status.json'
   monitoringMode = 'tests/results/_agent/handoff/monitoring-mode.json'
   autonomousGovernorSummary = 'tests/results/_agent/handoff/autonomous-governor-summary.json'
+  saganContextConcentrator = 'tests/results/_agent/handoff/sagan-context-concentrator.json'
   autonomousGovernorPortfolioSummary = 'tests/results/_agent/handoff/autonomous-governor-portfolio-summary.json'
   handoffGlob = 'tests/results/_agent/handoff/*.json'
   sessionGlob = 'tests/results/_agent/sessions/*.json'

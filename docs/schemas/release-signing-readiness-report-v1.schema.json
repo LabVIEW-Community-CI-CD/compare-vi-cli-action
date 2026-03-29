@@ -1,0 +1,359 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://labview-community-ci-cd.github.io/compare-vi-cli-action/schemas/release-signing-readiness-report-v1.schema.json",
+  "title": "Release Signing Readiness Report",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "generatedAt",
+    "repository",
+    "inputs",
+    "workflowContract",
+    "secretInventory",
+        "releaseConductorApply",
+        "signingAuthority",
+        "publication",
+        "publishedBundleObserver",
+        "summary",
+        "blockers"
+      ],
+  "properties": {
+    "schema": {
+      "const": "priority/release-signing-readiness-report@v1"
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "repository": {
+      "type": "string",
+      "minLength": 1
+    },
+    "inputs": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "releaseConductorReportPath",
+        "releasePublishedBundleObserverPath"
+      ],
+      "properties": {
+        "releaseConductorReportPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "releasePublishedBundleObserverPath": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "workflowContract": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "ready",
+        "workflowPath",
+        "reasons"
+      ],
+      "properties": {
+        "ready": { "type": "boolean" },
+        "workflowPath": { "type": "string", "minLength": 1 },
+        "reasons": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "secretInventory": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "requiredSecretPresent",
+        "optionalPublicKeyPresent",
+        "listedSecretCount",
+        "listedSecretNames",
+        "source",
+        "error"
+      ],
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": [
+            "configured",
+            "missing",
+            "unverifiable"
+          ]
+        },
+        "requiredSecretPresent": { "type": ["boolean", "null"] },
+        "optionalPublicKeyPresent": { "type": ["boolean", "null"] },
+        "listedSecretCount": { "type": ["integer", "null"], "minimum": 0 },
+        "listedSecretNames": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "source": { "type": "string", "minLength": 1 },
+        "error": { "type": ["string", "null"] }
+      }
+    },
+    "releaseConductorApply": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "variablePresent",
+        "enabled",
+        "configuredValue",
+        "listedVariableCount",
+        "listedVariableNames",
+        "source",
+        "error"
+      ],
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": [
+            "enabled",
+            "disabled",
+            "unverifiable"
+          ]
+        },
+        "variablePresent": { "type": ["boolean", "null"] },
+        "enabled": { "type": ["boolean", "null"] },
+        "configuredValue": { "type": ["string", "null"] },
+        "listedVariableCount": { "type": ["integer", "null"], "minimum": 0 },
+        "listedVariableNames": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "source": { "type": "string", "minLength": 1 },
+        "error": { "type": ["string", "null"] }
+      }
+    },
+    "signingAuthority": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "requiredScope",
+        "scopeAvailable",
+        "listedKeyCount",
+        "source",
+        "error"
+      ],
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": [
+            "ready",
+            "keys-missing",
+            "scope-missing",
+            "unverifiable"
+          ]
+        },
+        "requiredScope": { "type": "string", "minLength": 1 },
+        "scopeAvailable": { "type": ["boolean", "null"] },
+        "listedKeyCount": { "type": ["integer", "null"], "minimum": 0 },
+        "source": { "type": "string", "minLength": 1 },
+        "error": { "type": ["string", "null"] }
+      }
+    },
+    "publication": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "tagCreated",
+        "tagPushed",
+        "targetTag"
+      ],
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": [
+            "unobserved",
+            "not-attempted",
+            "tag-created-not-pushed",
+            "authoritative-publication-successful"
+          ]
+        },
+        "tagCreated": { "type": "boolean" },
+        "tagPushed": { "type": "boolean" },
+        "targetTag": { "type": ["string", "null"] }
+      }
+    },
+    "publishedBundleObserver": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "releaseTag",
+        "assetName",
+        "publishedAt",
+        "authoritativeConsumerPin"
+      ],
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": [
+            "unobserved",
+            "release-unobserved",
+            "release-not-found",
+            "asset-missing",
+            "download-failed",
+            "extract-failed",
+            "metadata-missing",
+            "producer-native-incomplete",
+            "producer-native-ready"
+          ]
+        },
+        "releaseTag": { "type": ["string", "null"] },
+        "assetName": { "type": ["string", "null"] },
+        "publishedAt": { "type": ["string", "null"], "format": "date-time" },
+        "authoritativeConsumerPin": { "type": ["string", "null"] }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "codePathState",
+        "signingCapabilityState",
+        "signingAuthorityState",
+        "releaseConductorApplyState",
+        "publicationState",
+        "publishedBundleState",
+        "publishedBundleReleaseTag",
+        "publishedBundleAuthoritativeConsumerPin",
+        "externalBlocker",
+        "blockerCount"
+      ],
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": [
+            "pass",
+            "warn"
+          ]
+        },
+        "codePathState": {
+          "type": "string",
+          "enum": [
+            "ready",
+            "missing-contract"
+          ]
+        },
+        "signingCapabilityState": {
+          "type": "string",
+          "enum": [
+            "configured",
+            "missing",
+            "unverifiable"
+          ]
+        },
+        "signingAuthorityState": {
+          "type": "string",
+          "enum": [
+            "ready",
+            "keys-missing",
+            "scope-missing",
+            "unverifiable"
+          ]
+        },
+        "releaseConductorApplyState": {
+          "type": "string",
+          "enum": [
+            "enabled",
+            "disabled",
+            "unverifiable"
+          ]
+        },
+        "publicationState": {
+          "type": "string",
+          "enum": [
+            "unobserved",
+            "not-attempted",
+            "ready-to-publish",
+            "tag-created-not-pushed",
+            "authoritative-publication-successful",
+            "published-observed",
+            "published-consumer-aligned"
+          ]
+        },
+        "publishedBundleState": {
+          "type": "string",
+          "enum": [
+            "unobserved",
+            "release-unobserved",
+            "release-not-found",
+            "asset-missing",
+            "download-failed",
+            "extract-failed",
+            "metadata-missing",
+            "producer-native-incomplete",
+            "producer-native-ready"
+          ]
+        },
+        "publishedBundleReleaseTag": {
+          "type": ["string", "null"]
+        },
+        "publishedBundleAuthoritativeConsumerPin": {
+          "type": ["string", "null"]
+        },
+        "externalBlocker": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            "workflow-signing-secret-missing",
+            "workflow-signing-secret-unverifiable",
+            "workflow-signing-admin-scope-missing",
+            "workflow-signing-key-missing",
+            "workflow-signing-authority-unverifiable",
+            "release-conductor-apply-disabled",
+            "release-conductor-apply-unverifiable",
+            null
+          ]
+        },
+        "blockerCount": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "blockers": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "code",
+          "message"
+        ],
+        "properties": {
+          "code": {
+            "type": "string",
+            "enum": [
+              "workflow-signing-contract-missing",
+              "workflow-signing-secret-missing",
+              "workflow-signing-secret-unverifiable",
+              "workflow-signing-admin-scope-missing",
+              "workflow-signing-key-missing",
+              "workflow-signing-authority-unverifiable",
+              "release-conductor-apply-disabled",
+              "release-conductor-apply-unverifiable",
+              "published-bundle-release-unobserved",
+              "published-bundle-release-not-found",
+              "published-bundle-asset-missing",
+              "published-bundle-download-failed",
+              "published-bundle-extract-failed",
+              "published-bundle-metadata-missing",
+              "published-bundle-producer-native-incomplete"
+            ]
+          },
+          "message": { "type": "string", "minLength": 1 }
+        }
+      }
+    }
+  }
+}

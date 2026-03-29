@@ -1,0 +1,257 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://labview-community-ci-cd.github.io/compare-vi-cli-action/schemas/background-agent-saturation-v1.schema.json",
+  "title": "Background Agent Saturation v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "generatedAt",
+    "owner",
+    "mode",
+    "targetSaturation",
+    "acceptableBand",
+    "measurementWindow",
+    "availableAgents",
+    "observedAgents",
+    "productiveAgents",
+    "awaitingInstructionAgents",
+    "doneAgents",
+    "stateCounts",
+    "weights",
+    "weightedProductiveAgents",
+    "rawOccupancy",
+    "rollingSaturation",
+    "effectiveSaturation",
+    "status",
+    "constraintReason",
+    "currentCycleIdleAuthority",
+    "applicable",
+    "priorityRule",
+    "countingRule",
+    "evidence",
+    "notes",
+    "agents"
+  ],
+  "properties": {
+    "schema": {
+      "const": "agent-handoff/background-agent-saturation-v1"
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "owner": {
+      "type": ["string", "null"]
+    },
+    "mode": {
+      "type": "string",
+      "minLength": 1
+    },
+    "targetSaturation": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "acceptableBand": {
+      "$ref": "#/$defs/band"
+    },
+    "measurementWindow": {
+      "type": "string",
+      "minLength": 1
+    },
+    "availableAgents": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "observedAgents": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "productiveAgents": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "awaitingInstructionAgents": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "doneAgents": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "stateCounts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "productive",
+        "awaitingInstruction",
+        "done",
+        "idle",
+        "blocked",
+        "duplicate",
+        "pollingOnly",
+        "speculativeChurn",
+        "other"
+      ],
+      "properties": {
+        "productive": { "type": "integer", "minimum": 0 },
+        "awaitingInstruction": { "type": "integer", "minimum": 0 },
+        "done": { "type": "integer", "minimum": 0 },
+        "idle": { "type": "integer", "minimum": 0 },
+        "blocked": { "type": "integer", "minimum": 0 },
+        "duplicate": { "type": "integer", "minimum": 0 },
+        "pollingOnly": { "type": "integer", "minimum": 0 },
+        "speculativeChurn": { "type": "integer", "minimum": 0 },
+        "other": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "weights": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["productive", "awaitingInstruction", "done"],
+      "properties": {
+        "productive": { "type": "number", "minimum": 0, "maximum": 1 },
+        "awaitingInstruction": { "type": "number", "minimum": 0, "maximum": 1 },
+        "done": { "type": "number", "minimum": 0, "maximum": 1 }
+      }
+    },
+    "weightedProductiveAgents": {
+      "type": "number",
+      "minimum": 0
+    },
+    "rawOccupancy": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "rollingSaturation": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "effectiveSaturation": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "status": {
+      "type": "string",
+      "enum": ["active", "constrained", "not-applicable"]
+    },
+    "constraintReason": {
+      "type": ["string", "null"]
+    },
+    "currentCycleIdleAuthority": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "source",
+        "observedAt",
+        "fresh",
+        "freshnessThresholdSeconds",
+        "nextWakeCondition",
+        "syntheticIdle",
+        "queueState",
+        "deliveryStateObservedAt",
+        "deliveryStateFresh",
+        "observerHeartbeatObservedAt",
+        "observerHeartbeatFresh"
+      ],
+      "properties": {
+        "status": { "enum": ["observed", "missing"] },
+        "source": { "type": ["string", "null"] },
+        "observedAt": { "type": ["string", "null"], "format": "date-time" },
+        "fresh": { "type": "boolean" },
+        "freshnessThresholdSeconds": { "type": "integer", "minimum": 0 },
+        "nextWakeCondition": { "type": ["string", "null"] },
+        "syntheticIdle": { "type": "boolean" },
+        "queueState": { "type": ["string", "null"] },
+        "deliveryStateObservedAt": { "type": ["string", "null"], "format": "date-time" },
+        "deliveryStateFresh": { "type": "boolean" },
+        "observerHeartbeatObservedAt": { "type": ["string", "null"], "format": "date-time" },
+        "observerHeartbeatFresh": { "type": "boolean" }
+      }
+    },
+    "applicable": {
+      "type": "boolean"
+    },
+    "priorityRule": {
+      "type": "string",
+      "minLength": 1
+    },
+    "countingRule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["productive", "weights", "excluded"],
+      "properties": {
+        "productive": { "type": "string", "minLength": 1 },
+        "weights": {
+          "type": "object",
+          "additionalProperties": { "type": "number", "minimum": 0, "maximum": 1 }
+        },
+        "excluded": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["snapshotPath", "priorityCache", "router", "noStandingPriority", "deliveryRuntimeState", "observerHeartbeat"],
+      "properties": {
+        "snapshotPath": { "type": ["string", "null"] },
+        "priorityCache": { "type": "string", "minLength": 1 },
+        "router": { "type": "string", "minLength": 1 },
+        "noStandingPriority": { "type": "string", "minLength": 1 },
+        "deliveryRuntimeState": { "type": ["string", "null"] },
+        "observerHeartbeat": { "type": ["string", "null"] }
+      }
+    },
+    "notes": {
+      "$ref": "#/$defs/stringArray"
+    },
+    "agents": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/agent" }
+    }
+  },
+  "$defs": {
+    "band": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["min", "max"],
+      "properties": {
+        "min": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "max": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        }
+      }
+    },
+    "agent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "name", "state", "weight", "taskSummary", "detail"],
+      "properties": {
+        "id": { "type": ["string", "null"] },
+        "name": { "type": ["string", "null"] },
+        "state": { "type": "string", "minLength": 1 },
+        "weight": { "type": "number", "minimum": 0, "maximum": 1 },
+        "taskSummary": { "type": ["string", "null"] },
+        "detail": { "type": ["string", "null"] }
+      }
+    },
+    "stringArray": {
+      "type": "array",
+      "items": { "type": "string" }
+    }
+  }
+}

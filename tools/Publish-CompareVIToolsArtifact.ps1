@@ -336,6 +336,8 @@ try {
     )
   }
 
+  $hostedNiLinuxDefaultImage = 'nationalinstruments/labview:2026q1-linux'
+
   $consumerContractMetadata = [ordered]@{
     capabilities = [ordered]@{
       viHistory = [ordered]@{
@@ -360,6 +362,24 @@ try {
           'Use this capability record when a downstream distributor such as LabviewGitHubCiTemplate needs to stamp vi-history support into generated repositories without copying compare internals.',
           'Resolve the immutable downstream pin from versionContract.authoritativeConsumerPin and then read the referenced consumer contract paths from the same comparevi-tools-release.json payload.',
           'The capability contract declares compare-vi-cli-action as the upstream producer; downstream repositories should distribute or consume the capability, not vendor the full backend control plane.'
+        )
+      }
+      dockerProfile = [ordered]@{
+        schema = 'comparevi-tools/docker-profile-capability@v1'
+        capabilityId = 'docker-profile'
+        displayName = 'Docker Profile'
+        distributionRole = 'upstream-producer'
+        distributionModel = 'release-bundle'
+        bundleMetadataPath = 'comparevi-tools-release.json'
+        bundleImportPath = 'tools/CompareVI.Tools/CompareVI.Tools.psd1'
+        releaseAssetPattern = 'CompareVI.Tools-v<release-version>.zip'
+        authoritativeConsumerPinFieldPath = 'versionContract.authoritativeConsumerPin'
+        authoritativeConsumerPinKindFieldPath = 'versionContract.authoritativeConsumerPinKind'
+        authoritativeImageContractSource = 'consumerContract.dockerImageContract'
+        notes = @(
+          'Use this capability record when a downstream distributor needs a Producer-published Docker image contract without inventing template-local image conventions.',
+          'Resolve the immutable downstream pin from versionContract.authoritativeConsumerPin and then read the docker image contract from the authoritativeImageContractSource path in the same comparevi-tools-release.json payload.',
+          'The docker-profile capability publishes contract metadata only; downstream repositories should consume Producer-owned image contract surfaces instead of vendoring compare runtime orchestration.'
         )
       }
     }
@@ -481,12 +501,29 @@ try {
         'tools/Compare-ExitCodeClassifier.ps1'
       )
       captureFileName = 'ni-linux-container-capture.json'
-      defaultImage = 'nationalinstruments/labview:2026q1-linux'
+      defaultImage = $hostedNiLinuxDefaultImage
       notes = @(
         'Hosted Linux consumers can resolve the runner from COMPAREVI_SCRIPTS_ROOT without a full backend checkout.',
         'Keep the entry script and support scripts adjacent inside the extracted bundle so runtime guard and exit-code classification remain available.',
         'The same extracted bundle also carries the local-only VI history acceleration surfaces (`Build-VIHistoryDevImage.ps1`, `Invoke-VIHistoryLocalRefinement.ps1`, `Invoke-VIHistoryLocalOperatorSession.ps1`, and `Manage-VIHistoryRuntimeInDocker.ps1`) for downstream local refinement loops.',
         'The first Windows mirror proof slice also ships `Test-WindowsNI2026q1HostPreflight.ps1` and `Run-NIWindowsContainerCompare.ps1` so Windows-host consumers can validate the pinned headless NI image without a full backend checkout.'
+      )
+    }
+    dockerImageContract = [ordered]@{
+      schema = 'comparevi-tools/docker-image-contract@v1'
+      schemaUrl = 'https://labview-community-ci-cd.github.io/compare-vi-cli-action/schemas/comparevi-tools-docker-image-contract-v1.schema.json'
+      images = [ordered]@{
+        hostedNiLinuxRunner = [ordered]@{
+          imageRef = $hostedNiLinuxDefaultImage
+          consumerRole = 'hosted-ni-linux-runner'
+          notes = @(
+            'Use this image reference when a downstream Docker-profile consumer needs the authoritative Producer-published Linux container image for hosted NI compare execution.'
+          )
+        }
+      }
+      notes = @(
+        'Treat this object as the authoritative Producer-published image contract for downstream Docker-profile consumers.',
+        'Resolve it from consumerContract.capabilities.dockerProfile.authoritativeImageContractSource under the same immutable comparevi-tools-release.json payload.'
       )
     }
   }

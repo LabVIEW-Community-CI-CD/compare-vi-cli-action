@@ -9,8 +9,7 @@ Live repository state belongs in the machine-generated artifacts under
 ## First Actions
 
 1. Run `pwsh -NoLogo -NoProfile -File tools/priority/bootstrap.ps1`.
-2. Check `.agent_priority_cache.json` and
-   `tests/results/_agent/issue/router.json`.
+2. Check `.agent_priority_cache.json` and `tests/results/_agent/issue/router.json`.
 3. Run `pwsh -NoLogo -NoProfile -File tools/Print-AgentHandoff.ps1
    -ApplyToggles -AutoTrim` when you need the current watcher/handoff snapshot.
 4. When human disposition surfaces are in play, run
@@ -25,14 +24,14 @@ Live repository state belongs in the machine-generated artifacts under
    `tests/results/_agent/handoff/autonomous-governor-summary.json` for the
    current repo owner decision and
    `tests/results/_agent/handoff/autonomous-governor-portfolio-summary.json`
-   for the cross-repo owner decision.
+   for the cross-repo owner decision, and
+   `tests/results/_agent/handoff/sagan-context-concentrator.json` for the compact
+   hot/warm durable memory view of subagent work and blockers.
 
 ## Live State Surfaces
 
-- Standing priority:
-  `pwsh -NoLogo -NoProfile -File tools/Get-StandingPriority.ps1 -Plain`
-- Handoff snapshot:
-  `pwsh -NoLogo -NoProfile -File tools/Print-AgentHandoff.ps1 -ApplyToggles`
+- Standing priority: `pwsh -NoLogo -NoProfile -File tools/Get-StandingPriority.ps1 -Plain`
+- Handoff snapshot: `pwsh -NoLogo -NoProfile -File tools/Print-AgentHandoff.ps1 -ApplyToggles`
 - Project visibility:
   `node tools/npm/run-script.mjs priority:project:portfolio:check`
 - Develop sync:
@@ -43,6 +42,9 @@ Live repository state belongs in the machine-generated artifacts under
   `node tools/npm/run-script.mjs priority:governor:summary`
 - Governor portfolio:
   `node tools/npm/run-script.mjs priority:governor:portfolio`
+- Treasury ledger: `node tools/npm/run-script.mjs priority:cost:treasury`
+- Context concentrator:
+  `node tools/npm/run-script.mjs priority:context:concentrate`
 
 ## Current-State Artifacts
 
@@ -53,7 +55,9 @@ Live repository state belongs in the machine-generated artifacts under
 - `tests/results/_agent/handoff/continuity-summary.json`
 - `tests/results/_agent/handoff/entrypoint-status.json`
 - `tests/results/_agent/handoff/monitoring-mode.json`
+- `tests/results/_agent/handoff/treasury-ledger.json`
 - `tests/results/_agent/handoff/autonomous-governor-summary.json`
+- `tests/results/_agent/handoff/sagan-context-concentrator.json`
 - `tests/results/_agent/handoff/autonomous-governor-portfolio-summary.json`
 - `tests/results/_agent/handoff/human-go-no-go-latest.json`
 - `tests/results/_agent/handoff/*.json`
@@ -65,8 +69,7 @@ Live repository state belongs in the machine-generated artifacts under
 - The project board is visibility only.
 - Treat `queue-empty` as a valid idle state; do not invent a null issue context.
 - Treat `queue-empty + safe-idle + pivot-ready` as an explicit monitoring state.
-- Prefer sanitized repo helpers (`node tools/npm/run-script.mjs ...`) over raw
-  `npm`.
+- Prefer sanitized repo helpers (`node tools/npm/run-script.mjs ...`) over raw `npm`.
 
 ## When Handoff Looks Wrong
 

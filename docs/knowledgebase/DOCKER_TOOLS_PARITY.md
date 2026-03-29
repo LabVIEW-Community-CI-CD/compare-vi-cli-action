@@ -13,6 +13,13 @@ The lane split is intentional:
   non-blocking dependency-audit observation receipt under `tests/results/_agent/security/`.
 - `tools/Invoke-NILinuxReviewSuite.ps1` is the broader flag-combination certification surface.
 
+Workflow-grade replay lanes now sit alongside that review loop:
+
+- Linux replay: `node tools/npm/run-script.mjs priority:workflow:replay:docker -- --mode session-index-v2-promotion --run-id <id> --repo <owner/repo>`
+- Windows replay: `node tools/npm/run-script.mjs priority:workflow:replay:windows`
+
+The replay receipts are deterministic and land under `tests/results/docker-tools-parity/workflow-replay/`.
+
 ## Environment prerequisites
 
 - Docker Desktop (or Engine) must be available. On Windows, confirm with `docker version`; the client/server details
@@ -61,6 +68,35 @@ pwsh -File tools/Run-NonLVChecksInDocker.ps1 -UseToolsImage -RequirementsVerific
   `tests/results/_agent/runtime/delivery-agent-state.json` and the active lane record under
   `tests/results/_agent/runtime/delivery-agent-lanes/`. Future agents should read the runtime-state `localReviewLoop`
   node first when resuming a daemon-driven lane, then open the deeper Docker/Desktop receipt paths only when needed.
+
+## Workflow-grade replay lane
+
+For workflow-grade replay against real GitHub Actions evidence, use the checked-in Docker replay helper:
+
+```powershell
+node tools/npm/run-script.mjs priority:workflow:replay:docker -- --mode session-index-v2-promotion --run-id 23543808174 --repo LabVIEW-Community-CI-CD/compare-vi-cli-action
+```
+
+- The first delivered mode is `session-index-v2-promotion`.
+- The helper runs the checked-in workflow helper inside the CompareVI tools image rather than inventing a separate
+  replay implementation.
+- Outer receipt:
+  - `tests/results/docker-tools-parity/workflow-replay/session-index-v2-promotion-receipt.json`
+- Inner replay artifacts:
+  - `tests/results/docker-tools-parity/workflow-replay/session-index-v2-promotion/`
+- Image selection fails closed in this order:
+  - explicit `--image`
+  - `COMPAREVI_TOOLS_IMAGE`
+  - local `comparevi-tools:local`
+  - published `ghcr.io/labview-community-ci-cd/comparevi-tools:latest`
+- Token resolution fails closed in this order:
+  - `GH_TOKEN`
+  - `GITHUB_TOKEN`
+  - `gh auth token`
+
+This first slice is Linux-first. For Windows Docker/Desktop parity today, continue to use the existing NI Windows proof
+surfaces and host preflight path. Workflow-grade Windows replay is the next extension under the same replay-lane
+objective, not a separate ad hoc lane.
 
 ## Review-loop policy
 
@@ -112,6 +148,33 @@ pwsh -File tools/Run-NonLVChecksInDocker.ps1 `
   together with markdown/docs/workflow status and requirements coverage so
   future agents only need one starting artifact before opening the deeper VI
   history evidence.
+
+## Windows workflow-grade replay
+
+Use the Windows replay companion when a defect depends on Docker Desktop Windows
+container mode, the pinned NI Windows image, or the Windows shell boundary:
+
+```powershell
+node tools/npm/run-script.mjs priority:workflow:replay:windows
+```
+
+Hosted-parity preflight without mutating the local Docker engine:
+
+```powershell
+node tools/npm/run-script.mjs priority:workflow:replay:windows -- --execution-surface github-hosted-windows --allow-unavailable
+```
+
+Primary artifacts:
+
+- `tests/results/docker-tools-parity/workflow-replay/windows-ni-2026q1-host-preflight-receipt.json`
+- `tests/results/docker-tools-parity/workflow-replay/windows-ni-2026q1-host-preflight/windows-ni-2026q1-host-preflight.json`
+
+Policy notes:
+
+- `desktop-local` is fail-closed when Docker Desktop is still on the Linux engine.
+- `github-hosted-windows` may emit `status = unavailable` when the hosted Windows
+  Docker plane is not usable and `--allow-unavailable` was requested.
+- The Windows replay lane is proof-only. It is not a release path.
 
 ## Cleanup expectations
 

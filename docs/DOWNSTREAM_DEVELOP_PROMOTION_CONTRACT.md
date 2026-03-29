@@ -15,8 +15,12 @@ It is not a second feature-development branch.
 - Proving scorecard generator: `tools/priority/downstream-promotion-scorecard.mjs`
 - Proving scorecard schema: `docs/schemas/downstream-promotion-scorecard-v1.schema.json`
 - Proving scorecard output: `tests/results/_agent/promotion/downstream-develop-promotion-scorecard.json`
+- Optional LV32 shadow proof receipt schema: `docs/schemas/vi-history-lv32-shadow-proof-receipt-v1.schema.json`
+- Optional LV32 shadow proof receipt output:
+  `tests/results/_agent/promotion/vi-history-lv32-shadow-proof-receipt.json`
 - Template-agent verification lane report: `tests/results/_agent/promotion/template-agent-verification-report.json`
 - Authoritative template verification overlay: `tests/results/_agent/promotion/template-agent-verification-report.local.json`, projected during bootstrap from the latest matching downstream proving artifact for the current `develop` source SHA
+- Supported template-proof authority synthesis: `tests/results/_agent/promotion/template-agent-verification-report.supported.json`, projected from the latest supported `template-smoke` `workflow_dispatch` proof on a supported consumer fork when that proof is aligned to the current canonical template head
 - Selection resolver: `tools/priority/resolve-downstream-proving-artifact.mjs`
 - Selection schema: `docs/schemas/downstream-proving-selection-v1.schema.json`
 - Selection output: `tests/results/_agent/release/downstream-proving-selection.json`
@@ -107,10 +111,16 @@ duration so the reserved lane does not remain stale between local delivery turns
 
 Fresh standing worktrees should not treat the checked-in `pending` seed as the
 latest authority by default. `tools/priority/project-template-agent-verification-authority.mjs`
-now resolves the current hosted downstream-proving artifact for `develop` and
-projects a local `.local.json` overlay. Local consumers such as
+has been replaced by `tools/priority/sync-template-agent-verification-report.mjs`,
+which resolves the current hosted downstream-proving artifact for `develop` and,
+when needed, synthesizes authority from the latest supported template proof
+aligned to the canonical template head before projecting the local `.local.json`
+overlay. Local consumers such as
 `tools/priority/template-pivot-gate.mjs` must prefer that overlay when it is
-present.
+present. The pivot gate now treats that supported-proof authority as the source
+of truth for `templateDependency.version/ref`, so the gate consumes the current
+canonical template head instead of a static `v0.1.1` pin when the supported
+proof is aligned and healthy.
 
 Generate the report with:
 
@@ -186,12 +196,18 @@ Release promotion should consume the downstream proving rail through the
 `Downstream Promotion` workflow artifact, not from the onboarding-only feedback
 workflow.
 
+If a host-native LabVIEW 32-bit shadow proof is available, the promotion rail
+may ingest it through the optional LV32 receipt path. The receipt is
+non-blocking when absent, but when present it must prove the same source commit
+and the expected self-hosted Windows `lv32` runner contract.
+
 That means release should select a successful `downstream-promotion.yml` run
 whose `downstream-develop-promotion-scorecard.json`:
 
 - reports `summary.status = pass`
 - proves `targetBranch = downstream/develop`
 - records `summary.provenance.sourceCommitSha` matching the release source commit
+- when present, records a passing `viHistoryLv32ShadowProofReceipt` gate
 
 Release evidence should retain the machine-readable selection report that points
 back to the exact downstream promotion run and scorecard artifact used.
@@ -215,6 +231,12 @@ The gate only reports `ready` when all of the following are true:
 - `tests/results/_agent/handoff/release-summary.json` is valid and its version
   matches `X.Y.Z-rc.N`
 - `tests/results/_agent/handoff/entrypoint-status.json` reports `status = pass`
+- `tests/results/_agent/promotion/template-agent-verification-report.local.json`
+  reports `authorityProjection.source = supported-template-proof`, proves
+  `supportedProofHeadSha = canonicalHeadSha`, and carries
+  `provenance.templateDependency.version/ref = canonicalHeadSha` for
+  `LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate` with the checked-in
+  `cookiecutterVersion`
 - the policy still requires a future agent, disallows operator steering, and
   requires precise session feedback at pivot time
 

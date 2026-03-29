@@ -29,6 +29,14 @@ test('template agent verification sync schema validates generated sync payload',
   const localOverlayReportPath = path.join(tmpDir, 'tests', 'results', '_agent', 'promotion', 'template-agent-verification-report.local.json');
   const authorityReportPath = path.join(tmpDir, 'authority-root', 'template-agent-verification-report.json');
   const hostedAuthorityReportPath = path.join(tmpDir, 'hosted', 'template-agent-verification-report.json');
+  const supportedProofReportPath = path.join(
+    tmpDir,
+    'tests',
+    'results',
+    '_agent',
+    'promotion',
+    'template-agent-verification-report.supported.json'
+  );
   const outputPath = path.join(tmpDir, 'sync.json');
 
   writeJson(policyPath, {
@@ -97,6 +105,7 @@ test('template agent verification sync schema validates generated sync payload',
       localReportPath,
       localOverlayReportPath,
       authorityReportPath,
+      supportedProofReportPath,
       repo: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
       expectedSourceSha: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
       outputPath
@@ -125,4 +134,5 @@ test('template agent verification sync schema validates generated sync payload',
   assert.equal(valid, true, JSON.stringify(validate.errors, null, 2));
   assert.equal(payload.selection.source, 'hosted-authority');
   assert.equal(payload.localOverlayReport.summaryStatus, 'pass');
+  assert.equal(payload.supportedProofAuthorityReport.exists, false);
 });

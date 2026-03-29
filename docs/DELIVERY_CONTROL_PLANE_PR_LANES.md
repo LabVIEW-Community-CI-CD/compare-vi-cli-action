@@ -17,7 +17,7 @@ This scaffold tracks the six planned mergeable slices so agents can resume deter
 
 - Keep each lane mergeable and production-safe in isolation.
 - Rebase each next lane on merged upstream `develop` before opening its PR.
-- Preserve signed-tag policy; release conductor must remain proposal-only when signing material is unavailable.
+- Preserve signed-tag policy; release conductor must fail closed before tag creation when signing material is unavailable.
 
 ## Resume commands
 

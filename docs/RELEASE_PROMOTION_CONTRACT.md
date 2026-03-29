@@ -16,6 +16,9 @@ alignment, and evidence ledger expectations.
 - Certification runbook: `docs/CERTIFICATION_MATRIX.md`
 - Supply-chain trust gate script: `tools/priority/supply-chain-trust-gate.mjs`
 - Supply-chain trust gate schema: `docs/schemas/supply-chain-trust-gate-v1.schema.json`
+- Release signing readiness script: `tools/priority/release-signing-readiness.mjs`
+- Release signing readiness schema:
+  `docs/schemas/release-signing-readiness-report-v1.schema.json`
 - Rollback policy: `tools/policy/release-rollback-policy.json`
 - Rollback command: `tools/priority/rollback-release.mjs`
 - Rollback drill health gate: `tools/priority/rollback-drill-health.mjs`
@@ -54,7 +57,9 @@ Canonical required-check lists for `develop` and `release/*` must remain in sync
   - `branches.develop.required_status_checks`
   - `branches.release/*.required_status_checks`
   - `rulesets.develop.required_status_checks` (develop)
-  - `rulesets.8614172.required_status_checks` (release/*)
+  - `rulesets.8614172.required_status_checks` (stable manifest identity for
+    `release/*`; `priority:policy` resolves it to the current live GitHub
+    ruleset)
 
 The workflow context `Promotion Contract / promotion-contract` remains an operational evidence check, but it is not a
 branch-protection required status on `develop` or `release/*` because the workflow is intentionally path-scoped for
@@ -136,6 +141,124 @@ Release tags must pass the supply-chain trust gate before GitHub Release publica
   - artifact attestation verification via `gh attestation verify`
 
 If the trust gate fails, release publication is blocked (fail-closed) and the report artifact must be used for remediation.
+
+Release publication also emits trust remediation guidance when the trust gate
+finds repair-eligible tag failures:
+
+- Markdown artifact:
+  `tests/results/_agent/release/release-trust-remediation.md`
+- Required behavior:
+  - preserve the existing release tag identity
+  - route `tag-not-annotated` and `tag-signature-unverified` to release
+    conductor repair mode
+  - instruct repair using:
+    - `version = <existing tag version>`
+    - `apply = true`
+    - `repair_existing_tag = true`
+  - if the target tag already backs an immutable published GitHub Release, do
+    not attempt in-place tag mutation against the same published tag
+    - rerun release conductor with `repair_existing_tag = true` so it dispatches
+      protected-tag-safe `release.yml` replay from `develop`
+    - the replay must use:
+      - `workflow_dispatch.inputs.release_tag=<target tag>`
+      - `workflow_dispatch.inputs.publication_mode=verify-existing-release`
+
+Authoritative signed tag publication now belongs to the release conductor control
+plane:
+
+- `.github/workflows/release-conductor.yml` may load
+  `RELEASE_TAG_SIGNING_PRIVATE_KEY` and optional
+  `RELEASE_TAG_SIGNING_PUBLIC_KEY`
+- the workflow may also honor optional repo variables:
+  - `RELEASE_TAG_SIGNING_IDENTITY_NAME`
+  - `RELEASE_TAG_SIGNING_IDENTITY_EMAIL`
+  - when unset, the workflow derives signer identity from the resolved policy
+    token account before recreating or publishing the signed tag
+  - when signing material is present, release conductor must:
+    - configure workflow-owned tag signing
+    - configure workflow-owned signer identity
+    - create the signed annotated tag
+    - push the tag to the authoritative remote for the target repository
+    - when repairing an existing tag, dispatch `.github/workflows/release.yml`
+      from `develop` with `workflow_dispatch.inputs.release_tag=<target tag>` so
+      publication replays deterministically against the repaired authoritative tag
+    - when the target tag already backs an immutable published release, dispatch
+      `.github/workflows/release.yml` from `develop` with
+      `workflow_dispatch.inputs.publication_mode=verify-existing-release`
+      instead of mutating the published GitHub Release
+- `tests/results/_agent/release/release-conductor-report.json` must record:
+  - signing backend/source
+  - signer identity used for tag creation/repair
+  - whether the tag was created
+  - whether the tag was pushed authoritatively
+  - immutable published-release observation for the target tag
+  - whether repair mode was requested/performed for an existing tag
+  - the authoritative remote tag object/commit used for repair
+  - which workflow ref carried the replay dispatch
+  - which explicit tag input was used for repaired-tag publication replay
+  - which explicit publication mode input was used for the replay dispatch
+  - whether repaired-tag publication replay was dispatched
+  - any push failure blocker
+
+## Workflow signing readiness
+
+Authoritative release-tag publication must also expose workflow signing readiness
+before the release lane is rerun:
+
+- Report script: `node tools/npm/run-script.mjs priority:release:signing:readiness`
+- Report artifact:
+  `tests/results/_agent/release/release-signing-readiness.json`
+
+That report distinguishes:
+
+- `codePathState`
+  - whether the checked-in release conductor exposes the workflow-owned signing
+    contract
+- `signingCapabilityState`
+  - whether repository Actions secrets actually provide the signing material
+- `publicationState`
+  - whether authoritative signed tag publication has already succeeded
+
+If the report emits an external blocker such as:
+
+- `workflow-signing-secret-missing`
+- `workflow-signing-secret-unverifiable`
+- `workflow-signing-admin-scope-missing`
+- `workflow-signing-key-missing`
+- `workflow-signing-authority-unverifiable`
+- `release-conductor-apply-disabled`
+- `release-conductor-apply-unverifiable`
+- `release-repair-immutable-blocked`
+
+promotion remains blocked by external signing readiness. Repair the specific
+secret, authority, or apply-gating surface first, then refresh readiness
+instead of rerunning release publication just to rediscover the same blocker.
+When the blocker is `release-repair-immutable-blocked`, rerun release conductor
+only through the protected-tag-safe replay path; do not attempt in-place tag
+mutation on the same immutable published release.
+
+## Published CompareVI.Tools bundle observer
+
+Once a release exists, compare can also observe the actually published
+`CompareVI.Tools` asset and check whether it is already producer-native for the
+template's `vi-history` distribution contract:
+
+- Observer script:
+  `node tools/npm/run-script.mjs priority:release:published:bundle`
+- Report artifact:
+  `tests/results/_agent/release/release-published-bundle-observer.json`
+
+This observer downloads the published `CompareVI.Tools-v*.zip` asset, extracts
+`comparevi-tools-release.json`, and proves whether the published bundle already
+exposes:
+
+- `consumerContract.capabilities.viHistory`
+- `upstream-producer` / `release-bundle`
+- `versionContract.authoritativeConsumerPin`
+- the declared bundle import path and referenced consumer contract paths
+
+That surface is the compare-side bridge between signed release publication and
+template issue `LabviewGitHubCiTemplate#18`.
 
 ## Rollback drill health gate
 

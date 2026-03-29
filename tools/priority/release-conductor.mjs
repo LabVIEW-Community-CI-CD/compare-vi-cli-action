@@ -13,6 +13,12 @@ export const DEFAULT_QUEUE_REPORT_PATH = path.join('tests', 'results', '_agent',
 export const DEFAULT_POLICY_SNAPSHOT_PATH = path.join('tests', 'results', '_agent', 'policy', 'policy-state-snapshot.json');
 export const DEFAULT_DWELL_MINUTES = 60;
 export const DEFAULT_QUARANTINE_STALE_HOURS = 24;
+export const RELEASE_PUBLICATION_WORKFLOW = 'release.yml';
+export const RELEASE_PUBLICATION_WORKFLOW_REF = 'develop';
+export const RELEASE_PUBLICATION_TAG_INPUT = 'release_tag';
+export const RELEASE_PUBLICATION_MODE_INPUT = 'publication_mode';
+export const RELEASE_PUBLICATION_MODE_PUBLISH = 'publish';
+export const RELEASE_PUBLICATION_MODE_VERIFY_EXISTING_RELEASE = 'verify-existing-release';
 
 const REQUIRED_DWELL_WORKFLOWS = Object.freeze([
   { name: 'Validate', file: 'validate.yml' },
@@ -24,6 +30,7 @@ function printUsage() {
   console.log('');
   console.log('Options:');
   console.log('  --apply                     Apply release mutation (default is --dry-run).');
+  console.log('  --repair-existing-tag       Repair an existing authoritative tag or dispatch protected-tag-safe replay for immutable published tags.');
   console.log(`  --report <path>             Write report JSON (default: ${DEFAULT_REPORT_PATH}).`);
   console.log(`  --queue-report <path>       Queue supervisor report path (default: ${DEFAULT_QUEUE_REPORT_PATH}).`);
   console.log(`  --policy-snapshot <path>    Policy snapshot path (default: ${DEFAULT_POLICY_SNAPSHOT_PATH}).`);
@@ -96,6 +103,7 @@ export function parseArgs(argv = process.argv) {
   const options = {
     apply: false,
     dryRun: true,
+    repairExistingTag: false,
     reportPath: DEFAULT_REPORT_PATH,
     queueReportPath: DEFAULT_QUEUE_REPORT_PATH,
     policySnapshotPath: DEFAULT_POLICY_SNAPSHOT_PATH,
@@ -117,6 +125,10 @@ export function parseArgs(argv = process.argv) {
     if (token === '--apply') {
       options.apply = true;
       options.dryRun = false;
+      continue;
+    }
+    if (token === '--repair-existing-tag') {
+      options.repairExistingTag = true;
       continue;
     }
     if (token === '--dry-run') {
@@ -190,6 +202,11 @@ function runGhJson(args, { cwd } = {}) {
   }
   const raw = (result.stdout ?? '').trim();
   return raw ? JSON.parse(raw) : null;
+}
+
+function isGitHubNotFoundError(message) {
+  const normalized = asOptional(message);
+  return Boolean(normalized && (/\b404\b/.test(normalized) || /not found/i.test(normalized)));
 }
 
 async function readJsonOptional(filePath) {
@@ -297,10 +314,45 @@ export function evaluateQueueHealthGate(queueReportEnvelope) {
     queueReport?.throughputController?.mode ??
     queueReport?.adaptiveInflight?.mode ??
     null;
+  const pausedReasons = Array.isArray(queueReport?.pausedReasons) ? queueReport.pausedReasons : [];
+  const runtimeTotals =
+    queueReport?.runtimeFleet && typeof queueReport.runtimeFleet === 'object' ? queueReport.runtimeFleet.totals : null;
+  const mergeQueueOccupancy =
+    queueReport?.queueInventory?.mergeQueueOccupancy ??
+    queueReport?.summary?.mergeQueueOccupancy ??
+    null;
+  const readyQueuedCount =
+    queueReport?.queueInventory?.readyQueuedCount ??
+    queueReport?.summary?.readyQueuedCount ??
+    null;
+  const quarantinedCount = queueReport?.summary?.quarantinedCount ?? null;
+  const idleSuccessRatePause =
+    paused &&
+    controllerMode === 'stabilize' &&
+    pausedReasons.length > 0 &&
+    pausedReasons.every((reason) => reason === 'success-rate-below-threshold') &&
+    Number(mergeQueueOccupancy ?? 0) === 0 &&
+    Number(readyQueuedCount ?? 0) === 0 &&
+    Number(runtimeTotals?.queued ?? 0) === 0 &&
+    Number(runtimeTotals?.inProgress ?? 0) === 0 &&
+    Number(runtimeTotals?.stalled ?? 0) === 0 &&
+    Number(quarantinedCount ?? 0) === 0;
 
   const reasons = [];
+  if (idleSuccessRatePause) {
+    reasons.push('release-safe-idle-queue-pause');
+  }
   if (paused) reasons.push('queue-paused');
   if (controllerMode === 'stabilize') reasons.push('queue-stabilize-mode');
+
+  if (idleSuccessRatePause) {
+    return {
+      status: 'pass',
+      reasons: ['release-safe-idle-queue-pause'],
+      paused,
+      controllerMode
+    };
+  }
 
   return {
     status: reasons.length === 0 ? 'pass' : 'fail',
@@ -350,6 +402,7 @@ export function evaluateQuarantineGate({
     return {
       status: 'fail',
       reasons: ['queue-report-unavailable'],
+      staleHours,
       staleCount: null,
       activeCount: null,
       staleEntries: []
@@ -443,17 +496,44 @@ function fetchWorkflowRunsByName({ runGhJsonFn, repository, branch, sampleSize, 
   };
 }
 
-function detectSigningMaterial({ runCommandFn, repoRoot }) {
+function detectSigningMaterial({ runCommandFn, repoRoot, environment = process.env }) {
   const keyResult = runCommandFn('git', ['config', '--get', 'user.signingkey'], {
     cwd: repoRoot,
     allowFailure: true
   });
   const signingKey = asOptional(keyResult.stdout);
+  const formatResult = runCommandFn('git', ['config', '--get', 'gpg.format'], {
+    cwd: repoRoot,
+    allowFailure: true
+  });
+  const nameResult = runCommandFn('git', ['config', '--get', 'user.name'], {
+    cwd: repoRoot,
+    allowFailure: true
+  });
+  const emailResult = runCommandFn('git', ['config', '--get', 'user.email'], {
+    cwd: repoRoot,
+    allowFailure: true
+  });
+  const configuredFormat = asOptional(formatResult.stdout);
+  const backend = asOptional(environment.RELEASE_TAG_SIGNING_BACKEND) ?? configuredFormat ?? 'openpgp';
+  const source = signingKey ? asOptional(environment.RELEASE_TAG_SIGNING_SOURCE) ?? 'git-config' : 'missing';
+  const identityName = asOptional(nameResult.stdout);
+  const identityEmail = asOptional(emailResult.stdout);
+  const identityAvailable = Boolean(identityName && identityEmail);
 
   return {
     available: Boolean(signingKey),
     signingKey,
-    source: signingKey ? 'git-config' : 'missing'
+    source,
+    backend,
+    identity: {
+      available: identityAvailable,
+      name: identityName,
+      email: identityEmail,
+      source: identityAvailable ? asOptional(environment.RELEASE_TAG_SIGNING_IDENTITY_SOURCE) ?? 'git-config' : 'missing',
+      login: asOptional(environment.RELEASE_TAG_SIGNING_IDENTITY_LOGIN),
+      accountId: asOptional(environment.RELEASE_TAG_SIGNING_IDENTITY_ID)
+    }
   };
 }
 
@@ -461,6 +541,236 @@ function resolveTargetTag(version) {
   const normalized = asOptional(version);
   if (!normalized) return null;
   return normalized.startsWith('v') ? normalized : `v${normalized}`;
+}
+
+function inspectLocalTag({ repoRoot, tagRef, runCommandFn }) {
+  if (!tagRef) {
+    return {
+      present: false,
+      objectOid: null
+    };
+  }
+
+  const result = runCommandFn('git', ['rev-parse', '--verify', '--quiet', `refs/tags/${tagRef}`], {
+    cwd: repoRoot,
+    allowFailure: true
+  });
+  return {
+    present: result.status === 0,
+    objectOid: asOptional(result.stdout)
+  };
+}
+
+function inspectRemoteTag({ repoRoot, remoteName, tagRef, runCommandFn }) {
+  if (!remoteName || !tagRef) {
+    return {
+      exists: false,
+      refName: tagRef ? `refs/tags/${tagRef}` : null,
+      objectOid: null,
+      targetCommitOid: null,
+      annotated: null,
+      lookupError: null
+    };
+  }
+
+  const refName = `refs/tags/${tagRef}`;
+  const result = runCommandFn('git', ['ls-remote', '--tags', remoteName, refName, `${refName}^{}`], {
+    cwd: repoRoot,
+    allowFailure: true
+  });
+  if (result.status !== 0) {
+    return {
+      exists: false,
+      refName,
+      objectOid: null,
+      targetCommitOid: null,
+      annotated: null,
+      lookupError: asOptional(result.stderr) ?? asOptional(result.stdout) ?? `git ls-remote failed (${result.status})`
+    };
+  }
+
+  let objectOid = null;
+  let peeledOid = null;
+  for (const rawLine of String(result.stdout ?? '').split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (!line) {
+      continue;
+    }
+    const [oid, resolvedRef] = line.split(/\s+/, 2);
+    if (resolvedRef === refName) {
+      objectOid = oid;
+    } else if (resolvedRef === `${refName}^{}`) {
+      peeledOid = oid;
+    }
+  }
+
+  const exists = Boolean(objectOid);
+  return {
+    exists,
+    refName,
+    objectOid,
+    targetCommitOid: peeledOid ?? objectOid,
+    annotated: exists ? Boolean(peeledOid) : null,
+    lookupError: null
+  };
+}
+
+function createRepairState({ requested, remoteTag = null, localTag = null }) {
+  return {
+    requested: Boolean(requested),
+    status: 'not-requested',
+    remoteTagRef: remoteTag?.refName ?? null,
+    remoteTagExists: Boolean(remoteTag?.exists),
+    remoteTagAnnotated: remoteTag?.annotated ?? null,
+    remoteTagObjectOid: remoteTag?.objectOid ?? null,
+    remoteTargetCommitOid: remoteTag?.targetCommitOid ?? null,
+    localTagPresent: Boolean(localTag?.present),
+    localTagDeleted: false,
+    tagRecreated: false,
+    pushLeaseExpectedOid: remoteTag?.objectOid ?? null,
+    lookupError: remoteTag?.lookupError ?? null
+  };
+}
+
+function resolveTagPushRemote({ repoRoot, repository, runCommandFn }) {
+  for (const remoteName of ['upstream', 'origin']) {
+    const remoteResult = runCommandFn('git', ['config', '--get', `remote.${remoteName}.url`], {
+      cwd: repoRoot,
+      allowFailure: true
+    });
+    const remoteUrl = asOptional(remoteResult.stdout);
+    const remoteSlug = parseRemoteUrl(remoteUrl);
+    if (remoteSlug && remoteSlug === repository) {
+      return {
+        remoteName,
+        remoteSlug,
+        source: 'matching-remote-url'
+      };
+    }
+  }
+
+  return {
+    remoteName: null,
+    remoteSlug: null,
+    source: 'missing'
+  };
+}
+
+function inspectImmutableReleaseState({ repository, tagRef, runGhJsonFn, cwd }) {
+  const normalizedTagRef = asOptional(tagRef);
+  const immutableRelease = {
+    status: 'unobserved',
+    tagRef: normalizedTagRef,
+    repairBlocked: false,
+    repositorySetting: {
+      status: 'unobserved',
+      enabled: null,
+      enforcedByOwner: null,
+      error: null
+    },
+    publishedRelease: {
+      status: 'unobserved',
+      exists: null,
+      immutable: null,
+      releaseId: null,
+      releaseUrl: null,
+      tagName: null,
+      error: null
+    }
+  };
+  if (!normalizedTagRef) {
+    return immutableRelease;
+  }
+
+  try {
+    const payload = runGhJsonFn(['api', `repos/${repository}/immutable-releases`], { cwd }) ?? {};
+    if (typeof payload?.enabled === 'boolean' || typeof payload?.enforced_by_owner === 'boolean') {
+      immutableRelease.repositorySetting = {
+        status: payload.enabled === true ? 'enabled' : 'disabled',
+        enabled: payload.enabled === true,
+        enforcedByOwner: payload.enforced_by_owner === true,
+        error: null
+      };
+    } else {
+      immutableRelease.repositorySetting = {
+        status: 'unverifiable',
+        enabled: null,
+        enforcedByOwner: null,
+        error: 'immutable release settings response shape was not recognized'
+      };
+    }
+  } catch (error) {
+    immutableRelease.repositorySetting = {
+      status: 'unverifiable',
+      enabled: null,
+      enforcedByOwner: null,
+      error: error?.message ?? String(error)
+    };
+  }
+
+  try {
+    const payload = runGhJsonFn(['api', `repos/${repository}/releases/tags/${normalizedTagRef}`], { cwd }) ?? {};
+    const looksLikeRelease =
+      typeof payload?.immutable === 'boolean' ||
+      Number.isInteger(payload?.id) ||
+      Boolean(asOptional(payload?.tag_name)) ||
+      Boolean(asOptional(payload?.html_url));
+    if (!looksLikeRelease) {
+      immutableRelease.publishedRelease = {
+        status: 'unverifiable',
+        exists: null,
+        immutable: null,
+        releaseId: null,
+        releaseUrl: null,
+        tagName: null,
+        error: 'release lookup response shape was not recognized'
+      };
+    } else {
+      immutableRelease.publishedRelease = {
+        status: payload.immutable === true ? 'immutable' : 'mutable',
+        exists: true,
+        immutable: payload.immutable === true,
+        releaseId: Number.isInteger(payload?.id) ? payload.id : null,
+        releaseUrl: asOptional(payload?.html_url) ?? asOptional(payload?.url),
+        tagName: asOptional(payload?.tag_name) ?? normalizedTagRef,
+        error: null
+      };
+    }
+  } catch (error) {
+    const message = error?.message ?? String(error);
+    immutableRelease.publishedRelease = {
+      status: isGitHubNotFoundError(message) ? 'release-not-found' : 'unverifiable',
+      exists: isGitHubNotFoundError(message) ? false : null,
+      immutable: null,
+      releaseId: null,
+      releaseUrl: null,
+      tagName: normalizedTagRef,
+      error: message
+    };
+  }
+
+  if (immutableRelease.publishedRelease.status === 'immutable') {
+    immutableRelease.status = 'published-release-immutable';
+    immutableRelease.repairBlocked = true;
+  } else if (immutableRelease.publishedRelease.status === 'mutable') {
+    immutableRelease.status = 'published-release-mutable';
+  } else if (immutableRelease.publishedRelease.status === 'release-not-found') {
+    immutableRelease.status = 'release-not-found';
+  } else if (
+    immutableRelease.repositorySetting.status === 'unverifiable' ||
+    immutableRelease.publishedRelease.status === 'unverifiable'
+  ) {
+    immutableRelease.status = 'unverifiable';
+  }
+
+  return immutableRelease;
+}
+
+function buildImmutableRepairReplayMessage({ targetTag, immutableRelease }) {
+  const normalizedTag = asOptional(targetTag) ?? 'the current release tag';
+  const releaseUrl = asOptional(immutableRelease?.publishedRelease?.releaseUrl);
+  const releaseLocation = releaseUrl ? ` (${releaseUrl})` : '';
+  return `Authoritative tag ${normalizedTag} already backs an immutable published GitHub Release${releaseLocation}. Rerun release conductor with --repair-existing-tag to dispatch protected-tag-safe release replay from develop without mutating the published release.`;
 }
 
 async function writeReport(filePath, payload) {
@@ -567,11 +877,117 @@ export async function runReleaseConductor(options = {}) {
     });
   }
 
-  const signingMaterial = detectSigningMaterial({ runCommandFn, repoRoot });
+  const signingMaterial = detectSigningMaterial({ runCommandFn, repoRoot, environment });
   const targetTag = resolveTargetTag(args.version);
   let tagCreated = false;
+  let tagPushed = false;
   let tagError = null;
+  let tagPushError = null;
   let proposalOnly = true;
+  const publicationReplay = {
+    requested: Boolean(args.repairExistingTag && applyRequested),
+    workflow: RELEASE_PUBLICATION_WORKFLOW,
+    ref: RELEASE_PUBLICATION_WORKFLOW_REF,
+    tagInputName: RELEASE_PUBLICATION_TAG_INPUT,
+    tagInputValue: targetTag,
+    modeInputName: RELEASE_PUBLICATION_MODE_INPUT,
+    modeInputValue: null,
+    dispatched: false,
+    status: args.repairExistingTag && applyRequested ? 'blocked' : 'not-requested',
+    error: null
+  };
+  const tagPushRemote = resolveTagPushRemote({ repoRoot, repository, runCommandFn });
+  const remoteTag = inspectRemoteTag({
+    repoRoot,
+    remoteName: asOptional(tagPushRemote.remoteName),
+    tagRef: targetTag,
+    runCommandFn
+  });
+  const localTag = inspectLocalTag({
+    repoRoot,
+    tagRef: targetTag,
+    runCommandFn
+  });
+  const repair = createRepairState({
+    requested: args.repairExistingTag,
+    remoteTag,
+    localTag
+  });
+  const immutableRelease =
+    targetTag && (repair.requested || repair.remoteTagExists)
+      ? inspectImmutableReleaseState({
+          repository,
+          tagRef: targetTag,
+          runGhJsonFn,
+          cwd: repoRoot
+        })
+      : inspectImmutableReleaseState({
+          repository,
+          tagRef: null,
+          runGhJsonFn,
+          cwd: repoRoot
+        });
+  const repairBlockedByImmutableRelease = Boolean(repair.remoteTagExists && immutableRelease.repairBlocked);
+
+  if (repair.remoteTagExists && !repair.requested) {
+    repair.status = repairBlockedByImmutableRelease ? 'ready-equivalent-replay' : 'repair-available';
+    pushUniqueDecisionEntry(
+      advisories,
+      repairBlockedByImmutableRelease
+        ? {
+            code: 'existing-tag-repair-blocked-by-immutable-release',
+            message: buildImmutableRepairReplayMessage({ targetTag, immutableRelease })
+          }
+        : {
+            code: 'existing-tag-repair-available',
+            message: `Authoritative tag ${targetTag} already exists; rerun release conductor with --repair-existing-tag to recreate it as a signed annotated tag.`
+          }
+    );
+  }
+  if (repair.requested && !targetTag) {
+    repair.status = 'blocked';
+  } else if (repair.requested && remoteTag.lookupError) {
+    repair.status = 'blocked';
+  } else if (repair.requested && !asOptional(tagPushRemote.remoteName)) {
+    repair.status = 'blocked';
+  } else if (repair.requested && !repair.remoteTagExists) {
+    repair.status = 'blocked';
+  } else if (repair.requested && (!repair.remoteTargetCommitOid || !repair.pushLeaseExpectedOid)) {
+    repair.status = 'blocked';
+  } else if (repair.requested && repairBlockedByImmutableRelease) {
+    repair.status = applyRequested ? 'blocked' : 'ready-equivalent-replay';
+  } else if (repair.requested && repair.remoteTagExists) {
+    repair.status = applyRequested ? 'blocked' : 'ready';
+  }
+
+  if (repair.requested) {
+    if (!targetTag) {
+      blockers.push({
+        code: 'missing-version-for-tag',
+        message: 'Repair mode requires --version to identify the authoritative release tag.'
+      });
+    } else if (!asOptional(tagPushRemote.remoteName)) {
+      blockers.push({
+        code: 'tag-push-remote-missing',
+        message: `Repair mode could not resolve an authoritative push remote matching ${repository}.`
+      });
+    } else if (remoteTag.lookupError) {
+      blockers.push({
+        code: 'repair-remote-tag-lookup-failed',
+        message: `Unable to inspect authoritative tag ${targetTag}: ${remoteTag.lookupError}`
+      });
+    } else if (!repair.remoteTagExists) {
+      blockers.push({
+        code: 'repair-target-tag-missing',
+        message: `Repair mode requires existing authoritative tag ${targetTag}, but no authoritative tag ref was found on ${tagPushRemote.remoteName}.`
+      });
+    } else if (!repair.remoteTargetCommitOid || !repair.pushLeaseExpectedOid) {
+      blockers.push({
+        code: 'repair-target-unresolved',
+        message: `Repair mode could not resolve the authoritative object/commit for ${targetTag}.`
+      });
+    }
+  }
 
   if (blockers.length === 0 && applyRequested && conductorEnabled) {
     if (!targetTag) {
@@ -579,6 +995,158 @@ export async function runReleaseConductor(options = {}) {
         code: 'missing-version-for-tag',
         message: 'Apply mode requires --version to propose/create a release tag.'
       });
+    } else if (args.repairExistingTag && repairBlockedByImmutableRelease) {
+      publicationReplay.modeInputValue = RELEASE_PUBLICATION_MODE_VERIFY_EXISTING_RELEASE;
+      const dispatchResult = runCommandFn(
+        'gh',
+        [
+          'workflow',
+          'run',
+          RELEASE_PUBLICATION_WORKFLOW,
+          '--ref',
+          RELEASE_PUBLICATION_WORKFLOW_REF,
+          '-f',
+          `${RELEASE_PUBLICATION_TAG_INPUT}=${targetTag}`,
+          '-f',
+          `${RELEASE_PUBLICATION_MODE_INPUT}=${RELEASE_PUBLICATION_MODE_VERIFY_EXISTING_RELEASE}`
+        ],
+        {
+          cwd: repoRoot,
+          allowFailure: true
+        }
+      );
+      if (dispatchResult.status === 0) {
+        proposalOnly = false;
+        repair.status = 'equivalent-replay-dispatched';
+        publicationReplay.dispatched = true;
+        publicationReplay.status = 'dispatched';
+      } else {
+        publicationReplay.status = 'dispatch-failed';
+        publicationReplay.error =
+          asOptional(dispatchResult.stderr) ??
+          asOptional(dispatchResult.stdout) ??
+          'release workflow dispatch failed';
+        blockers.push({
+          code: 'release-replay-dispatch-failed',
+          message: `Release publication replay dispatch failed for ${targetTag}: ${publicationReplay.error}`
+        });
+      }
+    } else if (!signingMaterial.available) {
+      blockers.push({
+        code: 'tag-signing-material-missing',
+        message: 'Apply mode requires signed-tag readiness before tag push. Configure user.signingkey (or equivalent signing material) and retry.'
+      });
+    } else if (args.repairExistingTag) {
+        if (repair.localTagPresent) {
+          const deleteResult = runCommandFn('git', ['tag', '-d', targetTag], {
+            cwd: repoRoot,
+            allowFailure: true
+          });
+          if (deleteResult.status !== 0) {
+            tagError = asOptional(deleteResult.stderr) ?? asOptional(deleteResult.stdout) ?? 'local tag delete failed';
+            blockers.push({
+              code: 'repair-local-tag-delete-failed',
+              message: `Unable to remove existing local tag ${targetTag} before repair: ${tagError}`
+            });
+          } else {
+            repair.localTagDeleted = true;
+          }
+        }
+
+        if (blockers.length === 0) {
+          const tagResult = runCommandFn(
+            'git',
+            ['tag', '-s', '-f', targetTag, repair.remoteTargetCommitOid, '-m', `Release ${targetTag}`],
+            {
+              cwd: repoRoot,
+              allowFailure: true
+            }
+          );
+          if (tagResult.status === 0) {
+            tagCreated = true;
+            repair.tagRecreated = true;
+            const pushRemoteName = asOptional(tagPushRemote.remoteName);
+            if (!pushRemoteName) {
+              tagPushError = 'Unable to resolve an authoritative git remote for repair publication.';
+              blockers.push({
+                code: 'tag-push-remote-missing',
+                message: `Signed repair tag ${targetTag} was created locally but no authoritative push remote matched ${repository}.`
+              });
+            } else {
+              const leaseArg = `--force-with-lease=refs/tags/${targetTag}:${repair.pushLeaseExpectedOid}`;
+              const pushResult = runCommandFn(
+                'git',
+                ['push', leaseArg, pushRemoteName, `refs/tags/${targetTag}:refs/tags/${targetTag}`],
+                {
+                  cwd: repoRoot,
+                  allowFailure: true
+                }
+              );
+              if (pushResult.status === 0) {
+                tagPushed = true;
+                proposalOnly = false;
+                repair.status = 'repaired';
+                publicationReplay.modeInputValue = RELEASE_PUBLICATION_MODE_PUBLISH;
+                const dispatchResult = runCommandFn(
+                  'gh',
+                  [
+                    'workflow',
+                    'run',
+                    RELEASE_PUBLICATION_WORKFLOW,
+                    '--ref',
+                    RELEASE_PUBLICATION_WORKFLOW_REF,
+                    '-f',
+                    `${RELEASE_PUBLICATION_TAG_INPUT}=${targetTag}`,
+                    '-f',
+                    `${RELEASE_PUBLICATION_MODE_INPUT}=${RELEASE_PUBLICATION_MODE_PUBLISH}`
+                  ],
+                  {
+                    cwd: repoRoot,
+                    allowFailure: true
+                  }
+                );
+                if (dispatchResult.status === 0) {
+                  publicationReplay.dispatched = true;
+                  publicationReplay.status = 'dispatched';
+                } else {
+                  publicationReplay.status = 'dispatch-failed';
+                  publicationReplay.error =
+                    asOptional(dispatchResult.stderr) ??
+                    asOptional(dispatchResult.stdout) ??
+                    'release workflow dispatch failed';
+                  blockers.push({
+                    code: 'release-replay-dispatch-failed',
+                    message: `Release publication replay dispatch failed for ${targetTag}: ${publicationReplay.error}`
+                  });
+                }
+              } else {
+                tagPushError = asOptional(pushResult.stderr) ?? asOptional(pushResult.stdout) ?? 'repair tag push failed';
+                blockers.push({
+                  code: 'repair-tag-push-failed',
+                  message: `Signed repair publication failed for ${targetTag}: ${tagPushError}`
+                });
+              }
+            }
+          } else {
+            tagError = asOptional(tagResult.stderr) ?? asOptional(tagResult.stdout) ?? 'repair tag creation failed';
+            blockers.push({
+              code: 'repair-tag-recreate-failed',
+              message: `Signed repair tag creation failed for ${targetTag}: ${tagError}`
+            });
+          }
+        }
+    } else if (repair.remoteTagExists) {
+      blockers.push(
+        repairBlockedByImmutableRelease
+          ? {
+              code: 'existing-tag-repair-blocked-by-immutable-release',
+              message: buildImmutableRepairReplayMessage({ targetTag, immutableRelease })
+            }
+          : {
+              code: 'existing-tag-requires-repair-mode',
+              message: `Authoritative tag ${targetTag} already exists. Rerun release conductor with --repair-existing-tag to recreate it as a signed annotated tag at ${repair.remoteTargetCommitOid}.`
+            }
+      );
     } else if (signingMaterial.available) {
       const tagResult = runCommandFn('git', ['tag', '-s', targetTag, '-m', `Release ${targetTag}`], {
         cwd: repoRoot,
@@ -586,7 +1154,29 @@ export async function runReleaseConductor(options = {}) {
       });
       if (tagResult.status === 0) {
         tagCreated = true;
-        proposalOnly = false;
+        const pushRemoteName = asOptional(tagPushRemote.remoteName);
+        if (!pushRemoteName) {
+          tagPushError = 'Unable to resolve an authoritative git remote for tag publication.';
+          blockers.push({
+            code: 'tag-push-remote-missing',
+            message: `Signed tag ${targetTag} was created locally but no authoritative push remote matched ${repository}.`
+          });
+        } else {
+          const pushResult = runCommandFn('git', ['push', pushRemoteName, `refs/tags/${targetTag}`], {
+            cwd: repoRoot,
+            allowFailure: true
+          });
+          if (pushResult.status === 0) {
+            tagPushed = true;
+            proposalOnly = false;
+          } else {
+            tagPushError = asOptional(pushResult.stderr) ?? asOptional(pushResult.stdout) ?? 'tag push failed';
+            blockers.push({
+              code: 'tag-push-failed',
+              message: `Signed tag publication failed for ${targetTag}: ${tagPushError}`
+            });
+          }
+        }
       } else {
         tagError = asOptional(tagResult.stderr) ?? asOptional(tagResult.stdout) ?? 'tag creation failed';
         blockers.push({
@@ -614,8 +1204,14 @@ export async function runReleaseConductor(options = {}) {
       targetTag,
       proposalOnly,
       tagCreated,
+      tagPushed,
       tagError,
-      signingMaterial
+      tagPushError,
+      tagPushRemote,
+      signingMaterial,
+      immutableRelease,
+      repair,
+      publicationReplay
     },
     inputs: {
       reportPath: args.reportPath,

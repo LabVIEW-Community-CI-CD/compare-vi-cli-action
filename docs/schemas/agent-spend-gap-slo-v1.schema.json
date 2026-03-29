@@ -70,7 +70,7 @@
     "fundedThroughput": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["fundingWindow", "metrics", "provenance"],
+      "required": ["fundingWindow", "throughputWindow", "metrics", "provenance"],
       "properties": {
         "fundingWindow": {
           "type": "object",
@@ -132,6 +132,22 @@
             "operatorSteeringEventsPerFundedDollar": { "type": ["number", "null"], "minimum": 0 }
           }
         },
+        "throughputWindow": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "currentCycleIdleStatus",
+            "currentCycleIdleSource",
+            "currentCycleIdleObservedAt",
+            "currentCycleIdleNextWakeCondition"
+          ],
+          "properties": {
+            "currentCycleIdleStatus": { "enum": ["observed", "missing"] },
+            "currentCycleIdleSource": { "$ref": "#/$defs/nullableString" },
+            "currentCycleIdleObservedAt": { "$ref": "#/$defs/nullableDateTime" },
+            "currentCycleIdleNextWakeCondition": { "$ref": "#/$defs/nullableString" }
+          }
+        },
         "provenance": {
           "type": "object",
           "additionalProperties": false,
@@ -154,6 +170,10 @@
   "$defs": {
     "nullableString": {
       "type": ["string", "null"]
+    },
+    "nullableDateTime": {
+      "type": ["string", "null"],
+      "format": "date-time"
     },
     "inputRef": {
       "type": "object",
@@ -200,6 +220,10 @@
         "concurrentLaneActiveCount",
         "concurrentLaneDeferredCount",
         "hostedWaitEscapeCount",
+        "currentCycleIdleStatus",
+        "currentCycleIdleSource",
+        "currentCycleIdleObservedAt",
+        "currentCycleIdleNextWakeCondition",
         "throughputReasons",
         "operatorSteeringEventCount",
         "operatorSteeringKinds",
@@ -212,6 +236,10 @@
         "concurrentLaneActiveCount": { "type": ["integer", "null"], "minimum": 0 },
         "concurrentLaneDeferredCount": { "type": ["integer", "null"], "minimum": 0 },
         "hostedWaitEscapeCount": { "type": ["integer", "null"], "minimum": 0 },
+        "currentCycleIdleStatus": { "enum": ["observed", "missing"] },
+        "currentCycleIdleSource": { "$ref": "#/$defs/nullableString" },
+        "currentCycleIdleObservedAt": { "$ref": "#/$defs/nullableDateTime" },
+        "currentCycleIdleNextWakeCondition": { "$ref": "#/$defs/nullableString" },
         "throughputReasons": {
           "type": "array",
           "items": { "type": "string" }

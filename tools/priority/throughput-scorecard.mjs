@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { DEFAULT_HOST_RAM_BUDGET_PATH } from './concurrent-lane-plan.mjs';
 import { summarizeIdleClassificationCoverage } from './concurrent-lane-status.mjs';
 import { summarizeLogicalLaneActivation } from './delivery-agent.mjs';
+import { deriveCurrentCycleIdleAuthority } from './lib/current-cycle-idle-authority.mjs';
 
 export const REPORT_SCHEMA = 'priority/throughput-scorecard@v1';
 export const DEFAULT_RUNTIME_STATE_PATH = path.join('tests', 'results', '_agent', 'runtime', 'delivery-agent-state.json');
@@ -95,6 +96,68 @@ function coerceNonNegativeNumber(value) {
 function clampRatio(value) {
   const parsed = Number(value);
   return Number.isFinite(parsed) && parsed >= 0 ? Math.min(parsed, 1) : null;
+}
+
+function normalizeCurrentCycleIdleAuthority(authority = null) {
+  if (!authority || typeof authority !== 'object') {
+    return null;
+  }
+  const status = normalizeText(authority.status) || 'missing';
+  return {
+    status,
+    source: normalizeText(authority.source) || null,
+    observedAt: normalizeText(authority.observedAt) || null,
+    nextWakeCondition: normalizeText(authority.nextWakeCondition) || null
+  };
+}
+
+function resolveCurrentCycleIdleAuthority({ runtimeState = null, queueReport = null, now = new Date() } = {}) {
+  const queueWorkerOccupancy =
+    queueReport?.workerOccupancy && typeof queueReport.workerOccupancy === 'object'
+      ? queueReport.workerOccupancy
+      : null;
+  const queueReportedAuthority = normalizeCurrentCycleIdleAuthority(queueWorkerOccupancy?.currentCycleIdleAuthority);
+  if (queueReportedAuthority?.status === 'observed') {
+    return queueReportedAuthority;
+  }
+
+  const derivedAuthority = deriveCurrentCycleIdleAuthority({
+    deliveryRuntimeState: runtimeState,
+    now
+  });
+  return normalizeCurrentCycleIdleAuthority(derivedAuthority) ?? {
+    status: 'missing',
+    source: null,
+    observedAt: null,
+    nextWakeCondition: null
+  };
+}
+
+function applyCurrentCycleIdleAuthorityToRuntimeState(runtimeState = null, currentCycleIdleAuthority = null) {
+  if (!runtimeState || typeof runtimeState !== 'object') {
+    return runtimeState;
+  }
+  if (currentCycleIdleAuthority?.status !== 'observed') {
+    return runtimeState;
+  }
+
+  const workerPool = runtimeState?.workerPool && typeof runtimeState.workerPool === 'object' ? runtimeState.workerPool : null;
+  if (!workerPool) {
+    return runtimeState;
+  }
+
+  const targetSlotCount = Number(workerPool.targetSlotCount ?? 0) || 0;
+  return {
+    ...runtimeState,
+    workerPool: {
+      ...workerPool,
+      occupiedSlotCount: 0,
+      availableSlotCount: targetSlotCount,
+      releasedLaneCount: 0,
+      utilizationRatio: 0
+    },
+    activeCodingLanes: 0
+  };
 }
 
 function summarizeLogicalLaneAllocation(runtimeState = null, hostRamBudget = null) {
@@ -286,7 +349,18 @@ export function buildThroughputScorecard({
   inputPaths = {},
   now = new Date()
 }) {
-  const workerPool = runtimeState?.workerPool && typeof runtimeState.workerPool === 'object' ? runtimeState.workerPool : {};
+  const currentCycleIdleAuthority = resolveCurrentCycleIdleAuthority({ runtimeState, queueReport, now });
+  const staleRuntimeSuppressed =
+    currentCycleIdleAuthority.status === 'observed'
+    && (
+      (Number(runtimeState?.workerPool?.occupiedSlotCount ?? 0) || 0) > 0
+      || (Number(runtimeState?.activeCodingLanes ?? 0) || 0) > 0
+    );
+  const effectiveRuntimeState = applyCurrentCycleIdleAuthorityToRuntimeState(runtimeState, currentCycleIdleAuthority);
+  const workerPool =
+    effectiveRuntimeState?.workerPool && typeof effectiveRuntimeState.workerPool === 'object'
+      ? effectiveRuntimeState.workerPool
+      : {};
   const readySet = Array.isArray(queueReport?.readiness?.readySet) ? queueReport.readiness.readySet : [];
   const workerPoolSummary = {
     targetSlotCount: Number(workerPool.targetSlotCount ?? 0) || 0,
@@ -294,8 +368,11 @@ export function buildThroughputScorecard({
     availableSlotCount: Number(workerPool.availableSlotCount ?? 0) || 0,
     releasedLaneCount: Number(workerPool.releasedLaneCount ?? 0) || 0,
     utilizationRatio: coerceNonNegativeNumber(workerPool.utilizationRatio) ?? 0,
-    activeCodingLanes: Number(runtimeState?.activeCodingLanes ?? 0) || 0,
-    liveOrchestratorLane: normalizeText(workerPool.liveOrchestratorLane) || 'Sagan'
+    activeCodingLanes: Number(effectiveRuntimeState?.activeCodingLanes ?? 0) || 0,
+    liveOrchestratorLane: normalizeText(workerPool.liveOrchestratorLane) || 'Sagan',
+    authoritySource: currentCycleIdleAuthority.status === 'observed' ? 'current-cycle-idle' : 'runtime-state',
+    staleRuntimeSuppressed,
+    currentCycleIdleAuthority
   };
   const queueSummary = {
     readyPrInventory: readySet.length,
@@ -315,10 +392,10 @@ export function buildThroughputScorecard({
     meanTerminalDurationMinutes: coerceNonNegativeNumber(deliveryMemory?.summary?.meanTerminalDurationMinutes),
     viHistorySuitePullRequestCount: Number(deliveryMemory?.summary?.viHistorySuitePullRequestCount ?? 0) || 0
   };
-  const logicalLaneAllocation = summarizeLogicalLaneAllocation(runtimeState, hostRamBudget);
+  const logicalLaneAllocation = summarizeLogicalLaneAllocation(effectiveRuntimeState, hostRamBudget);
   const logicalLaneActivation = summarizeLogicalLaneActivation({
-    capitalFabric: runtimeState?.policy?.capitalFabric && typeof runtimeState.policy.capitalFabric === 'object'
-      ? runtimeState.policy.capitalFabric
+    capitalFabric: effectiveRuntimeState?.policy?.capitalFabric && typeof effectiveRuntimeState.policy.capitalFabric === 'object'
+      ? effectiveRuntimeState.policy.capitalFabric
       : {},
     effectiveLogicalLaneCount: logicalLaneAllocation.effectiveLogicalLaneCount,
     capacitySource: logicalLaneAllocation.capacitySource

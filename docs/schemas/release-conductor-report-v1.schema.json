@@ -46,8 +46,14 @@
         "targetTag",
         "proposalOnly",
         "tagCreated",
+        "tagPushed",
         "tagError",
-        "signingMaterial"
+        "tagPushError",
+        "tagPushRemote",
+        "signingMaterial",
+        "immutableRelease",
+        "repair",
+        "publicationReplay"
       ],
       "properties": {
         "stream": { "type": "string" },
@@ -56,15 +62,174 @@
         "targetTag": { "type": ["string", "null"] },
         "proposalOnly": { "type": "boolean" },
         "tagCreated": { "type": "boolean" },
+        "tagPushed": { "type": "boolean" },
         "tagError": { "type": ["string", "null"] },
+        "tagPushError": { "type": ["string", "null"] },
+        "tagPushRemote": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["remoteName", "remoteSlug", "source"],
+          "properties": {
+            "remoteName": { "type": ["string", "null"] },
+            "remoteSlug": { "type": ["string", "null"] },
+            "source": { "type": "string" }
+          }
+        },
         "signingMaterial": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["available", "signingKey", "source"],
+          "required": ["available", "signingKey", "source", "backend", "identity"],
           "properties": {
             "available": { "type": "boolean" },
             "signingKey": { "type": ["string", "null"] },
-            "source": { "type": "string" }
+            "source": { "type": "string" },
+            "backend": { "type": "string" },
+            "identity": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["available", "name", "email", "source", "login", "accountId"],
+              "properties": {
+                "available": { "type": "boolean" },
+                "name": { "type": ["string", "null"] },
+                "email": { "type": ["string", "null"] },
+                "source": { "type": "string" },
+                "login": { "type": ["string", "null"] },
+                "accountId": { "type": ["string", "null"] }
+              }
+            }
+          }
+        },
+        "immutableRelease": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "status",
+            "tagRef",
+            "repairBlocked",
+            "repositorySetting",
+            "publishedRelease"
+          ],
+          "properties": {
+            "status": {
+              "type": "string",
+              "enum": [
+                "unobserved",
+                "published-release-immutable",
+                "published-release-mutable",
+                "release-not-found",
+                "unverifiable"
+              ]
+            },
+            "tagRef": { "type": ["string", "null"] },
+            "repairBlocked": { "type": "boolean" },
+            "repositorySetting": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["status", "enabled", "enforcedByOwner", "error"],
+              "properties": {
+                "status": {
+                  "type": "string",
+                  "enum": ["unobserved", "enabled", "disabled", "unverifiable"]
+                },
+                "enabled": { "type": ["boolean", "null"] },
+                "enforcedByOwner": { "type": ["boolean", "null"] },
+                "error": { "type": ["string", "null"] }
+              }
+            },
+            "publishedRelease": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["status", "exists", "immutable", "releaseId", "releaseUrl", "tagName", "error"],
+              "properties": {
+                "status": {
+                  "type": "string",
+                  "enum": ["unobserved", "release-not-found", "mutable", "immutable", "unverifiable"]
+                },
+                "exists": { "type": ["boolean", "null"] },
+                "immutable": { "type": ["boolean", "null"] },
+                "releaseId": { "type": ["integer", "null"] },
+                "releaseUrl": { "type": ["string", "null"] },
+                "tagName": { "type": ["string", "null"] },
+                "error": { "type": ["string", "null"] }
+              }
+            }
+          }
+        },
+        "repair": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "requested",
+            "status",
+            "remoteTagRef",
+            "remoteTagExists",
+            "remoteTagAnnotated",
+            "remoteTagObjectOid",
+            "remoteTargetCommitOid",
+            "localTagPresent",
+            "localTagDeleted",
+            "tagRecreated",
+            "pushLeaseExpectedOid",
+            "lookupError"
+          ],
+          "properties": {
+            "requested": { "type": "boolean" },
+            "status": {
+              "type": "string",
+              "enum": [
+                "not-requested",
+                "repair-available",
+                "ready",
+                "ready-equivalent-replay",
+                "repaired",
+                "equivalent-replay-dispatched",
+                "blocked"
+              ]
+            },
+            "remoteTagRef": { "type": ["string", "null"] },
+            "remoteTagExists": { "type": "boolean" },
+            "remoteTagAnnotated": { "type": ["boolean", "null"] },
+            "remoteTagObjectOid": { "type": ["string", "null"] },
+            "remoteTargetCommitOid": { "type": ["string", "null"] },
+            "localTagPresent": { "type": "boolean" },
+            "localTagDeleted": { "type": "boolean" },
+            "tagRecreated": { "type": "boolean" },
+            "pushLeaseExpectedOid": { "type": ["string", "null"] },
+            "lookupError": { "type": ["string", "null"] }
+          }
+        },
+        "publicationReplay": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "requested",
+            "workflow",
+            "ref",
+            "tagInputName",
+            "tagInputValue",
+            "modeInputName",
+            "modeInputValue",
+            "dispatched",
+            "status",
+            "error"
+          ],
+          "properties": {
+            "requested": { "type": "boolean" },
+            "workflow": { "type": "string" },
+            "ref": { "type": ["string", "null"] },
+            "tagInputName": { "type": ["string", "null"] },
+            "tagInputValue": { "type": ["string", "null"] },
+            "modeInputName": { "type": ["string", "null"] },
+            "modeInputValue": {
+              "type": ["string", "null"],
+              "enum": ["publish", "verify-existing-release", null]
+            },
+            "dispatched": { "type": "boolean" },
+            "status": {
+              "type": "string",
+              "enum": ["not-requested", "blocked", "dispatched", "dispatch-failed"]
+            },
+            "error": { "type": ["string", "null"] }
           }
         }
       }

@@ -938,6 +938,31 @@ if (-not $PreflightOnly) {
     -ScriptRelativePath 'tools/priority/operator-steering-event.mjs' `
     -Arguments @('--repo-root', $priorityWorkingDirectory, '--continuity', $continuityRuntimePath, '--output', $steeringRuntimePath, '--handoff-output', $steeringHandoffPath, '--history-dir', $steeringHistoryDir, '--invoice-turn-dir', $invoiceTurnDir) `
     -AllowFailure:$true
+
+  if (-not $routerIssue) {
+    try {
+      Write-Host '[bootstrap] Refreshing queue-empty handoff control-plane surfaces…'
+      $resultsRoot = Join-Path $priorityWorkingDirectory 'tests/results'
+      $controlPlaneRefreshScript = Join-Path $priorityWorkingDirectory 'tools/priority/Refresh-HandoffControlPlane.ps1'
+      Invoke-Npm -Script 'handoff:entrypoint:check' -AllowFailure:$true
+      if (Test-Path -LiteralPath $controlPlaneRefreshScript -PathType Leaf) {
+        & $controlPlaneRefreshScript `
+          -RepoRoot $priorityWorkingDirectory `
+          -ResultsRoot $resultsRoot `
+          -HelperRepoRoot $priorityHelperRepoRoot `
+          -WorkingDirectory $priorityWorkingDirectory `
+          -ContinuitySummaryPath $continuityHandoffPath `
+          -OperatorSteeringEventPath $steeringHandoffPath `
+          -QueueEmptyReportPath (Join-Path $priorityWorkingDirectory 'tests/results/_agent/issue/no-standing-priority.json') `
+          -CostRollupPath (Join-Path $priorityWorkingDirectory 'tests/results/_agent/cost/agent-cost-rollup.json') `
+          -EpisodeDirectory (Join-Path $resultsRoot '_agent/memory/subagent-episodes')
+      } else {
+        Write-Warning "[bootstrap] Queue-empty control-plane refresh helper not found at $controlPlaneRefreshScript"
+      }
+    } catch {
+      Write-Warning ("[bootstrap] Failed to refresh queue-empty handoff control-plane surfaces: {0}" -f $_.Exception.Message)
+    }
+  }
 }
 
 Write-Host '[bootstrap] Bootstrapping complete.'

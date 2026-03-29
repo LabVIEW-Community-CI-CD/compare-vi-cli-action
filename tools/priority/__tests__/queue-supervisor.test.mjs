@@ -245,6 +245,103 @@ test('runQueueSupervisor projects latest security-intake state into the throughp
   assert.equal(report.summary.securityIntakeStatus, 'platform-stale');
 });
 
+test('runQueueSupervisor suppresses stale worker occupancy when current-cycle idle authority is observed', async () => {
+  const runGhJsonFn = (args) => {
+    if (args[0] === 'pr' && args[1] === 'list') {
+      return [];
+    }
+    if (args[0] === 'api') {
+      return { workflow_runs: [] };
+    }
+    throw new Error(`Unexpected gh args: ${args.join(' ')}`);
+  };
+
+  const readJsonFileFn = async (filePath) => {
+    if (String(filePath).endsWith('branch-required-checks.json')) {
+      return { branches: { develop: ['lint'] } };
+    }
+    if (String(filePath).endsWith('policy.json')) {
+      return {
+        rulesets: {
+          develop: {
+            includes: ['refs/heads/develop'],
+            merge_queue: { merge_method: 'SQUASH' }
+          }
+        }
+      };
+    }
+    throw new Error(`Unexpected read path: ${filePath}`);
+  };
+
+  const readOptionalJsonFn = async (filePath) => {
+    if (String(filePath).endsWith('delivery-agent-state.json')) {
+      return {
+        generatedAt: '2026-03-26T11:00:00Z',
+        status: 'idle',
+        laneLifecycle: 'idle',
+        derivedFromQueueEmptyState: true,
+        queueState: {
+          status: 'queue-empty'
+        },
+        activeLane: {
+          laneId: 'queue-empty-monitoring',
+          actionType: 'monitoring-idle',
+          outcome: 'queue-empty',
+          nextWakeCondition: 'future-agent-may-pivot'
+        },
+        workerPool: {
+          targetSlotCount: 4,
+          occupiedSlotCount: 2,
+          availableSlotCount: 2,
+          releasedLaneCount: 1,
+          utilizationRatio: 0.5
+        },
+        activeCodingLanes: 2
+      };
+    }
+    return {};
+  };
+
+  const { report } = await runQueueSupervisor({
+    repoRoot: process.cwd(),
+    args: {
+      apply: false,
+      dryRun: true,
+      reportPath: 'tests/results/_agent/queue/queue-supervisor-report.json',
+      controllerStatePath: 'tests/results/_agent/queue/throughput-controller-state.json',
+      readinessReportPath: 'tests/results/_agent/queue/queue-readiness-report.json',
+      governorStatePath: 'tests/results/_agent/slo/ops-governor-state.json',
+      securityIntakeReportPath: 'tests/results/_agent/security/security-intake-report.json',
+      maxInflight: 5,
+      minInflight: 1,
+      adaptiveCap: false,
+      maxQueuedRuns: 6,
+      maxInProgressRuns: 8,
+      stallThresholdMinutes: 45,
+      repo: 'owner/repo',
+      baseBranches: ['develop', 'main'],
+      healthBranch: 'develop',
+      help: false
+    },
+    now: new Date('2026-03-26T12:00:00Z'),
+    runGhJsonFn,
+    runCommandFn: () => ({ status: 0, stdout: '', stderr: '' }),
+    readJsonFileFn,
+    readOptionalJsonFn,
+    writeReportFn: async (reportPath) => reportPath
+  });
+
+  assert.equal(report.workerOccupancy.authoritySource, 'current-cycle-idle');
+  assert.equal(report.workerOccupancy.occupiedSlotCount, 0);
+  assert.equal(report.workerOccupancy.availableSlotCount, 4);
+  assert.equal(report.workerOccupancy.releasedLaneCount, 0);
+  assert.equal(report.workerOccupancy.activeCodingLanes, 0);
+  assert.equal(report.workerOccupancy.staleRuntimeSuppressed, true);
+  assert.equal(report.workerOccupancy.currentCycleIdleAuthority.status, 'observed');
+  assert.equal(report.workerOccupancy.currentCycleIdleAuthority.source, 'delivery-agent-state');
+  assert.equal(report.workerOccupancy.currentCycleIdleAuthority.nextWakeCondition, 'future-agent-may-pivot');
+});
+
 test('evaluateAdaptiveInflight applies fixed/guarded/stabilize controller modes deterministically', () => {
   const fixed = evaluateAdaptiveInflight({
     maxInflight: 5,
@@ -636,12 +733,20 @@ test('runQueueSupervisor projects worker-slot occupancy from runtime state into 
   assert.deepEqual(report.workerOccupancy, {
     runtimeStatePath: path.join('tests', 'results', '_agent', 'runtime', 'delivery-agent-state.json'),
     available: true,
+    authoritySource: 'delivery-runtime',
     targetSlotCount: 4,
     occupiedSlotCount: 3,
     availableSlotCount: 1,
     releasedLaneCount: 1,
     utilizationRatio: 0.75,
-    activeCodingLanes: 2
+    activeCodingLanes: 2,
+    staleRuntimeSuppressed: false,
+    currentCycleIdleAuthority: {
+      status: 'missing',
+      source: null,
+      observedAt: null,
+      nextWakeCondition: null
+    }
   });
 });
 
@@ -700,12 +805,20 @@ test('runQueueSupervisor reports worker-slot occupancy as unavailable when runti
   assert.deepEqual(report.workerOccupancy, {
     runtimeStatePath: path.join('tests', 'results', '_agent', 'runtime', 'delivery-agent-state.json'),
     available: false,
+    authoritySource: 'delivery-runtime',
     targetSlotCount: 0,
     occupiedSlotCount: 0,
     availableSlotCount: 0,
     releasedLaneCount: 0,
     utilizationRatio: 0,
-    activeCodingLanes: 0
+    activeCodingLanes: 0,
+    staleRuntimeSuppressed: false,
+    currentCycleIdleAuthority: {
+      status: 'missing',
+      source: null,
+      observedAt: null,
+      nextWakeCondition: null
+    }
   });
 });
 

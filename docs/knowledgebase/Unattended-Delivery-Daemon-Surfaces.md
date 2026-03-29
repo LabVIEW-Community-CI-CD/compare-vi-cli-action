@@ -25,6 +25,15 @@ Prefer `priority:delivery:agent:status` as the first read. That surface already
 normalizes manager state, heartbeat fallback, and lane/runtime evidence into one
 bounded status payload.
 
+Queue-empty monitoring note:
+- when the current manager is alive and the repository control-plane receipts
+  report `queue-empty`, `priority:delivery:agent:status` may synthesize an idle
+  `queue-empty-monitoring` lane from the current-cycle queue/monitoring receipts
+  instead of echoing stale historical heartbeat state from an older lane.
+- this projection only applies when the live queue/router surfaces are idle. An
+  active standing issue or issue-lane checkout should still report the current
+  non-idle lane state.
+
 Use the explicit host aliases instead of passing raw `--mode` flags when the
 operator loop needs host-runtime coordination:
 

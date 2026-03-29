@@ -102,11 +102,249 @@ function createWakeInvestmentAccounting() {
   };
 }
 
+function createTreasuryLedger(overrides = {}) {
+  return {
+    schema: 'priority/treasury-ledger@v1',
+    generatedAt: '2026-03-26T06:30:00.000Z',
+    repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+    inputs: {
+      invoiceMetadataPath: 'tests/results/_agent/cost/treasury/HQ1VJLMV-0030.private-metadata.local.json',
+      normalizedInvoiceTurnPath: 'tests/results/_agent/cost/invoice-turns/HQ1VJLMV-0030.local.json',
+      usageExportCsvPath: 'C:/Users/sveld/Downloads/LabVIEW Open-Source Initiative Credit Usage Report (Mar 15 - Apr 15) (3).csv',
+      normalizedUsageExportPath: 'tests/results/_agent/cost/usage-exports/labview_open-source_initiative_credit_usage_report_mar_15_-_apr_15_3.json',
+      costRollupPath: 'tests/results/_agent/cost/agent-cost-rollup.json',
+      operatorSteeringEventPath: 'tests/results/_agent/runtime/operator-steering-event.json'
+    },
+    events: {
+      hardStop: {
+        status: 'inferred',
+        observedAt: null,
+        sourceKind: 'invoice-metadata',
+        reason: 'replenishmentReason=post-exhaustion implies a prior hard-stop event'
+      },
+      replenishment: {
+        status: 'observed',
+        observedAt: '2026-03-26T06:26:03.419Z',
+        sourceKind: 'operator-invoice',
+        reason: 'normalized local invoice metadata established the replenishment window',
+        invoiceTurnId: 'invoice-turn-2026-03-HQ1VJLMV-0030',
+        invoiceId: 'HQ1VJLMV-0030',
+        openedAt: '2026-03-26T00:00:00-07:00',
+        creditsPurchased: 5000,
+        prepaidUsd: 200,
+        activationState: 'active',
+        fundingPurpose: 'operational',
+        sourcePathEvidence: 'C:/Users/sveld/Downloads/Invoice-HQ1VJLMV-0030.pdf'
+      },
+      resume: {
+        status: 'observed',
+        observedAt: '2026-03-26T06:10:28.492Z',
+        sourceKind: 'operator-steering-event',
+        reason: 'operator steering event confirms autonomous work resumed after replenishment handling'
+      }
+    },
+    fundingWindow: {
+      status: 'selected',
+      source: 'normalized-invoice-turn',
+      invoiceTurnId: 'invoice-turn-2026-03-HQ1VJLMV-0030',
+      invoiceId: 'HQ1VJLMV-0030',
+      openedAt: '2026-03-26T00:00:00-07:00',
+      activationState: 'active',
+      fundingPurpose: 'operational'
+    },
+    observedBurn: {
+      status: 'fail-closed',
+      normalizedUsageExportPath: 'tests/results/_agent/cost/usage-exports/labview_open-source_initiative_credit_usage_report_mar_15_-_apr_15_3.json',
+      sourcePathEvidence: 'C:/Users/sveld/Downloads/LabVIEW Open-Source Initiative Credit Usage Report (Mar 15 - Apr 15) (3).csv',
+      startDate: '2026-03-15',
+      endDate: '2026-03-24',
+      usageCredits: 24685.09,
+      usageQuantity: 493701.8,
+      filenameRangeStatus: 'mismatch',
+      declaredFileRange: {
+        startLabel: 'Mar 15',
+        endLabel: 'Apr 15',
+        startMonth: 3,
+        startDay: 15,
+        endMonth: 4,
+        endDay: 15
+      },
+      reason: 'usage export filename declares Mar 15 - Apr 15, but rows cover 2026-03-15..2026-03-24'
+    },
+    remainingCapitalPosture: {
+      status: 'replenished-but-unreconciled',
+      source: 'treasury-ledger',
+      remainingCredits: null,
+      remainingUsd: null,
+      rollupInvoiceTurnId: 'invoice-turn-2026-03-HQ1VJLMV-0027',
+      reason: 'funding-window-rollup-lagging-replenishment'
+    },
+    schedulerState: {
+      status: 'fail-closed',
+      failClosed: true,
+      capitalModeRecommended: 'conserve',
+      treasuryPosture: 'replenished-but-unreconciled',
+      blockingReasonCodes: ['usage-export-window-mismatch'],
+      currentFundingWindowId: 'invoice-turn-2026-03-HQ1VJLMV-0030',
+      latestHardStopStatus: 'inferred',
+      latestResumeStatus: 'observed',
+      latestReplenishmentInvoiceTurnId: 'invoice-turn-2026-03-HQ1VJLMV-0030'
+    },
+    summary: {
+      status: 'fail-closed',
+      blockerCount: 1,
+      blockers: [],
+      warningCount: 1,
+      warnings: [],
+      currentFundingWindowId: 'invoice-turn-2026-03-HQ1VJLMV-0030',
+      latestReplenishmentInvoiceId: 'HQ1VJLMV-0030',
+      latestHardStopStatus: 'inferred',
+      latestResumeStatus: 'observed',
+      remainingCapitalStatus: 'replenished-but-unreconciled',
+      treasuryPosture: 'replenished-but-unreconciled'
+    },
+    ...overrides
+  };
+}
+
+function createReleaseSigningReadiness(overrides = {}) {
+  return {
+    schema: 'priority/release-signing-readiness-report@v1',
+    repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+    workflowContract: {
+      ready: true,
+      workflowPath: '.github/workflows/release-conductor.yml',
+      reasons: []
+    },
+    secretInventory: {
+      status: 'missing',
+      requiredSecretPresent: false,
+      optionalPublicKeyPresent: false,
+      listedSecretCount: 3,
+      listedSecretNames: ['AUTO_APPROVE_TOKEN', 'GH_POLICY_TOKEN', 'GH_TOKEN'],
+      source: 'github-actions-secrets-api',
+      error: null
+    },
+    releaseConductorApply: {
+      status: 'disabled',
+      variablePresent: false,
+      enabled: false,
+      configuredValue: null,
+      listedVariableCount: 0,
+      listedVariableNames: [],
+      source: 'github-actions-variables-api',
+      error: null
+    },
+    signingAuthority: {
+      status: 'scope-missing',
+      requiredScope: 'admin:ssh_signing_key',
+      scopeAvailable: false,
+      listedKeyCount: null,
+      source: 'github-user-ssh-signing-keys-api',
+      error: 'This API operation needs the \"admin:ssh_signing_key\" scope.'
+    },
+    publication: {
+      status: 'tag-created-not-pushed',
+      tagCreated: true,
+      tagPushed: false,
+      targetTag: 'v0.6.4-rc.1'
+    },
+    summary: {
+      status: 'warn',
+      codePathState: 'ready',
+      signingCapabilityState: 'missing',
+      signingAuthorityState: 'scope-missing',
+      releaseConductorApplyState: 'disabled',
+      publicationState: 'tag-created-not-pushed',
+      publishedBundleState: 'producer-native-incomplete',
+      publishedBundleReleaseTag: 'v0.6.3-tools.14',
+      publishedBundleAuthoritativeConsumerPin: null,
+      externalBlocker: 'workflow-signing-secret-missing',
+      blockerCount: 3
+    },
+    blockers: [
+      {
+        code: 'workflow-signing-secret-missing',
+        message: 'RELEASE_TAG_SIGNING_PRIVATE_KEY is not configured for the repository Actions secrets surface.'
+      },
+      {
+        code: 'release-conductor-apply-disabled',
+        message: 'RELEASE_CONDUCTOR_ENABLED is not set to 1 for the repository Actions variable surface.'
+      },
+      {
+        code: 'workflow-signing-admin-scope-missing',
+        message: 'admin:ssh_signing_key is not available to the current automation identity, so SSH signing-key authority cannot be verified or managed.'
+      }
+    ],
+    ...overrides
+  };
+}
+
+function createQueueSupervisorReport(overrides = {}) {
+  return {
+    schema: 'priority/queue-supervisor-report@v1',
+    generatedAt: '2026-03-25T18:00:00.000Z',
+    repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+    workerOccupancy: {
+      available: true,
+      targetSlotCount: 4,
+      occupiedSlotCount: 3,
+      availableSlotCount: 1,
+      releasedLaneCount: 1,
+      utilizationRatio: 0.75,
+      activeCodingLanes: 3
+    },
+    throughputController: {
+      mode: 'stabilize',
+      reasons: ['actionable-work-below-worker-slot-target'],
+      targetCap: 4,
+      metrics: {
+        saturation: 0.75
+      }
+    },
+    ...overrides
+  };
+}
+
+function createThroughputScorecard(overrides = {}) {
+  return {
+    schema: 'priority/throughput-scorecard@v1',
+    generatedAt: '2026-03-25T18:01:00.000Z',
+    repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+    workerPool: {
+      targetSlotCount: 4,
+      occupiedSlotCount: 4,
+      availableSlotCount: 0,
+      releasedLaneCount: 1,
+      utilizationRatio: 1,
+      activeCodingLanes: 3
+    },
+    queue: {
+      throughputMode: 'surge'
+    },
+    summary: {
+      status: 'pressure',
+      reasons: ['actionable-work-with-idle-worker-pool']
+    },
+    ...overrides
+  };
+}
+
 function createDeliveryRuntimeState(overrides = {}) {
   return {
     schema: 'priority/delivery-agent-runtime-state@v1',
     status: 'waiting-ci',
     laneLifecycle: 'waiting-ci',
+    logicalLaneActivation: {
+      seededLaneCount: 4,
+      activeLaneCount: 2,
+      catalog: [
+        { id: 'logical-lane-01', activationState: 'active' },
+        { id: 'logical-lane-02', activationState: 'active' },
+        { id: 'logical-lane-03', activationState: 'seeded' },
+        { id: 'logical-lane-04', activationState: 'seeded' }
+      ]
+    },
     queueAuthorityRefresh: {
       attempted: false,
       status: null,
@@ -131,8 +369,75 @@ function createDeliveryRuntimeState(overrides = {}) {
       outcome: 'waiting-ci',
       blockerClass: 'none',
       nextWakeCondition: 'checks-green',
-      reason: 'Waiting for hosted checks to finish before merge queue advances.'
+      reason: 'Waiting for hosted checks to finish before merge queue advances.',
+      repoContextPivot: null,
+      providerDispatch: {
+        providerId: 'hosted-github-workflow',
+        providerKind: 'hosted-github-workflow',
+        executionPlane: 'hosted',
+        assignmentMode: 'async-validation',
+        dispatchSurface: 'github-actions',
+        completionMode: 'async',
+        workerSlotId: 'worker-slot-2',
+        dispatchStatus: 'completed',
+        completionStatus: 'waiting',
+        failureClass: null
+      },
+      executionTopology: {
+        status: 'bundle-committed',
+        executionPlane: 'hosted',
+        providerId: 'hosted-github-workflow',
+        workerSlotId: 'worker-slot-2',
+        activeLogicalLaneCount: 2,
+        seededLogicalLaneCount: 4,
+        catalogCount: 4,
+        runtimeSurface: 'windows-native-teststand',
+        processModelClass: 'parallel-process-model',
+        windowsOnly: true,
+        requestedSimultaneous: true,
+        cellClass: 'kernel-coordinator',
+        suiteClass: 'dual-plane-parity',
+        operatorAuthorizationRef: 'budget-auth://operator/session-2026-03-24',
+        premiumSaganMode: true,
+        reciprocalLinkReady: true,
+        executionCellLeaseId: 'exec-lease-123',
+        dockerLaneLeaseId: 'docker-lease-456',
+        harnessKind: 'teststand-compare-harness',
+        harnessInstanceId: 'ts-harness-01',
+        cellId: 'cell-sagan-kernel',
+        laneId: 'docker-lane-01',
+        planeBinding: 'dual-plane-parity'
+      },
+      concurrentLaneStatus: {
+        executionBundle: {
+          status: 'committed',
+          planeBinding: 'dual-plane-parity',
+          cellClass: 'kernel-coordinator',
+          suiteClass: 'dual-plane-parity',
+          harnessKind: 'teststand-compare-harness',
+          premiumSaganMode: true,
+          reciprocalLinkReady: true,
+          effectiveBillableRateUsdPerHour: 375,
+          executionCellLeaseId: 'exec-lease-123',
+          dockerLaneLeaseId: 'docker-lease-456',
+          harnessInstanceId: 'ts-harness-01',
+          operatorAuthorizationRef: 'budget-auth://operator/session-2026-03-24',
+          cellId: 'cell-sagan-kernel',
+          laneId: 'docker-lane-01',
+          isolatedLaneGroupId:
+            'host-os-fingerprint:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
+          fingerprintSha256: '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef'
+        }
+      }
     },
+    workerPool: {
+      targetSlotCount: 4,
+      occupiedSlotCount: 2,
+      availableSlotCount: 2,
+      releasedLaneCount: 0,
+      utilizationRatio: 0.5
+    },
+    activeCodingLanes: 2,
     ...overrides
   };
 }
@@ -244,6 +549,10 @@ test('runAutonomousGovernorSummary reports compare governance work when the late
     path.join(tmpDir, 'tests', 'results', '_agent', 'capital', 'wake-investment-accounting.json'),
     createWakeInvestmentAccounting()
   );
+  writeJson(
+    path.join(tmpDir, 'tests', 'results', '_agent', 'handoff', 'treasury-ledger.json'),
+    createTreasuryLedger()
+  );
 
   const { report } = await runAutonomousGovernorSummary({ repoRoot: tmpDir });
 
@@ -251,8 +560,16 @@ test('runAutonomousGovernorSummary reports compare governance work when the late
   assert.equal(report.summary.currentOwnerRepository, 'LabVIEW-Community-CI-CD/compare-vi-cli-action');
   assert.equal(report.summary.nextOwnerRepository, 'LabVIEW-Community-CI-CD/compare-vi-cli-action');
   assert.equal(report.summary.nextAction, 'continue-compare-governance-work');
+  assert.equal(report.summary.ownerDecisionSource, 'wake-lifecycle');
   assert.equal(report.summary.signalQuality, 'validated-governance-work');
   assert.equal(report.funding.invoiceTurnId, 'invoice-turn-2026-03-HQ1VJLMV-0027');
+  assert.equal(report.funding.treasuryPosture, 'replenished-but-unreconciled');
+  assert.equal(report.funding.treasuryFundingWindowId, 'invoice-turn-2026-03-HQ1VJLMV-0030');
+  assert.equal(report.summary.treasuryStatus, 'fail-closed');
+  assert.equal(report.summary.treasuryPosture, 'replenished-but-unreconciled');
+  assert.equal(report.compare.releaseSigningReadiness.status, 'missing');
+  assert.equal(report.summary.releaseSigningStatus, 'missing');
+  assert.equal(report.summary.releaseSigningExternalBlocker, null);
 });
 
 test('runAutonomousGovernorSummary reports monitoring-active when no wake lifecycle exists', async () => {
@@ -265,15 +582,288 @@ test('runAutonomousGovernorSummary reports monitoring-active when no wake lifecy
 
   assert.equal(report.summary.governorMode, 'monitoring-active');
   assert.equal(report.summary.nextAction, 'future-agent-may-pivot');
+  assert.equal(report.summary.ownerDecisionSource, 'compare-monitoring-mode');
   assert.equal(report.summary.signalQuality, 'idle-monitoring');
   assert.equal(report.summary.currentOwnerRepository, 'LabVIEW-Community-CI-CD/compare-vi-cli-action');
   assert.equal(report.summary.nextOwnerRepository, 'LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate');
   assert.equal(report.wake.terminalState, null);
   assert.equal(report.compare.deliveryRuntime.status, 'none');
+  assert.equal(report.compare.releaseSigningReadiness.status, 'missing');
   assert.equal(report.compare.deliveryRuntime.queueAuthorityRefresh.attempted, false);
   assert.equal(report.compare.deliveryRuntime.queueAuthorityRefresh.status, null);
   assert.equal(report.summary.queueHandoffStatus, 'none');
   assert.equal(report.summary.queueAuthoritySource, 'none');
+  assert.equal(report.summary.releaseSigningStatus, 'missing');
+});
+
+test('runAutonomousGovernorSummary prefers marketplace-recommended canonical repos during safe-idle monitoring', async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'governor-summary-marketplace-'));
+  writeJson(path.join(tmpDir, 'tests', 'results', '_agent', 'issue', 'no-standing-priority.json'), createQueueEmpty());
+  writeJson(path.join(tmpDir, 'tests', 'results', '_agent', 'handoff', 'continuity-summary.json'), createContinuitySummary());
+  writeJson(path.join(tmpDir, 'tests', 'results', '_agent', 'handoff', 'monitoring-mode.json'), createMonitoringMode());
+  writeJson(
+    path.join(tmpDir, 'tests', 'results', '_agent', 'runtime', 'delivery-agent-state.json'),
+    createDeliveryRuntimeState({
+      status: 'idle',
+      laneLifecycle: 'idle',
+      marketplace: {
+        status: 'ready',
+        snapshotPath: 'tests/results/_agent/marketplace/lane-marketplace-snapshot.json',
+        recommendedLane: {
+          repository: 'LabVIEW-Community-CI-CD/comparevi-history',
+          issueNumber: 186,
+          issueUrl: 'https://github.com/LabVIEW-Community-CI-CD/comparevi-history/issues/186',
+          issueTitle: 'Shared platform lane'
+        }
+      },
+      activeLane: {
+        laneLifecycle: 'idle',
+        blockerClass: 'none',
+        actionType: null,
+        outcome: null,
+        nextWakeCondition: null,
+        reason: null
+      }
+    })
+  );
+
+  const { report } = await runAutonomousGovernorSummary({ repoRoot: tmpDir });
+
+  assert.equal(report.summary.governorMode, 'monitoring-active');
+  assert.equal(report.summary.currentOwnerRepository, 'LabVIEW-Community-CI-CD/compare-vi-cli-action');
+  assert.equal(report.summary.nextOwnerRepository, 'LabVIEW-Community-CI-CD/comparevi-history');
+  assert.equal(report.summary.nextAction, 'future-agent-may-pivot');
+  assert.equal(report.summary.ownerDecisionSource, 'delivery-runtime-marketplace');
+});
+
+test('runAutonomousGovernorSummary suppresses stale delivery runtime blockers during queue-empty pivot monitoring', async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'governor-summary-monitoring-stale-runtime-'));
+  writeJson(path.join(tmpDir, 'tests', 'results', '_agent', 'issue', 'no-standing-priority.json'), createQueueEmpty());
+  writeJson(path.join(tmpDir, 'tests', 'results', '_agent', 'handoff', 'continuity-summary.json'), createContinuitySummary());
+  writeJson(path.join(tmpDir, 'tests', 'results', '_agent', 'handoff', 'monitoring-mode.json'), createMonitoringMode());
+  writeJson(
+    path.join(tmpDir, 'tests', 'results', '_agent', 'runtime', 'delivery-agent-state.json'),
+    createDeliveryRuntimeState({
+      status: 'blocked',
+      laneLifecycle: 'blocked',
+      activeLane: {
+        issue: 959,
+        prUrl: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/pull/1017',
+        laneLifecycle: 'blocked',
+        actionType: 'merge-pr',
+        outcome: 'merge-blocked',
+        blockerClass: 'merge',
+        nextWakeCondition: 'mergeable-pr',
+        reason: 'Stale merge blocker carried from an old delivery-runtime receipt.'
+      }
+    })
+  );
+
+  const { report } = await runAutonomousGovernorSummary({ repoRoot: tmpDir });
+
+  assert.equal(report.summary.governorMode, 'monitoring-active');
+  assert.equal(report.summary.nextAction, 'future-agent-may-pivot');
+  assert.equal(report.compare.deliveryRuntime.status, 'none');
+  assert.equal(report.compare.deliveryRuntime.prUrl, null);
+  assert.equal(report.compare.deliveryRuntime.issueNumber, null);
+  assert.equal(report.summary.queueHandoffStatus, 'none');
+  assert.equal(report.summary.queueHandoffNextWakeCondition, null);
+  assert.equal(report.summary.queueHandoffPrUrl, null);
+  assert.equal(report.summary.queueAuthoritySource, 'none');
+});
+
+test('runAutonomousGovernorSummary preserves fresh current-cycle idle authority while suppressing stale delivery runtime blockers', async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'governor-summary-monitoring-current-cycle-idle-'));
+  writeJson(path.join(tmpDir, 'tests', 'results', '_agent', 'issue', 'no-standing-priority.json'), createQueueEmpty());
+  writeJson(path.join(tmpDir, 'tests', 'results', '_agent', 'handoff', 'continuity-summary.json'), createContinuitySummary());
+  writeJson(path.join(tmpDir, 'tests', 'results', '_agent', 'handoff', 'monitoring-mode.json'), createMonitoringMode());
+  writeJson(
+    path.join(tmpDir, 'tests', 'results', '_agent', 'runtime', 'delivery-agent-state.json'),
+    createDeliveryRuntimeState({
+      generatedAt: '2026-03-26T12:00:00.000Z',
+      status: 'blocked',
+      laneLifecycle: 'blocked',
+      activeLane: {
+        issue: 959,
+        prUrl: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/pull/1017',
+        laneLifecycle: 'blocked',
+        actionType: 'merge-pr',
+        outcome: 'merge-blocked',
+        blockerClass: 'merge',
+        nextWakeCondition: 'mergeable-pr',
+        reason: 'Stale merge blocker carried from an old delivery-runtime receipt.'
+      }
+    })
+  );
+  writeJson(
+    path.join(tmpDir, 'tests', 'results', '_agent', 'runtime', 'observer-heartbeat.json'),
+    {
+      schema: 'priority/runtime-observer-heartbeat@v1',
+      generatedAt: '2026-03-26T12:30:00.000Z',
+      outcome: 'queue-empty',
+      activeLane: null
+    }
+  );
+
+  const { report } = await runAutonomousGovernorSummary({ repoRoot: tmpDir }, { now: new Date('2026-03-26T12:35:00.000Z') });
+
+  assert.equal(report.summary.governorMode, 'monitoring-active');
+  assert.equal(report.compare.deliveryRuntime.status, 'none');
+  assert.equal(report.compare.deliveryRuntime.currentCycleIdleAuthority.status, 'observed');
+  assert.equal(report.compare.deliveryRuntime.currentCycleIdleAuthority.source, 'observer-heartbeat');
+  assert.equal(report.summary.currentCycleIdleStatus, 'observed');
+  assert.equal(report.summary.currentCycleIdleSource, 'observer-heartbeat');
+  assert.equal(report.summary.currentCycleIdleNextWakeCondition, null);
+});
+
+test('runAutonomousGovernorSummary preserves broker pivot authority while suppressing stale delivery runtime blockers', async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'governor-summary-monitoring-pivot-authority-'));
+  writeJson(path.join(tmpDir, 'tests', 'results', '_agent', 'issue', 'no-standing-priority.json'), createQueueEmpty());
+  writeJson(path.join(tmpDir, 'tests', 'results', '_agent', 'handoff', 'continuity-summary.json'), createContinuitySummary());
+  writeJson(path.join(tmpDir, 'tests', 'results', '_agent', 'handoff', 'monitoring-mode.json'), createMonitoringMode());
+  writeJson(
+    path.join(tmpDir, 'tests', 'results', '_agent', 'runtime', 'delivery-agent-state.json'),
+    createDeliveryRuntimeState({
+      status: 'blocked',
+      laneLifecycle: 'blocked',
+      activeLane: {
+        issue: 959,
+        prUrl: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/pull/1017',
+        laneLifecycle: 'blocked',
+        actionType: 'merge-pr',
+        outcome: 'merge-blocked',
+        blockerClass: 'merge',
+        nextWakeCondition: 'mergeable-pr',
+        reason: 'Stale merge blocker carried from an old delivery-runtime receipt.',
+        repoContextPivot: {
+          currentRepository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+          currentOwnerRepository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+          nextOwnerRepository: 'LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate',
+          nextAction: 'reopen-template-monitoring-work',
+          ownerDecisionSource: 'delivery-runtime-marketplace',
+          pivotStatus: 'ready',
+          brokerSelectionSource: 'released-waiting-state-marketplace'
+        }
+      }
+    })
+  );
+
+  const { report } = await runAutonomousGovernorSummary({ repoRoot: tmpDir });
+
+  assert.equal(report.summary.governorMode, 'monitoring-active');
+  assert.equal(report.summary.currentOwnerRepository, 'LabVIEW-Community-CI-CD/compare-vi-cli-action');
+  assert.equal(report.summary.nextOwnerRepository, 'LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate');
+  assert.equal(report.summary.nextAction, 'reopen-template-monitoring-work');
+  assert.equal(report.summary.ownerDecisionSource, 'delivery-runtime-marketplace');
+  assert.equal(report.compare.deliveryRuntime.status, 'none');
+  assert.equal(report.compare.deliveryRuntime.prUrl, null);
+  assert.equal(report.compare.deliveryRuntime.issueNumber, null);
+  assert.equal(report.compare.deliveryRuntime.repoContextPivot.nextOwnerRepository, 'LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate');
+  assert.equal(report.compare.deliveryRuntime.repoContextPivot.pivotStatus, 'ready');
+  assert.equal(report.compare.deliveryRuntime.repoContextPivot.brokerSelectionSource, 'released-waiting-state-marketplace');
+  assert.equal(report.summary.queueHandoffStatus, 'none');
+  assert.equal(report.summary.queueAuthoritySource, 'none');
+});
+
+test('runAutonomousGovernorSummary prefers throughput scorecard worker-pool capital over queue and runtime fallbacks', async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'governor-summary-throughput-worker-pool-'));
+  writeJson(path.join(tmpDir, 'tests', 'results', '_agent', 'issue', 'no-standing-priority.json'), createQueueEmpty());
+  writeJson(path.join(tmpDir, 'tests', 'results', '_agent', 'handoff', 'continuity-summary.json'), createContinuitySummary());
+  writeJson(path.join(tmpDir, 'tests', 'results', '_agent', 'handoff', 'monitoring-mode.json'), createMonitoringMode());
+  writeJson(
+    path.join(tmpDir, 'tests', 'results', '_agent', 'queue', 'queue-supervisor-report.json'),
+    createQueueSupervisorReport()
+  );
+  writeJson(
+    path.join(tmpDir, 'tests', 'results', '_agent', 'throughput', 'throughput-scorecard.json'),
+    createThroughputScorecard()
+  );
+  writeJson(
+    path.join(tmpDir, 'tests', 'results', '_agent', 'runtime', 'delivery-agent-state.json'),
+    createDeliveryRuntimeState()
+  );
+
+  const { report } = await runAutonomousGovernorSummary({ repoRoot: tmpDir });
+
+  assert.equal(report.compare.workerPoolCapital.authoritySource, 'throughput-scorecard');
+  assert.equal(report.compare.workerPoolCapital.targetSlotCount, 4);
+  assert.equal(report.compare.workerPoolCapital.occupiedSlotCount, 4);
+  assert.equal(report.compare.workerPoolCapital.availableSlotCount, 0);
+  assert.equal(report.compare.workerPoolCapital.releasedLaneCount, 1);
+  assert.equal(report.compare.workerPoolCapital.releasedCapitalAvailable, true);
+  assert.equal(report.compare.workerPoolCapital.idleWorkerCapacityAvailable, false);
+  assert.equal(report.compare.workerPoolCapital.underfilledWorkerPool, true);
+  assert.equal(report.summary.workerPoolAuthoritySource, 'throughput-scorecard');
+  assert.equal(report.summary.workerPoolQueueThroughputMode, 'surge');
+  assert.deepEqual(report.summary.workerPoolThroughputPressureReasons, ['actionable-work-with-idle-worker-pool']);
+});
+
+test('runAutonomousGovernorSummary falls back to queue supervisor worker-pool capital when throughput scorecard is absent', async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'governor-summary-queue-worker-pool-'));
+  writeJson(path.join(tmpDir, 'tests', 'results', '_agent', 'issue', 'no-standing-priority.json'), createQueueEmpty());
+  writeJson(path.join(tmpDir, 'tests', 'results', '_agent', 'handoff', 'continuity-summary.json'), createContinuitySummary());
+  writeJson(path.join(tmpDir, 'tests', 'results', '_agent', 'handoff', 'monitoring-mode.json'), createMonitoringMode());
+  writeJson(
+    path.join(tmpDir, 'tests', 'results', '_agent', 'queue', 'queue-supervisor-report.json'),
+    createQueueSupervisorReport()
+  );
+  writeJson(
+    path.join(tmpDir, 'tests', 'results', '_agent', 'runtime', 'delivery-agent-state.json'),
+    createDeliveryRuntimeState({
+      workerPool: {
+        targetSlotCount: 4,
+        occupiedSlotCount: 1,
+        availableSlotCount: 3,
+        releasedLaneCount: 0,
+        utilizationRatio: 0.25
+      }
+    })
+  );
+
+  const { report } = await runAutonomousGovernorSummary({ repoRoot: tmpDir });
+
+  assert.equal(report.compare.workerPoolCapital.authoritySource, 'queue-supervisor');
+  assert.equal(report.compare.workerPoolCapital.availableSlotCount, 1);
+  assert.equal(report.compare.workerPoolCapital.releasedLaneCount, 1);
+  assert.equal(report.compare.workerPoolCapital.idleWorkerCapacityAvailable, true);
+  assert.equal(report.compare.workerPoolCapital.releasedCapitalAvailable, true);
+  assert.equal(report.compare.workerPoolCapital.underfilledWorkerPool, true);
+  assert.equal(report.summary.workerPoolAuthoritySource, 'queue-supervisor');
+  assert.equal(report.summary.workerPoolThroughputStatus, null);
+  assert.deepEqual(report.summary.workerPoolThroughputPressureReasons, []);
+  assert.equal(report.summary.workerPoolQueueThroughputMode, 'stabilize');
+});
+
+test('runAutonomousGovernorSummary carries explicit release signing blocker state into the governor summary', async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'governor-summary-release-signing-'));
+  writeJson(path.join(tmpDir, 'tests', 'results', '_agent', 'issue', 'no-standing-priority.json'), createQueueEmpty());
+  writeJson(path.join(tmpDir, 'tests', 'results', '_agent', 'handoff', 'continuity-summary.json'), createContinuitySummary());
+  writeJson(path.join(tmpDir, 'tests', 'results', '_agent', 'handoff', 'monitoring-mode.json'), createMonitoringMode());
+  writeJson(
+    path.join(tmpDir, 'tests', 'results', '_agent', 'release', 'release-signing-readiness.json'),
+    createReleaseSigningReadiness()
+  );
+
+  const { report } = await runAutonomousGovernorSummary({ repoRoot: tmpDir });
+
+  assert.equal(report.compare.releaseSigningReadiness.status, 'warn');
+  assert.equal(report.compare.releaseSigningReadiness.codePathState, 'ready');
+  assert.equal(report.compare.releaseSigningReadiness.signingCapabilityState, 'missing');
+  assert.equal(report.compare.releaseSigningReadiness.signingAuthorityState, 'scope-missing');
+  assert.equal(report.compare.releaseSigningReadiness.releaseConductorApplyState, 'disabled');
+  assert.equal(report.compare.releaseSigningReadiness.publicationState, 'tag-created-not-pushed');
+  assert.equal(report.compare.releaseSigningReadiness.publishedBundleState, 'producer-native-incomplete');
+  assert.equal(report.compare.releaseSigningReadiness.publishedBundleReleaseTag, 'v0.6.3-tools.14');
+  assert.equal(report.compare.releaseSigningReadiness.publishedBundleAuthoritativeConsumerPin, null);
+  assert.equal(report.compare.releaseSigningReadiness.externalBlocker, 'workflow-signing-secret-missing');
+  assert.equal(report.summary.releaseSigningStatus, 'warn');
+  assert.equal(report.summary.releaseSigningAuthorityState, 'scope-missing');
+  assert.equal(report.summary.releaseConductorApplyState, 'disabled');
+  assert.equal(report.summary.releaseSigningExternalBlocker, 'workflow-signing-secret-missing');
+  assert.equal(report.summary.releasePublicationState, 'tag-created-not-pushed');
+  assert.equal(report.summary.releasePublishedBundleState, 'producer-native-incomplete');
+  assert.equal(report.summary.releasePublishedBundleReleaseTag, 'v0.6.3-tools.14');
+  assert.equal(report.summary.releasePublishedBundleAuthoritativeConsumerPin, null);
 });
 
 test('runAutonomousGovernorSummary carries queue-owned delivery runtime state into the governor summary', async () => {
@@ -297,12 +887,175 @@ test('runAutonomousGovernorSummary carries queue-owned delivery runtime state in
   assert.equal(report.compare.deliveryRuntime.laneLifecycle, 'waiting-ci');
   assert.equal(report.compare.deliveryRuntime.nextWakeCondition, 'checks-green');
   assert.equal(report.compare.deliveryRuntime.prUrl, 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/pull/1864');
+  assert.equal(report.compare.deliveryRuntime.executionTopology.status, 'bundle-committed');
+  assert.equal(report.compare.deliveryRuntime.executionTopology.executionPlane, 'hosted');
+  assert.equal(report.compare.deliveryRuntime.executionTopology.providerId, 'hosted-github-workflow');
+  assert.equal(report.compare.deliveryRuntime.executionTopology.workerSlotId, 'worker-slot-2');
+  assert.equal(report.compare.deliveryRuntime.executionTopology.activeLogicalLaneCount, 2);
+  assert.equal(report.compare.deliveryRuntime.executionTopology.seededLogicalLaneCount, 4);
+  assert.equal(report.compare.deliveryRuntime.executionTopology.catalogCount, 4);
+  assert.equal(report.compare.deliveryRuntime.executionTopology.runtimeSurface, 'windows-native-teststand');
+  assert.equal(report.compare.deliveryRuntime.executionTopology.processModelClass, 'parallel-process-model');
+  assert.equal(report.compare.deliveryRuntime.executionTopology.windowsOnly, true);
+  assert.equal(report.compare.deliveryRuntime.executionTopology.requestedSimultaneous, true);
+  assert.equal(report.compare.deliveryRuntime.executionTopology.cellClass, 'kernel-coordinator');
+  assert.equal(report.compare.deliveryRuntime.executionTopology.suiteClass, 'dual-plane-parity');
+  assert.equal(
+    report.compare.deliveryRuntime.executionTopology.operatorAuthorizationRef,
+    'budget-auth://operator/session-2026-03-24'
+  );
+  assert.equal(report.compare.deliveryRuntime.executionTopology.logicalLaneActivation.activeLaneCount, 2);
+  assert.equal(report.compare.deliveryRuntime.executionTopology.providerDispatch.dispatchStatus, 'completed');
+  assert.equal(report.compare.deliveryRuntime.executionTopology.executionBundle.status, 'committed');
+  assert.equal(report.compare.deliveryRuntime.executionBundle.status, 'committed');
+  assert.equal(report.compare.deliveryRuntime.executionBundle.planeBinding, 'dual-plane-parity');
+  assert.equal(report.compare.deliveryRuntime.executionBundle.cellClass, 'kernel-coordinator');
+  assert.equal(report.compare.deliveryRuntime.executionBundle.suiteClass, 'dual-plane-parity');
+  assert.equal(report.compare.deliveryRuntime.executionBundle.premiumSaganMode, true);
+  assert.equal(report.compare.deliveryRuntime.executionBundle.reciprocalLinkReady, true);
+  assert.equal(report.compare.deliveryRuntime.executionBundle.effectiveBillableRateUsdPerHour, 375);
+  assert.equal(
+    report.compare.deliveryRuntime.executionBundle.operatorAuthorizationRef,
+    'budget-auth://operator/session-2026-03-24'
+  );
   assert.equal(report.compare.deliveryRuntime.queueAuthorityRefresh.attempted, false);
   assert.equal(report.compare.deliveryRuntime.queueAuthorityRefresh.summaryPath, null);
+  assert.equal(report.summary.executionTopologyStatus, 'bundle-committed');
+  assert.equal(report.summary.executionTopologyExecutionPlane, 'hosted');
+  assert.equal(report.summary.executionTopologyProviderId, 'hosted-github-workflow');
+  assert.equal(report.summary.executionTopologyWorkerSlotId, 'worker-slot-2');
+  assert.equal(report.summary.executionTopologyActiveLogicalLaneCount, 2);
+  assert.equal(report.summary.executionTopologySeededLogicalLaneCount, 4);
+  assert.equal(report.summary.executionTopologyRuntimeSurface, 'windows-native-teststand');
+  assert.equal(report.summary.executionTopologyProcessModelClass, 'parallel-process-model');
+  assert.equal(report.summary.executionTopologyWindowsOnly, true);
+  assert.equal(report.summary.executionTopologyRequestedSimultaneous, true);
+  assert.equal(report.summary.executionTopologyCellClass, 'kernel-coordinator');
+  assert.equal(report.summary.executionTopologySuiteClass, 'dual-plane-parity');
+  assert.equal(report.summary.executionTopologyOperatorAuthorizationRef, 'budget-auth://operator/session-2026-03-24');
+  assert.equal(report.summary.executionBundleStatus, 'committed');
+  assert.equal(report.summary.executionBundlePlaneBinding, 'dual-plane-parity');
+  assert.equal(report.summary.executionBundlePremiumSaganMode, true);
+  assert.equal(report.summary.executionBundleReciprocalLinkReady, true);
+  assert.equal(report.summary.executionBundleEffectiveBillableRateUsdPerHour, 375);
   assert.equal(report.summary.queueHandoffStatus, 'checks-pending');
   assert.equal(report.summary.queueHandoffNextWakeCondition, 'checks-green');
   assert.equal(report.summary.queueHandoffPrUrl, 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/pull/1864');
   assert.equal(report.summary.queueAuthoritySource, 'delivery-runtime');
+});
+
+test('runAutonomousGovernorSummary prefers concentrated delivery execution topology over raw bundle-derived conflicts', async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'governor-summary-execution-topology-preference-'));
+  writeJson(path.join(tmpDir, 'tests', 'results', '_agent', 'issue', 'no-standing-priority.json'), createQueueEmpty());
+  writeJson(path.join(tmpDir, 'tests', 'results', '_agent', 'handoff', 'continuity-summary.json'), createContinuitySummary());
+  writeJson(path.join(tmpDir, 'tests', 'results', '_agent', 'handoff', 'monitoring-mode.json'), createMonitoringMode());
+  writeJson(path.join(tmpDir, 'tests', 'results', '_agent', 'issue', 'wake-lifecycle.json'), createWakeLifecycle());
+  writeJson(
+    path.join(tmpDir, 'tests', 'results', '_agent', 'capital', 'wake-investment-accounting.json'),
+    createWakeInvestmentAccounting()
+  );
+  writeJson(
+    path.join(tmpDir, 'tests', 'results', '_agent', 'runtime', 'delivery-agent-state.json'),
+    createDeliveryRuntimeState({
+      activeLane: {
+        issue: 1863,
+        prUrl: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/pull/1864',
+        laneLifecycle: 'waiting-ci',
+        actionType: 'merge-pr',
+        outcome: 'waiting-ci',
+        blockerClass: 'none',
+        nextWakeCondition: 'checks-green',
+        reason: 'Waiting for hosted checks to finish before merge queue advances.',
+        providerDispatch: {
+          providerId: 'hosted-github-workflow',
+          providerKind: 'hosted-github-workflow',
+          executionPlane: 'hosted',
+          assignmentMode: 'async-validation',
+          dispatchSurface: 'github-actions',
+          completionMode: 'async',
+          workerSlotId: 'worker-slot-2',
+          dispatchStatus: 'completed',
+          completionStatus: 'waiting',
+          failureClass: null
+        },
+        executionTopology: {
+          status: 'provider-waiting',
+          executionPlane: 'local',
+          providerId: 'local-codex',
+          workerSlotId: 'worker-slot-9',
+          activeLogicalLaneCount: 1,
+          seededLogicalLaneCount: 2,
+          catalogCount: 2,
+          runtimeSurface: 'windows-native-teststand',
+          processModelClass: 'sequential-process-model',
+          windowsOnly: true,
+          requestedSimultaneous: false,
+          cellClass: 'worker-cell',
+          suiteClass: 'single-plane-review',
+          operatorAuthorizationRef: 'budget-auth://operator/session-override',
+          premiumSaganMode: false,
+          reciprocalLinkReady: false,
+          executionCellLeaseId: 'exec-lease-override',
+          dockerLaneLeaseId: 'docker-lease-override',
+          harnessKind: 'teststand-compare-harness',
+          harnessInstanceId: 'ts-harness-override',
+          cellId: 'cell-worker-09',
+          laneId: 'docker-lane-09',
+          planeBinding: 'native-labview-2026-64'
+        },
+        concurrentLaneStatus: {
+          executionBundle: {
+            status: 'committed',
+            planeBinding: 'dual-plane-parity',
+            cellClass: 'kernel-coordinator',
+            suiteClass: 'dual-plane-parity',
+            harnessKind: 'teststand-compare-harness',
+            premiumSaganMode: true,
+            reciprocalLinkReady: true,
+            effectiveBillableRateUsdPerHour: 375,
+            executionCellLeaseId: 'exec-lease-123',
+            dockerLaneLeaseId: 'docker-lease-456',
+            harnessInstanceId: 'ts-harness-01',
+            operatorAuthorizationRef: 'budget-auth://operator/session-2026-03-24',
+            cellId: 'cell-sagan-kernel',
+            laneId: 'docker-lane-01'
+          }
+        }
+      }
+    })
+  );
+
+  const { report } = await runAutonomousGovernorSummary({ repoRoot: tmpDir });
+
+  assert.equal(report.compare.deliveryRuntime.executionTopology.status, 'provider-waiting');
+  assert.equal(report.compare.deliveryRuntime.executionTopology.executionPlane, 'local');
+  assert.equal(report.compare.deliveryRuntime.executionTopology.providerId, 'local-codex');
+  assert.equal(report.compare.deliveryRuntime.executionTopology.workerSlotId, 'worker-slot-9');
+  assert.equal(report.compare.deliveryRuntime.executionTopology.activeLogicalLaneCount, 1);
+  assert.equal(report.compare.deliveryRuntime.executionTopology.seededLogicalLaneCount, 2);
+  assert.equal(report.compare.deliveryRuntime.executionTopology.catalogCount, 2);
+  assert.equal(report.compare.deliveryRuntime.executionTopology.processModelClass, 'sequential-process-model');
+  assert.equal(report.compare.deliveryRuntime.executionTopology.requestedSimultaneous, false);
+  assert.equal(report.compare.deliveryRuntime.executionTopology.cellClass, 'worker-cell');
+  assert.equal(report.compare.deliveryRuntime.executionTopology.suiteClass, 'single-plane-review');
+  assert.equal(
+    report.compare.deliveryRuntime.executionTopology.operatorAuthorizationRef,
+    'budget-auth://operator/session-override'
+  );
+  assert.equal(report.compare.deliveryRuntime.executionTopology.providerDispatch.dispatchStatus, 'completed');
+  assert.equal(report.compare.deliveryRuntime.executionTopology.executionBundle.status, 'committed');
+  assert.equal(report.compare.deliveryRuntime.executionBundle.status, 'committed');
+  assert.equal(report.summary.executionTopologyStatus, 'provider-waiting');
+  assert.equal(report.summary.executionTopologyExecutionPlane, 'local');
+  assert.equal(report.summary.executionTopologyProviderId, 'local-codex');
+  assert.equal(report.summary.executionTopologyWorkerSlotId, 'worker-slot-9');
+  assert.equal(report.summary.executionTopologyActiveLogicalLaneCount, 1);
+  assert.equal(report.summary.executionTopologySeededLogicalLaneCount, 2);
+  assert.equal(report.summary.executionTopologyProcessModelClass, 'sequential-process-model');
+  assert.equal(report.summary.executionTopologyRequestedSimultaneous, false);
+  assert.equal(report.summary.executionTopologyCellClass, 'worker-cell');
+  assert.equal(report.summary.executionTopologySuiteClass, 'single-plane-review');
+  assert.equal(report.summary.executionTopologyOperatorAuthorizationRef, 'budget-auth://operator/session-override');
 });
 
 test('runAutonomousGovernorSummary exposes queue authority refresh telemetry from delivery runtime state', async () => {

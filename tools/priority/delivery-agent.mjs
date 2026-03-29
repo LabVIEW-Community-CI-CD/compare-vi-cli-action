@@ -956,6 +956,120 @@ function buildWorkerProviderDispatchReceipt(providerSelection, {
   };
 }
 
+function coerceNonNegativeInteger(value) {
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < 0) {
+    return null;
+  }
+  return parsed;
+}
+
+function deriveExecutionTopologyProcessModel(executionBundle = null) {
+  const planeBinding = normalizeText(executionBundle?.planeBinding).toLowerCase();
+  const harnessKind = normalizeText(executionBundle?.harnessKind);
+  const requestedSimultaneous = planeBinding === 'dual-plane-parity';
+  const windowsNativeTestStand =
+    (!harnessKind || harnessKind === 'teststand-compare-harness') &&
+    (requestedSimultaneous || planeBinding.startsWith('native-labview-'));
+  const runtimeSurface = windowsNativeTestStand ? 'windows-native-teststand' : null;
+  const processModelClass = !runtimeSurface
+    ? null
+    : requestedSimultaneous
+      ? 'parallel-process-model'
+      : 'sequential-process-model';
+
+  return {
+    runtimeSurface,
+    processModelClass,
+    windowsOnly: runtimeSurface === 'windows-native-teststand',
+    requestedSimultaneous
+  };
+}
+
+function deriveExecutionTopologyStatus({
+  activeLogicalLaneCount = null,
+  seededLogicalLaneCount = null,
+  providerDispatch = null,
+  executionBundle = null
+} = {}) {
+  const bundleStatus = normalizeText(executionBundle?.status);
+  if (bundleStatus) {
+    return `bundle-${bundleStatus}`;
+  }
+
+  const completionStatus = normalizeText(providerDispatch?.completionStatus);
+  if (completionStatus) {
+    return `provider-${completionStatus}`;
+  }
+
+  const dispatchStatus = normalizeText(providerDispatch?.dispatchStatus);
+  if (dispatchStatus) {
+    return `provider-${dispatchStatus}`;
+  }
+
+  if ((activeLogicalLaneCount ?? 0) > 0 || (seededLogicalLaneCount ?? 0) > 0) {
+    return 'logical-lanes-tracked';
+  }
+
+  return 'none';
+}
+
+export function buildExecutionTopologyRuntimeState({
+  logicalLaneActivation = null,
+  providerDispatch = null,
+  providerSelection = null,
+  workerSlotId = null,
+  concurrentLaneStatus = null
+} = {}) {
+  const logicalLaneState = normalizeOptionalObject(logicalLaneActivation);
+  const executionBundle = normalizeOptionalObject(concurrentLaneStatus?.executionBundle);
+  const effectiveProviderDispatch =
+    normalizeOptionalObject(providerDispatch) ??
+    buildWorkerProviderDispatchReceipt(providerSelection, { workerSlotId });
+
+  const activeLogicalLaneCount = coerceNonNegativeInteger(logicalLaneState?.activeLaneCount);
+  const seededLogicalLaneCount = coerceNonNegativeInteger(logicalLaneState?.seededLaneCount);
+
+  if (!executionBundle && !effectiveProviderDispatch && activeLogicalLaneCount == null && seededLogicalLaneCount == null) {
+    return null;
+  }
+
+  const processModel = deriveExecutionTopologyProcessModel(executionBundle);
+
+  return {
+    status: deriveExecutionTopologyStatus({
+      activeLogicalLaneCount,
+      seededLogicalLaneCount,
+      providerDispatch: effectiveProviderDispatch,
+      executionBundle
+    }),
+    executionPlane:
+      normalizeText(effectiveProviderDispatch?.executionPlane) ||
+      normalizeText(executionBundle?.planeBinding) ||
+      null,
+    providerId: normalizeText(effectiveProviderDispatch?.providerId) || null,
+    workerSlotId: normalizeText(effectiveProviderDispatch?.workerSlotId) || null,
+    cellId: normalizeText(executionBundle?.cellId) || null,
+    laneId: normalizeText(executionBundle?.laneId) || null,
+    cellClass: normalizeText(executionBundle?.cellClass) || null,
+    suiteClass: normalizeText(executionBundle?.suiteClass) || null,
+    planeBinding: normalizeText(executionBundle?.planeBinding) || null,
+    harnessKind: normalizeText(executionBundle?.harnessKind) || null,
+    harnessInstanceId: normalizeText(executionBundle?.harnessInstanceId) || null,
+    executionCellLeaseId: normalizeText(executionBundle?.executionCellLeaseId) || null,
+    dockerLaneLeaseId: normalizeText(executionBundle?.dockerLaneLeaseId) || null,
+    premiumSaganMode: executionBundle?.premiumSaganMode === true,
+    reciprocalLinkReady: executionBundle?.reciprocalLinkReady === true,
+    operatorAuthorizationRef: normalizeText(executionBundle?.operatorAuthorizationRef) || null,
+    activeLogicalLaneCount,
+    seededLogicalLaneCount,
+    runtimeSurface: processModel.runtimeSurface,
+    processModelClass: processModel.processModelClass,
+    windowsOnly: processModel.windowsOnly,
+    requestedSimultaneous: processModel.requestedSimultaneous
+  };
+}
+
 function commandUsesLocalCollabOrchestrator(command = []) {
   return Array.isArray(command)
     ? command.some((entry) => normalizeText(entry).replace(/\\/g, '/').includes('tools/local-collab/orchestrator/run-phase.mjs'))
@@ -2643,6 +2757,7 @@ function buildConcurrentLaneStatusRuntimeState({ taskPacket, executionReceipt })
   const hostedRun = normalizeOptionalObject(concurrentLaneStatus.hostedRun);
   const pullRequest = normalizeOptionalObject(concurrentLaneStatus.pullRequest);
   const mergeQueue = normalizeOptionalObject(pullRequest?.mergeQueue);
+  const executionBundle = normalizeOptionalObject(concurrentLaneStatus.executionBundle);
 
   return {
     receiptPath: normalizeText(concurrentLaneStatus.receiptPath) || null,
@@ -2669,6 +2784,28 @@ function buildConcurrentLaneStatusRuntimeState({ taskPacket, executionReceipt })
                 enqueuedAt: normalizeText(mergeQueue.enqueuedAt) || null
               }
             : null
+        }
+      : null,
+    executionBundle: executionBundle
+      ? {
+          status: normalizeText(executionBundle.status) || null,
+          cellId: normalizeText(executionBundle.cellId) || null,
+          laneId: normalizeText(executionBundle.laneId) || null,
+          cellClass: normalizeText(executionBundle.cellClass) || null,
+          suiteClass: normalizeText(executionBundle.suiteClass) || null,
+          executionCellLeaseId: normalizeText(executionBundle.executionCellLeaseId) || null,
+          dockerLaneLeaseId: normalizeText(executionBundle.dockerLaneLeaseId) || null,
+          harnessKind: normalizeText(executionBundle.harnessKind) || null,
+          harnessInstanceId: normalizeText(executionBundle.harnessInstanceId) || null,
+          planeBinding: normalizeText(executionBundle.planeBinding) || null,
+          premiumSaganMode: executionBundle.premiumSaganMode === true,
+          reciprocalLinkReady: executionBundle.reciprocalLinkReady === true,
+          effectiveBillableRateUsdPerHour: Number.isFinite(executionBundle.effectiveBillableRateUsdPerHour)
+            ? executionBundle.effectiveBillableRateUsdPerHour
+            : null,
+          operatorAuthorizationRef: normalizeText(executionBundle.operatorAuthorizationRef) || null,
+          isolatedLaneGroupId: normalizeText(executionBundle.isolatedLaneGroupId) || null,
+          fingerprintSha256: normalizeText(executionBundle.fingerprintSha256) || null
         }
       : null,
     summary: summary
@@ -3275,6 +3412,11 @@ export function buildDeliveryAgentRuntimeRecord({
   lanePath,
   marketplace = null
 }) {
+  const runtimeEpochId =
+    normalizeText(executionReceipt?.runtimeEpochId) ||
+    normalizeText(taskPacket?.runtimeEpochId) ||
+    normalizeText(process.env.COMPAREVI_RUNTIME_DAEMON_RUNTIME_EPOCH_ID) ||
+    null;
   const laneId =
     normalizeText(executionReceipt?.laneId) ||
     normalizeText(taskPacket?.laneId) ||
@@ -3369,9 +3511,42 @@ export function buildDeliveryAgentRuntimeRecord({
     schedulerDecision,
     taskPacket
   });
+  const executionTopology = buildExecutionTopologyRuntimeState({
+    logicalLaneActivation,
+    providerDispatch,
+    providerSelection: workerProviderSelection,
+    workerSlotId: normalizeText(providerDispatch?.workerSlotId) || normalizeText(workerProviderSelection?.selectedSlotId) || null,
+    concurrentLaneStatus
+  });
+  const repoContextPivot =
+    ['repo-context-pivot', 'repo-context-pivot-pending'].includes(
+      normalizeText(executionReceipt?.details?.actionType) || ''
+    )
+      ? {
+          currentRepository: normalizeText(executionReceipt?.details?.currentRepository) || null,
+          currentOwnerRepository: normalizeText(executionReceipt?.details?.currentOwnerRepository) || null,
+          nextOwnerRepository: normalizeText(executionReceipt?.details?.nextOwnerRepository) || null,
+          nextAction: normalizeText(executionReceipt?.details?.nextAction) || null,
+          ownerDecisionSource: normalizeText(executionReceipt?.details?.ownerDecisionSource) || null,
+          governorMode: normalizeText(executionReceipt?.details?.governorMode) || null,
+          pivotStatus: normalizeText(executionReceipt?.details?.pivotStatus) || null,
+          targetEntrypointPath: normalizeText(executionReceipt?.details?.targetEntrypointPath) || null,
+          targetHeadSha: normalizeText(executionReceipt?.details?.targetHeadSha) || null,
+          brokerSelectedIssueNumber: coercePositiveInteger(executionReceipt?.details?.brokerSelectedIssueNumber),
+          brokerSelectedIssueUrl: normalizeText(executionReceipt?.details?.brokerSelectedIssueUrl) || null,
+          brokerSelectedIssueTitle: normalizeText(executionReceipt?.details?.brokerSelectedIssueTitle) || null,
+          brokerProviderId: normalizeText(executionReceipt?.details?.brokerProviderId) || null,
+          brokerSlotId: normalizeText(executionReceipt?.details?.brokerSlotId) || null,
+          brokerSelectionSource: normalizeText(executionReceipt?.details?.brokerSelectionSource) || null,
+          releasedSlotId: normalizeText(executionReceipt?.details?.releasedSlotId) || null,
+          waitingLaneLifecycle: normalizeText(executionReceipt?.details?.waitingLaneLifecycle) || null,
+          waitingStateReason: normalizeText(executionReceipt?.details?.waitingStateReason) || null
+        }
+      : null;
   const activeLane = {
     schema: DELIVERY_AGENT_LANE_STATE_SCHEMA,
     generatedAt: toIso(now),
+    runtimeEpochId,
     laneId,
     issue,
     epic,
@@ -3400,6 +3575,8 @@ export function buildDeliveryAgentRuntimeRecord({
     readyValidationClearance,
     concurrentLaneApply,
     concurrentLaneStatus,
+    executionTopology,
+    repoContextPivot,
     liveAgentModelSelection,
     workerProviderSelection,
     providerDispatch
@@ -3425,6 +3602,7 @@ export function buildDeliveryAgentRuntimeRecord({
     generatedAt: toIso(now),
     repository,
     runtimeDir,
+    runtimeEpochId,
     policy: {
       schema: DELIVERY_AGENT_POLICY_SCHEMA,
       backlogAuthority: policy.backlogAuthority,

@@ -32,6 +32,17 @@ test('validate workflow pins explicit LabVIEW paths for hosted Linux and Windows
   assert.match(workflow, /-Image \$env:NI_WINDOWS_IMAGE/);
   assert.match(workflow, /-LabVIEWPath \$env:NI_WINDOWS_LABVIEW_PATH/);
   assert.match(workflow, /validate-vi-history-scenarios-windows/);
+  assert.match(workflow, /vi-history-scenarios-windows-lv32-plan:/);
+  assert.match(workflow, /Resolve-SelfHostedWindowsLanePlan\.ps1/);
+  assert.match(workflow, /vi-history-scenarios-windows-lv32:/);
+  assert.match(workflow, /runs-on:\s*\[self-hosted, Windows, X64, comparevi, capability-ingress, labview-2026, lv32\]/);
+  assert.match(workflow, /Assert-RunnerLabelContract\.ps1/);
+  assert.match(workflow, /Write-LabVIEW2026HostPlaneDiagnostics\.ps1/);
+  assert.match(workflow, /-OutputPath \$reportPath/);
+  assert.match(workflow, /Compare-VIHistory\.ps1/);
+  assert.match(workflow, /Invoke-LVCompare\.ps1/);
+  assert.match(workflow, /Write-VIHistoryLV32ShadowProofReceipt\.ps1/);
+  assert.match(workflow, /LABVIEW_PATH:\s*\$\{\{\s*steps\.host-plane\.outputs\.labview_path\s*\}\}/);
 });
 
 test('fixture-drift hosted Linux lane passes explicit linux container LabVIEW path and stays free of the hosted windows lane', () => {
@@ -146,8 +157,30 @@ test('docker desktop fast-loop only accepts lane-specific LabVIEW path contracts
 test('actionlint config no longer carries legacy Windows docker runner labels', () => {
   const config = readRepoFile('.github/actionlint.yaml');
 
+  assert.match(config, /comparevi/);
+  assert.match(config, /capability-ingress/);
+  assert.match(config, /labview-2026/);
+  assert.match(config, /lv32/);
+  assert.match(config, /docker-lane/);
+  assert.match(config, /teststand/);
   assert.match(config, /self-hosted-docker-linux/);
   assert.match(config, /hosted-docker-linux/);
   assert.doesNotMatch(config, /self-hosted-docker-windows/);
   assert.doesNotMatch(config, /hosted-docker-windows/);
+});
+
+test('labview-cli-compare routes through the explicit lv32 host plane contract', () => {
+  const workflow = readRepoFile('.github/workflows/labview-cli-compare.yml');
+
+  assert.match(
+    workflow,
+    /runs-on:\s*\[self-hosted, Windows, X64, comparevi, capability-ingress, labview-2026, lv32\]/
+  );
+  assert.match(workflow, /node tools\/npm\/run-script\.mjs env:labview:2026:host-planes/);
+  assert.match(workflow, /\$report\.native\.planes\.x32\.status -ne 'ready'/);
+  assert.match(workflow, /LABVIEW_CLI_PATH:\s*\$\{\{\s*steps\.host_plane\.outputs\.cli\s*\}\}/);
+  assert.doesNotMatch(
+    workflow,
+    /Program Files \(x86\)\\National Instruments\\Shared\\LabVIEW CLI\\LabVIEWCLI\.exe/
+  );
 });

@@ -78,14 +78,43 @@ test('release workflow explicitly dispatches publish-tools-image with actions wr
 
   assert.equal(releaseJob?.permissions?.actions, 'write');
   assert.ok(dispatchStep, 'release workflow should dispatch publish-tools-image explicitly');
+  assert.equal(dispatchStep.if, "env.RELEASE_PUBLICATION_MODE == 'publish'");
   assert.equal(dispatchStep.uses, 'actions/github-script@v8');
   assert.match(dispatchStep.with.script, /workflow_id:\s*'publish-tools-image\.yml'/);
-  assert.match(dispatchStep.with.script, /ref:\s*'\$\{\{\s*github\.ref_name\s*\}\}'/);
+  assert.match(dispatchStep.with.script, /ref:\s*'develop'/);
   assert.match(
     dispatchStep.with.script,
     /const releaseVersion = '\$\{\{\s*steps\.comparevi_tools\.outputs\.comparevi_tools_release_version\s*\}\}';/
   );
   assert.match(dispatchStep.with.script, /const releaseChannel = releaseVersion\.includes\('-rc\.'\) \? 'rc' : 'stable';/);
+});
+
+test('release workflow remains tag-triggered and also supports workflow_dispatch replay for repaired tags', () => {
+  const workflowPath = path.join(workflowsRoot, 'release.yml');
+  const workflowRaw = readFileSync(workflowPath, 'utf8');
+  const workflow = yaml.load(workflowRaw);
+
+  assert.deepEqual(workflow?.on?.push?.tags, ['v*']);
+  assert.ok(Object.prototype.hasOwnProperty.call(workflow?.on ?? {}, 'workflow_dispatch'));
+  assert.equal(workflow?.on?.workflow_dispatch?.inputs?.release_tag?.required, true);
+  assert.equal(workflow?.on?.workflow_dispatch?.inputs?.release_tag?.type, 'string');
+  assert.equal(workflow?.on?.workflow_dispatch?.inputs?.publication_mode?.default, 'publish');
+  assert.equal(workflow?.on?.workflow_dispatch?.inputs?.publication_mode?.type, 'choice');
+  assert.deepEqual(workflow?.on?.workflow_dispatch?.inputs?.publication_mode?.options, ['publish', 'verify-existing-release']);
+  assert.match(workflowRaw, /name: Resolve release target tag/);
+  assert.match(workflowRaw, /tag='\$\{\{\s*inputs\.release_tag\s*\}\}'/);
+  assert.match(workflowRaw, /name: Resolve publication mode/);
+  assert.match(workflowRaw, /mode='\$\{\{\s*inputs\.publication_mode\s*\}\}'/);
+  assert.match(workflowRaw, /target_tag:\s*\$\{\{\s*steps\.release_target\.outputs\.tag\s*\}\}/);
+  assert.match(workflowRaw, /publication_mode:\s*\$\{\{\s*steps\.publication_mode\.outputs\.mode\s*\}\}/);
+  assert.match(workflowRaw, /ref:\s*\$\{\{\s*steps\.release_target\.outputs\.tag\s*\}\}/);
+  assert.match(workflowRaw, /RELEASE_TAG:\s*\$\{\{\s*needs\.certification-matrix\.outputs\.target_tag\s*\}\}/);
+  assert.match(workflowRaw, /RELEASE_PUBLICATION_MODE:\s*\$\{\{\s*needs\.certification-matrix\.outputs\.publication_mode\s*\}\}/);
+  assert.match(workflowRaw, /tag_name:\s*\$\{\{\s*env\.RELEASE_TAG\s*\}\}/);
+  assert.match(workflowRaw, /if:\s*env\.RELEASE_PUBLICATION_MODE == 'publish' && steps\.notes\.outputs\.fallback == 'false'/);
+  assert.match(workflowRaw, /if:\s*env\.RELEASE_PUBLICATION_MODE == 'publish' && steps\.notes\.outputs\.fallback == 'true'/);
+  assert.match(workflowRaw, /name: Record protected-tag-safe replay mode/);
+  assert.match(workflowRaw, /if:\s*env\.RELEASE_PUBLICATION_MODE == 'verify-existing-release'/);
 });
 
 test('release workflow resolves downloaded artifacts through the shared helper before validation', () => {
@@ -125,7 +154,11 @@ test('release workflow resolves downloaded artifacts through the shared helper b
   assert.match(workflowRaw, /name: Download release-review scenario artifacts/);
   assert.match(workflowRaw, /merge-multiple:\s*true/);
   assert.match(workflowRaw, /name: Resolve release source commit/);
-  assert.match(workflowRaw, /git rev-parse "\$\{\{\s*github\.ref_name\s*\}\}\^\{commit\}"/);
+  assert.match(workflowRaw, /git fetch --force --tags origin "refs\/tags\/\$\{RELEASE_TAG\}:refs\/tags\/\$\{RELEASE_TAG\}"/);
+  assert.match(workflowRaw, /git rev-parse "\$\{RELEASE_TAG\}\^\{commit\}"/);
+  assert.match(workflowRaw, /RELEASE_PUBLICATION_MODE:\s*\$\{\{\s*needs\.certification-matrix\.outputs\.publication_mode\s*\}\}/);
+  assert.match(workflowRaw, /name: Download supply-chain trust artifact/);
+  assert.match(workflowRaw, /path:\s*tests\/results\/_agent/);
   assert.match(workflowRaw, /name: Resolve downstream proving artifact selection/);
   assert.match(workflowRaw, /resolve-downstream-proving-artifact\.mjs/);
   assert.match(workflowRaw, /--workflow downstream-promotion\.yml/);
@@ -133,14 +166,19 @@ test('release workflow resolves downloaded artifacts through the shared helper b
   assert.match(workflowRaw, /tests\/results\/_agent\/release\/downstream-proving-selection\.json/);
   assert.match(workflowRaw, /name: Validate downstream proving selection schema/);
   assert.match(workflowRaw, /docs\/schemas\/downstream-proving-selection-v1\.schema\.json/);
-  assert.match(workflowRaw, /--downstream-proving-selection tests\/results\/_agent\/release\/downstream-proving-selection\.json/);
   assert.match(workflowRaw, /steps\.downstream_proving_artifacts\.outputs\.downstream_proving_scorecard_path/);
+  assert.match(workflowRaw, /downstream_promotion_path="\$\{\{\s*steps\.downstream_proving_artifacts\.outputs\.downstream_proving_scorecard_path\s*\}\}"/);
+  assert.match(workflowRaw, /downstream_proving_selection_path='tests\/results\/_agent\/release\/downstream-proving-selection\.json'/);
+  assert.match(workflowRaw, /if \[\[ "\$\{RELEASE_PUBLICATION_MODE\}" == 'publish' \]\]; then/);
+  assert.match(workflowRaw, /scorecard_args\+=\(\s*--downstream-proving-selection "\$\{downstream_proving_selection_path\}"\s*--require-downstream-proving\s*\)/ms);
+  assert.match(workflowRaw, /if \[ -n "\$\{downstream_promotion_path\}" \]; then/);
+  assert.match(workflowRaw, /scorecard_args\+=\(--downstream-promotion "\$\{downstream_promotion_path\}"\)/);
   assert.match(workflowRaw, /tools\/release-review\/Evaluate-ReleaseReviewPolicy\.ps1/);
   assert.match(workflowRaw, /tests\/results\/release-contract\/review-comment\.md/);
   assert.match(workflowRaw, /--candidate-workflow release\.yml/);
-  assert.match(workflowRaw, /--downstream-promotion "\$\{\{\s*steps\.downstream_proving_artifacts\.outputs\.downstream_proving_scorecard_path\s*\}\}"/);
-  assert.match(workflowRaw, /--require-downstream-proving/);
+  assert.doesNotMatch(workflowRaw, /--downstream-promotion "\$\{\{\s*steps\.downstream_proving_artifacts\.outputs\.downstream_proving_scorecard_path\s*\}\}"/);
   assert.match(workflowRaw, /signed_tag_args=\(\)/);
+  assert.match(workflowRaw, /scorecard_args=\(/);
   assert.match(workflowRaw, /signed_tag_args\+=\(--require-signed-tag\)/);
   assert.equal(releaseContractJob?.permissions?.actions, 'read');
   assert.equal(releaseContractJob?.if, "${{ always() && needs.release.result == 'success' }}");
@@ -155,9 +193,42 @@ test('release workflow resolves downloaded artifacts through the shared helper b
   assert.doesNotMatch(workflowRaw, /steps\.contract_artifacts\.outputs\.linux_tarball_path/);
 });
 
+test('release workflow appends repair-mode guidance for unsigned or lightweight tags', () => {
+  const workflowPath = path.join(workflowsRoot, 'release.yml');
+  const workflowRaw = readFileSync(workflowPath, 'utf8');
+
+  assert.match(workflowRaw, /name: Append release trust remediation guidance/);
+  assert.match(workflowRaw, /node "\$\{\{\s*steps\.automation_root\.outputs\.path\s*\}\}\/tools\/priority\/release-trust-remediation\.mjs"/);
+  assert.match(workflowRaw, /--trust-report tests\/results\/_agent\/supply-chain\/release-trust-gate\.json/);
+  assert.match(workflowRaw, /--tag-ref "\$\{RELEASE_TAG\}"/);
+  assert.match(workflowRaw, /--output tests\/results\/_agent\/release\/release-trust-remediation\.md/);
+  assert.match(workflowRaw, /--summary "\$GITHUB_STEP_SUMMARY"/);
+  assert.match(workflowRaw, /tests\/results\/_agent\/release\/release-trust-remediation\.md/);
+});
+
+test('release workflow always evaluates rollback drill health after trust gate failures', () => {
+  const workflowPath = path.join(workflowsRoot, 'release.yml');
+  const workflow = yaml.load(readFileSync(workflowPath, 'utf8'));
+  const releaseSteps = workflow?.jobs?.release?.steps ?? [];
+  const rollbackHealthStep = releaseSteps.find((step) => step?.name === 'Enforce rollback drill health gate');
+  const validateRollbackStep = releaseSteps.find((step) => step?.name === 'Validate rollback drill health schema');
+  const uploadRollbackStep = releaseSteps.find((step) => step?.name === 'Upload rollback drill health artifact');
+
+  assert.equal(rollbackHealthStep?.if, 'always()');
+  assert.equal(validateRollbackStep?.if, 'always()');
+  assert.equal(uploadRollbackStep?.if, 'always()');
+});
+
 test('monthly release workflow marks itself as the SLO remediation candidate', () => {
   const workflowPath = path.join(workflowsRoot, 'monthly-stability-release.yml');
   const workflowRaw = readFileSync(workflowPath, 'utf8');
 
   assert.match(workflowRaw, /--candidate-workflow monthly-stability-release\.yml/);
+});
+
+test('monthly release workflow routes breach umbrellas as standing-excluded governance issues', () => {
+  const workflowPath = path.join(workflowsRoot, 'monthly-stability-release.yml');
+  const workflowRaw = readFileSync(workflowPath, 'utf8');
+
+  assert.match(workflowRaw, /--route-labels "slo,ci,governance,standing-excluded"/);
 });

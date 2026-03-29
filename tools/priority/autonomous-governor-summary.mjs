@@ -3,9 +3,16 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import {
+  deriveCurrentCycleIdleAuthority,
+  DEFAULT_IDLE_AUTHORITY_FRESH_SECONDS
+} from './lib/current-cycle-idle-authority.mjs';
 
 const MODULE_DIR = path.dirname(fileURLToPath(import.meta.url));
 const DEFAULT_REPO_ROOT = path.resolve(MODULE_DIR, '..', '..');
+const COMPAREVI_UPSTREAM_REPOSITORY = 'LabVIEW-Community-CI-CD/compare-vi-cli-action';
+const COMPAREVI_HISTORY_REPOSITORY = 'LabVIEW-Community-CI-CD/comparevi-history';
+const TEMPLATE_CANONICAL_REPOSITORY = 'LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate';
 
 export const DEFAULT_OUTPUT_PATH = path.join(
   'tests',
@@ -55,6 +62,41 @@ export const DEFAULT_DELIVERY_RUNTIME_STATE_PATH = path.join(
   '_agent',
   'runtime',
   'delivery-agent-state.json'
+);
+export const DEFAULT_OBSERVER_HEARTBEAT_PATH = path.join(
+  'tests',
+  'results',
+  '_agent',
+  'runtime',
+  'observer-heartbeat.json'
+);
+export const DEFAULT_RELEASE_SIGNING_READINESS_PATH = path.join(
+  'tests',
+  'results',
+  '_agent',
+  'release',
+  'release-signing-readiness.json'
+);
+export const DEFAULT_QUEUE_SUPERVISOR_REPORT_PATH = path.join(
+  'tests',
+  'results',
+  '_agent',
+  'queue',
+  'queue-supervisor-report.json'
+);
+export const DEFAULT_THROUGHPUT_SCORECARD_PATH = path.join(
+  'tests',
+  'results',
+  '_agent',
+  'throughput',
+  'throughput-scorecard.json'
+);
+export const DEFAULT_TREASURY_LEDGER_PATH = path.join(
+  'tests',
+  'results',
+  '_agent',
+  'handoff',
+  'treasury-ledger.json'
 );
 
 function asOptional(value) {
@@ -179,6 +221,324 @@ function parseBoolean(value) {
   return value === true;
 }
 
+function toNonNegativeInteger(value) {
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed >= 0 ? parsed : null;
+}
+
+function toNonNegativeNumber(value) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
+}
+
+function normalizeStringArray(value) {
+  return Array.isArray(value) ? value.map((entry) => asOptional(entry)).filter(Boolean) : [];
+}
+
+function coalesceBoolean(...values) {
+  for (const value of values) {
+    if (typeof value === 'boolean') {
+      return value;
+    }
+  }
+  return false;
+}
+
+function normalizeLower(value) {
+  return typeof value === 'string' ? value.trim().toLowerCase() : '';
+}
+
+function deriveExecutionTopologyProcessModel(executionBundle) {
+  const planeBinding = asOptional(executionBundle?.planeBinding);
+  const normalizedPlaneBinding = normalizeLower(planeBinding);
+  const harnessKind = asOptional(executionBundle?.harnessKind);
+  const requestedSimultaneous = normalizedPlaneBinding === 'dual-plane-parity';
+  const windowsNativeTestStand =
+    (!harnessKind || harnessKind === 'teststand-compare-harness') &&
+    (requestedSimultaneous || normalizedPlaneBinding.startsWith('native-labview-'));
+  const runtimeSurface = windowsNativeTestStand ? 'windows-native-teststand' : null;
+  const processModelClass = !runtimeSurface
+    ? null
+    : requestedSimultaneous
+      ? 'parallel-process-model'
+      : 'sequential-process-model';
+
+  return {
+    runtimeSurface,
+    processModelClass,
+    windowsOnly: runtimeSurface === 'windows-native-teststand',
+    requestedSimultaneous
+  };
+}
+
+function deriveExecutionTopologyStatus({ activeLogicalLaneCount, seededLogicalLaneCount, providerDispatch, executionBundle }) {
+  const bundleStatus = asOptional(executionBundle?.status);
+  if (bundleStatus) {
+    return `bundle-${bundleStatus}`;
+  }
+
+  const completionStatus = asOptional(providerDispatch?.completionStatus);
+  if (completionStatus) {
+    return `provider-${completionStatus}`;
+  }
+
+  const dispatchStatus = asOptional(providerDispatch?.dispatchStatus);
+  if (dispatchStatus) {
+    return `provider-${dispatchStatus}`;
+  }
+
+  if ((activeLogicalLaneCount ?? 0) > 0 || (seededLogicalLaneCount ?? 0) > 0) {
+    return 'logical-lanes-tracked';
+  }
+
+  return 'none';
+}
+
+function deriveExecutionTopology({ deliveryRuntimeState, activeLane, executionBundle }) {
+  const logicalLaneActivation = normalizeOptionalObject(deliveryRuntimeState?.logicalLaneActivation);
+  const logicalLaneCatalog = Array.isArray(logicalLaneActivation?.catalog) ? logicalLaneActivation.catalog : [];
+  const providerDispatch =
+    normalizeOptionalObject(activeLane?.providerDispatch) ??
+    normalizeOptionalObject(deliveryRuntimeState?.artifacts?.providerDispatch);
+  const activeLaneExecutionTopology = normalizeOptionalObject(activeLane?.executionTopology);
+  const activeLogicalLaneCountFallback = Number.isInteger(logicalLaneActivation?.activeLaneCount)
+    ? logicalLaneActivation.activeLaneCount
+    : null;
+  const seededLogicalLaneCountFallback = Number.isInteger(logicalLaneActivation?.seededLaneCount)
+    ? logicalLaneActivation.seededLaneCount
+    : null;
+
+  if (activeLaneExecutionTopology) {
+    const topologyLogicalLaneActivation = normalizeOptionalObject(activeLaneExecutionTopology.logicalLaneActivation);
+    const topologyProviderDispatch = normalizeOptionalObject(activeLaneExecutionTopology.providerDispatch);
+    const topologyExecutionBundle = normalizeOptionalObject(activeLaneExecutionTopology.executionBundle);
+    const effectiveProviderDispatch = topologyProviderDispatch ?? providerDispatch;
+    const effectiveExecutionBundle = topologyExecutionBundle ?? executionBundle;
+    const processModel = deriveExecutionTopologyProcessModel(effectiveExecutionBundle);
+    const activeLogicalLaneCount = Number.isInteger(activeLaneExecutionTopology.activeLogicalLaneCount)
+      ? activeLaneExecutionTopology.activeLogicalLaneCount
+      : Number.isInteger(topologyLogicalLaneActivation?.activeLaneCount)
+        ? topologyLogicalLaneActivation.activeLaneCount
+        : activeLogicalLaneCountFallback;
+    const seededLogicalLaneCount = Number.isInteger(activeLaneExecutionTopology.seededLogicalLaneCount)
+      ? activeLaneExecutionTopology.seededLogicalLaneCount
+      : Number.isInteger(topologyLogicalLaneActivation?.seededLaneCount)
+        ? topologyLogicalLaneActivation.seededLaneCount
+        : seededLogicalLaneCountFallback;
+    const catalogCount = Number.isInteger(activeLaneExecutionTopology.catalogCount)
+      ? activeLaneExecutionTopology.catalogCount
+      : Number.isInteger(topologyLogicalLaneActivation?.catalogCount)
+        ? topologyLogicalLaneActivation.catalogCount
+        : logicalLaneCatalog.length;
+    const executionPlane =
+      asOptional(activeLaneExecutionTopology.executionPlane) ||
+      asOptional(topologyProviderDispatch?.executionPlane) ||
+      asOptional(providerDispatch?.executionPlane) ||
+      asOptional(activeLaneExecutionTopology.planeBinding) ||
+      asOptional(topologyExecutionBundle?.planeBinding) ||
+      asOptional(executionBundle?.planeBinding);
+
+    return {
+      status:
+        asOptional(activeLaneExecutionTopology.status) ||
+        deriveExecutionTopologyStatus({
+          activeLogicalLaneCount,
+          seededLogicalLaneCount,
+          providerDispatch: effectiveProviderDispatch,
+          executionBundle: effectiveExecutionBundle
+        }),
+      executionPlane,
+      providerId:
+        asOptional(activeLaneExecutionTopology.providerId) ||
+        asOptional(topologyProviderDispatch?.providerId) ||
+        asOptional(providerDispatch?.providerId),
+      workerSlotId:
+        asOptional(activeLaneExecutionTopology.workerSlotId) ||
+        asOptional(topologyProviderDispatch?.workerSlotId) ||
+        asOptional(providerDispatch?.workerSlotId),
+      activeLogicalLaneCount,
+      seededLogicalLaneCount,
+      catalogCount,
+      runtimeSurface: asOptional(activeLaneExecutionTopology.runtimeSurface) || processModel.runtimeSurface,
+      processModelClass: asOptional(activeLaneExecutionTopology.processModelClass) || processModel.processModelClass,
+      windowsOnly: coalesceBoolean(activeLaneExecutionTopology.windowsOnly, processModel.windowsOnly),
+      requestedSimultaneous: coalesceBoolean(
+        activeLaneExecutionTopology.requestedSimultaneous,
+        processModel.requestedSimultaneous
+      ),
+      cellClass:
+        asOptional(activeLaneExecutionTopology.cellClass) ||
+        asOptional(topologyExecutionBundle?.cellClass) ||
+        asOptional(executionBundle?.cellClass),
+      suiteClass:
+        asOptional(activeLaneExecutionTopology.suiteClass) ||
+        asOptional(topologyExecutionBundle?.suiteClass) ||
+        asOptional(executionBundle?.suiteClass),
+      operatorAuthorizationRef:
+        asOptional(activeLaneExecutionTopology.operatorAuthorizationRef) ||
+        asOptional(topologyExecutionBundle?.operatorAuthorizationRef) ||
+        asOptional(executionBundle?.operatorAuthorizationRef),
+      premiumSaganMode: coalesceBoolean(
+        activeLaneExecutionTopology.premiumSaganMode,
+        topologyExecutionBundle?.premiumSaganMode,
+        executionBundle?.premiumSaganMode
+      ),
+      reciprocalLinkReady: coalesceBoolean(
+        activeLaneExecutionTopology.reciprocalLinkReady,
+        topologyExecutionBundle?.reciprocalLinkReady,
+        executionBundle?.reciprocalLinkReady
+      ),
+      logicalLaneActivation: {
+        activeLaneCount: activeLogicalLaneCount,
+        seededLaneCount: seededLogicalLaneCount,
+        catalogCount
+      },
+      providerDispatch: {
+        providerId: asOptional(topologyProviderDispatch?.providerId) || asOptional(providerDispatch?.providerId),
+        providerKind: asOptional(topologyProviderDispatch?.providerKind) || asOptional(providerDispatch?.providerKind),
+        executionPlane,
+        assignmentMode:
+          asOptional(topologyProviderDispatch?.assignmentMode) || asOptional(providerDispatch?.assignmentMode),
+        dispatchSurface:
+          asOptional(topologyProviderDispatch?.dispatchSurface) || asOptional(providerDispatch?.dispatchSurface),
+        completionMode:
+          asOptional(topologyProviderDispatch?.completionMode) || asOptional(providerDispatch?.completionMode),
+        workerSlotId:
+          asOptional(topologyProviderDispatch?.workerSlotId) || asOptional(providerDispatch?.workerSlotId),
+        dispatchStatus:
+          asOptional(topologyProviderDispatch?.dispatchStatus) || asOptional(providerDispatch?.dispatchStatus),
+        completionStatus:
+          asOptional(topologyProviderDispatch?.completionStatus) || asOptional(providerDispatch?.completionStatus),
+        failureClass:
+          asOptional(topologyProviderDispatch?.failureClass) || asOptional(providerDispatch?.failureClass)
+      },
+      executionBundle: {
+        status: asOptional(topologyExecutionBundle?.status) || asOptional(executionBundle?.status),
+        planeBinding:
+          asOptional(activeLaneExecutionTopology.planeBinding) ||
+          asOptional(topologyExecutionBundle?.planeBinding) ||
+          asOptional(executionBundle?.planeBinding),
+        cellClass:
+          asOptional(topologyExecutionBundle?.cellClass) || asOptional(executionBundle?.cellClass),
+        suiteClass:
+          asOptional(topologyExecutionBundle?.suiteClass) || asOptional(executionBundle?.suiteClass),
+        premiumSaganMode: coalesceBoolean(
+          topologyExecutionBundle?.premiumSaganMode,
+          executionBundle?.premiumSaganMode
+        ),
+        reciprocalLinkReady: coalesceBoolean(
+          topologyExecutionBundle?.reciprocalLinkReady,
+          executionBundle?.reciprocalLinkReady
+        ),
+        effectiveBillableRateUsdPerHour: Number.isFinite(topologyExecutionBundle?.effectiveBillableRateUsdPerHour)
+          ? topologyExecutionBundle.effectiveBillableRateUsdPerHour
+          : Number.isFinite(executionBundle?.effectiveBillableRateUsdPerHour)
+            ? executionBundle.effectiveBillableRateUsdPerHour
+            : null,
+        executionCellLeaseId:
+          asOptional(activeLaneExecutionTopology.executionCellLeaseId) ||
+          asOptional(topologyExecutionBundle?.executionCellLeaseId) ||
+          asOptional(executionBundle?.executionCellLeaseId),
+        dockerLaneLeaseId:
+          asOptional(activeLaneExecutionTopology.dockerLaneLeaseId) ||
+          asOptional(topologyExecutionBundle?.dockerLaneLeaseId) ||
+          asOptional(executionBundle?.dockerLaneLeaseId),
+        harnessKind:
+          asOptional(activeLaneExecutionTopology.harnessKind) ||
+          asOptional(topologyExecutionBundle?.harnessKind) ||
+          asOptional(executionBundle?.harnessKind),
+        harnessInstanceId:
+          asOptional(activeLaneExecutionTopology.harnessInstanceId) ||
+          asOptional(topologyExecutionBundle?.harnessInstanceId) ||
+          asOptional(executionBundle?.harnessInstanceId),
+        operatorAuthorizationRef:
+          asOptional(topologyExecutionBundle?.operatorAuthorizationRef) ||
+          asOptional(executionBundle?.operatorAuthorizationRef),
+        cellId:
+          asOptional(activeLaneExecutionTopology.cellId) ||
+          asOptional(topologyExecutionBundle?.cellId) ||
+          asOptional(executionBundle?.cellId),
+        laneId:
+          asOptional(activeLaneExecutionTopology.laneId) ||
+          asOptional(topologyExecutionBundle?.laneId) ||
+          asOptional(executionBundle?.laneId),
+        isolatedLaneGroupId:
+          asOptional(topologyExecutionBundle?.isolatedLaneGroupId) ||
+          asOptional(executionBundle?.isolatedLaneGroupId),
+        fingerprintSha256:
+          asOptional(topologyExecutionBundle?.fingerprintSha256) ||
+          asOptional(executionBundle?.fingerprintSha256)
+      }
+    };
+  }
+
+  const processModel = deriveExecutionTopologyProcessModel(executionBundle);
+  const activeLogicalLaneCount = activeLogicalLaneCountFallback;
+  const seededLogicalLaneCount = seededLogicalLaneCountFallback;
+  const executionPlane = asOptional(providerDispatch?.executionPlane) || asOptional(executionBundle?.planeBinding);
+
+  return {
+    status: deriveExecutionTopologyStatus({
+      activeLogicalLaneCount,
+      seededLogicalLaneCount,
+      providerDispatch,
+      executionBundle
+    }),
+    executionPlane,
+    providerId: asOptional(providerDispatch?.providerId),
+    workerSlotId: asOptional(providerDispatch?.workerSlotId),
+    activeLogicalLaneCount,
+    seededLogicalLaneCount,
+    catalogCount: logicalLaneCatalog.length,
+    runtimeSurface: processModel.runtimeSurface,
+    processModelClass: processModel.processModelClass,
+    windowsOnly: processModel.windowsOnly,
+    requestedSimultaneous: processModel.requestedSimultaneous,
+    cellClass: asOptional(executionBundle?.cellClass),
+    suiteClass: asOptional(executionBundle?.suiteClass),
+    operatorAuthorizationRef: asOptional(executionBundle?.operatorAuthorizationRef),
+    premiumSaganMode: parseBoolean(executionBundle?.premiumSaganMode),
+    reciprocalLinkReady: parseBoolean(executionBundle?.reciprocalLinkReady),
+    logicalLaneActivation: {
+      activeLaneCount: activeLogicalLaneCount,
+      seededLaneCount: seededLogicalLaneCount,
+      catalogCount: logicalLaneCatalog.length
+    },
+    providerDispatch: {
+      providerId: asOptional(providerDispatch?.providerId),
+      providerKind: asOptional(providerDispatch?.providerKind),
+      executionPlane,
+      assignmentMode: asOptional(providerDispatch?.assignmentMode),
+      dispatchSurface: asOptional(providerDispatch?.dispatchSurface),
+      completionMode: asOptional(providerDispatch?.completionMode),
+      workerSlotId: asOptional(providerDispatch?.workerSlotId),
+      dispatchStatus: asOptional(providerDispatch?.dispatchStatus),
+      completionStatus: asOptional(providerDispatch?.completionStatus),
+      failureClass: asOptional(providerDispatch?.failureClass)
+    },
+    executionBundle: {
+      status: asOptional(executionBundle?.status),
+      planeBinding: asOptional(executionBundle?.planeBinding),
+      cellClass: asOptional(executionBundle?.cellClass),
+      suiteClass: asOptional(executionBundle?.suiteClass),
+      premiumSaganMode: parseBoolean(executionBundle?.premiumSaganMode),
+      reciprocalLinkReady: parseBoolean(executionBundle?.reciprocalLinkReady),
+      effectiveBillableRateUsdPerHour: Number.isFinite(executionBundle?.effectiveBillableRateUsdPerHour)
+        ? executionBundle.effectiveBillableRateUsdPerHour
+        : null,
+      executionCellLeaseId: asOptional(executionBundle?.executionCellLeaseId),
+      dockerLaneLeaseId: asOptional(executionBundle?.dockerLaneLeaseId),
+      harnessKind: asOptional(executionBundle?.harnessKind),
+      harnessInstanceId: asOptional(executionBundle?.harnessInstanceId),
+      operatorAuthorizationRef: asOptional(executionBundle?.operatorAuthorizationRef),
+      cellId: asOptional(executionBundle?.cellId),
+      laneId: asOptional(executionBundle?.laneId),
+      isolatedLaneGroupId: asOptional(executionBundle?.isolatedLaneGroupId),
+      fingerprintSha256: asOptional(executionBundle?.fingerprintSha256)
+    }
+  };
+}
+
 export function parseArgs(argv = process.argv) {
   const args = argv.slice(2);
   const options = {
@@ -189,6 +549,10 @@ export function parseArgs(argv = process.argv) {
     wakeLifecyclePath: DEFAULT_WAKE_LIFECYCLE_PATH,
     wakeInvestmentAccountingPath: DEFAULT_WAKE_INVESTMENT_ACCOUNTING_PATH,
     deliveryRuntimeStatePath: DEFAULT_DELIVERY_RUNTIME_STATE_PATH,
+    releaseSigningReadinessPath: DEFAULT_RELEASE_SIGNING_READINESS_PATH,
+    queueSupervisorReportPath: DEFAULT_QUEUE_SUPERVISOR_REPORT_PATH,
+    throughputScorecardPath: DEFAULT_THROUGHPUT_SCORECARD_PATH,
+    treasuryLedgerPath: DEFAULT_TREASURY_LEDGER_PATH,
     outputPath: DEFAULT_OUTPUT_PATH,
     help: false
   };
@@ -201,6 +565,10 @@ export function parseArgs(argv = process.argv) {
     ['--wake-lifecycle', 'wakeLifecyclePath'],
     ['--wake-investment-accounting', 'wakeInvestmentAccountingPath'],
     ['--delivery-runtime-state', 'deliveryRuntimeStatePath'],
+    ['--release-signing-readiness', 'releaseSigningReadinessPath'],
+    ['--queue-supervisor-report', 'queueSupervisorReportPath'],
+    ['--throughput-scorecard', 'throughputScorecardPath'],
+    ['--treasury-ledger', 'treasuryLedgerPath'],
     ['--output', 'outputPath']
   ]);
 
@@ -237,6 +605,10 @@ function printHelp() {
     `  --wake-lifecycle <path>           Wake lifecycle path (default: ${DEFAULT_WAKE_LIFECYCLE_PATH}).`,
     `  --wake-investment-accounting <path> Wake investment accounting path (default: ${DEFAULT_WAKE_INVESTMENT_ACCOUNTING_PATH}).`,
     `  --delivery-runtime-state <path>   Delivery runtime state path (default: ${DEFAULT_DELIVERY_RUNTIME_STATE_PATH}).`,
+    `  --release-signing-readiness <path> Release signing readiness path (default: ${DEFAULT_RELEASE_SIGNING_READINESS_PATH}).`,
+    `  --queue-supervisor-report <path>  Queue supervisor report path (default: ${DEFAULT_QUEUE_SUPERVISOR_REPORT_PATH}).`,
+    `  --throughput-scorecard <path>     Throughput scorecard path (default: ${DEFAULT_THROUGHPUT_SCORECARD_PATH}).`,
+    `  --treasury-ledger <path>          Treasury ledger path (default: ${DEFAULT_TREASURY_LEDGER_PATH}).`,
     `  --output <path>                   Output path (default: ${DEFAULT_OUTPUT_PATH}).`,
     '  -h, --help                        Show help.'
   ].forEach((line) => console.log(line));
@@ -304,7 +676,7 @@ function deriveWake(wakeLifecycle) {
   };
 }
 
-function deriveFunding(wakeInvestmentAccounting) {
+function deriveFunding(wakeInvestmentAccounting, treasuryLedger) {
   return {
     accountingBucket: asOptional(wakeInvestmentAccounting?.summary?.accountingBucket),
     status: asOptional(wakeInvestmentAccounting?.summary?.status),
@@ -324,7 +696,50 @@ function deriveFunding(wakeInvestmentAccounting) {
     netPaybackUsd:
       typeof wakeInvestmentAccounting?.summary?.metrics?.netPaybackUsd === 'number'
         ? wakeInvestmentAccounting.summary.metrics.netPaybackUsd
-        : null
+        : null,
+    treasuryStatus: asOptional(treasuryLedger?.summary?.status),
+    treasuryPosture: asOptional(treasuryLedger?.schedulerState?.treasuryPosture),
+    treasuryFundingWindowId:
+      asOptional(treasuryLedger?.summary?.currentFundingWindowId) ||
+      asOptional(treasuryLedger?.fundingWindow?.invoiceTurnId),
+    treasuryCapitalModeRecommended: asOptional(treasuryLedger?.schedulerState?.capitalModeRecommended),
+    treasuryRemainingCapitalStatus: asOptional(treasuryLedger?.remainingCapitalPosture?.status)
+  };
+}
+
+function deriveReleaseSigningReadiness(releaseSigningReadinessReport) {
+  if (releaseSigningReadinessReport?.schema !== 'priority/release-signing-readiness-report@v1') {
+    return {
+      status: 'missing',
+      codePathState: null,
+      signingCapabilityState: null,
+      signingAuthorityState: null,
+      releaseConductorApplyState: null,
+      publicationState: null,
+      publishedBundleState: null,
+      publishedBundleReleaseTag: null,
+      publishedBundleAuthoritativeConsumerPin: null,
+      externalBlocker: null,
+      blockerCount: 0
+    };
+  }
+
+  return {
+    status: asOptional(releaseSigningReadinessReport?.summary?.status) || 'missing',
+    codePathState: asOptional(releaseSigningReadinessReport?.summary?.codePathState),
+    signingCapabilityState: asOptional(releaseSigningReadinessReport?.summary?.signingCapabilityState),
+    signingAuthorityState: asOptional(releaseSigningReadinessReport?.summary?.signingAuthorityState),
+    releaseConductorApplyState: asOptional(releaseSigningReadinessReport?.summary?.releaseConductorApplyState),
+    publicationState: asOptional(releaseSigningReadinessReport?.summary?.publicationState),
+    publishedBundleState: asOptional(releaseSigningReadinessReport?.summary?.publishedBundleState),
+    publishedBundleReleaseTag: asOptional(releaseSigningReadinessReport?.summary?.publishedBundleReleaseTag),
+    publishedBundleAuthoritativeConsumerPin: asOptional(
+      releaseSigningReadinessReport?.summary?.publishedBundleAuthoritativeConsumerPin
+    ),
+    externalBlocker: asOptional(releaseSigningReadinessReport?.summary?.externalBlocker),
+    blockerCount: Number.isInteger(releaseSigningReadinessReport?.summary?.blockerCount)
+      ? releaseSigningReadinessReport.summary.blockerCount
+      : 0
   };
 }
 
@@ -337,6 +752,10 @@ function deriveDeliveryRuntime(deliveryRuntimeState) {
   const queueAuthorityRefresh =
     normalizeOptionalObject(activeLane?.queueAuthorityRefresh) ??
     normalizeOptionalObject(deliveryRuntimeState?.queueAuthorityRefresh);
+  const concurrentLaneStatus = normalizeOptionalObject(activeLane?.concurrentLaneStatus);
+  const executionBundle = normalizeOptionalObject(concurrentLaneStatus?.executionBundle);
+  const repoContextPivot = normalizeRepoContextPivot(activeLane?.repoContextPivot);
+  const executionTopology = deriveExecutionTopology({ deliveryRuntimeState, activeLane, executionBundle });
 
   let status = 'none';
   if (prUrl) {
@@ -359,6 +778,27 @@ function deriveDeliveryRuntime(deliveryRuntimeState) {
     outcome,
     blockerClass,
     nextWakeCondition: asOptional(activeLane?.nextWakeCondition),
+    executionTopology,
+    executionBundle: {
+      status: asOptional(executionBundle?.status),
+      planeBinding: asOptional(executionBundle?.planeBinding),
+      cellClass: asOptional(executionBundle?.cellClass),
+      suiteClass: asOptional(executionBundle?.suiteClass),
+      premiumSaganMode: parseBoolean(executionBundle?.premiumSaganMode),
+      reciprocalLinkReady: parseBoolean(executionBundle?.reciprocalLinkReady),
+      effectiveBillableRateUsdPerHour: Number.isFinite(executionBundle?.effectiveBillableRateUsdPerHour)
+        ? executionBundle.effectiveBillableRateUsdPerHour
+        : null,
+      executionCellLeaseId: asOptional(executionBundle?.executionCellLeaseId),
+      dockerLaneLeaseId: asOptional(executionBundle?.dockerLaneLeaseId),
+      harnessKind: asOptional(executionBundle?.harnessKind),
+      harnessInstanceId: asOptional(executionBundle?.harnessInstanceId),
+      operatorAuthorizationRef: asOptional(executionBundle?.operatorAuthorizationRef),
+      cellId: asOptional(executionBundle?.cellId),
+      laneId: asOptional(executionBundle?.laneId),
+      isolatedLaneGroupId: asOptional(executionBundle?.isolatedLaneGroupId),
+      fingerprintSha256: asOptional(executionBundle?.fingerprintSha256)
+    },
     queueAuthorityRefresh: {
       attempted: queueAuthorityRefresh?.attempted === true,
       status: asOptional(queueAuthorityRefresh?.status),
@@ -379,8 +819,151 @@ function deriveDeliveryRuntime(deliveryRuntimeState) {
     },
     prUrl,
     issueNumber: Number.isInteger(activeLane?.issue) ? activeLane.issue : null,
-    reason: asOptional(activeLane?.reason)
+    reason: asOptional(activeLane?.reason),
+    repoContextPivot,
+    currentCycleIdleAuthority: {
+      status: 'missing',
+      source: null,
+      observedAt: null,
+      fresh: false,
+      freshnessThresholdSeconds: DEFAULT_IDLE_AUTHORITY_FRESH_SECONDS,
+      nextWakeCondition: null,
+      syntheticIdle: false,
+      queueState: null,
+      deliveryStateObservedAt: null,
+      deliveryStateFresh: false,
+      observerHeartbeatObservedAt: null,
+      observerHeartbeatFresh: false
+    }
   };
+}
+
+function createEmptyWorkerPoolCapital() {
+  return {
+    authoritySource: 'none',
+    targetSlotCount: null,
+    occupiedSlotCount: null,
+    availableSlotCount: null,
+    releasedLaneCount: null,
+    utilizationRatio: null,
+    activeCodingLanes: null,
+    throughputStatus: null,
+    throughputPressureReasons: [],
+    queueThroughputMode: null,
+    queueThroughputReasons: [],
+    queueThroughputTargetCap: null,
+    queueThroughputSaturation: null,
+    releasedCapitalAvailable: false,
+    idleWorkerCapacityAvailable: false,
+    underfilledWorkerPool: false
+  };
+}
+
+function buildWorkerPoolCapital(overrides = {}) {
+  const targetSlotCount = toNonNegativeInteger(overrides.targetSlotCount);
+  const occupiedSlotCount = toNonNegativeInteger(overrides.occupiedSlotCount);
+  const availableSlotCount = toNonNegativeInteger(overrides.availableSlotCount);
+  const releasedLaneCount = toNonNegativeInteger(overrides.releasedLaneCount);
+  const utilizationRatio = toNonNegativeNumber(overrides.utilizationRatio);
+  const activeCodingLanes = toNonNegativeInteger(overrides.activeCodingLanes);
+  const throughputPressureReasons = normalizeStringArray(overrides.throughputPressureReasons);
+  const queueThroughputReasons = normalizeStringArray(overrides.queueThroughputReasons);
+
+  return {
+    authoritySource: asOptional(overrides.authoritySource) || 'none',
+    targetSlotCount,
+    occupiedSlotCount,
+    availableSlotCount,
+    releasedLaneCount,
+    utilizationRatio,
+    activeCodingLanes,
+    throughputStatus: asOptional(overrides.throughputStatus),
+    throughputPressureReasons,
+    queueThroughputMode: asOptional(overrides.queueThroughputMode),
+    queueThroughputReasons,
+    queueThroughputTargetCap: toNonNegativeInteger(overrides.queueThroughputTargetCap),
+    queueThroughputSaturation: toNonNegativeNumber(overrides.queueThroughputSaturation),
+    releasedCapitalAvailable: (releasedLaneCount ?? 0) > 0,
+    idleWorkerCapacityAvailable: (availableSlotCount ?? 0) > 0,
+    underfilledWorkerPool:
+      throughputPressureReasons.includes('actionable-work-below-worker-slot-target') ||
+      queueThroughputReasons.includes('actionable-work-below-worker-slot-target')
+  };
+}
+
+function deriveWorkerPoolCapital({ throughputScorecard, queueSupervisorReport, deliveryRuntimeState }) {
+  const throughputWorkerPool = normalizeOptionalObject(throughputScorecard?.workerPool);
+  if (throughputWorkerPool) {
+    return buildWorkerPoolCapital({
+      authoritySource: 'throughput-scorecard',
+      targetSlotCount: throughputWorkerPool.targetSlotCount,
+      occupiedSlotCount: throughputWorkerPool.occupiedSlotCount,
+      availableSlotCount: throughputWorkerPool.availableSlotCount,
+      releasedLaneCount: throughputWorkerPool.releasedLaneCount,
+      utilizationRatio: throughputWorkerPool.utilizationRatio,
+      activeCodingLanes: throughputWorkerPool.activeCodingLanes,
+      throughputStatus: throughputScorecard?.summary?.status,
+      throughputPressureReasons: throughputScorecard?.summary?.reasons,
+      queueThroughputMode: throughputScorecard?.queue?.throughputMode,
+      queueThroughputReasons: queueSupervisorReport?.throughputController?.reasons,
+      queueThroughputTargetCap: queueSupervisorReport?.throughputController?.targetCap,
+      queueThroughputSaturation: queueSupervisorReport?.throughputController?.metrics?.saturation
+    });
+  }
+
+  const workerOccupancy = normalizeOptionalObject(queueSupervisorReport?.workerOccupancy);
+  if (workerOccupancy?.available === true) {
+    return buildWorkerPoolCapital({
+      authoritySource: 'queue-supervisor',
+      targetSlotCount: workerOccupancy.targetSlotCount,
+      occupiedSlotCount: workerOccupancy.occupiedSlotCount,
+      availableSlotCount: workerOccupancy.availableSlotCount,
+      releasedLaneCount: workerOccupancy.releasedLaneCount,
+      utilizationRatio: workerOccupancy.utilizationRatio,
+      activeCodingLanes: workerOccupancy.activeCodingLanes,
+      queueThroughputMode: queueSupervisorReport?.throughputController?.mode,
+      queueThroughputReasons: queueSupervisorReport?.throughputController?.reasons,
+      queueThroughputTargetCap: queueSupervisorReport?.throughputController?.targetCap,
+      queueThroughputSaturation: queueSupervisorReport?.throughputController?.metrics?.saturation
+    });
+  }
+
+  const runtimeWorkerPool = normalizeOptionalObject(deliveryRuntimeState?.workerPool);
+  if (runtimeWorkerPool) {
+    return buildWorkerPoolCapital({
+      authoritySource: 'delivery-runtime',
+      targetSlotCount: runtimeWorkerPool.targetSlotCount,
+      occupiedSlotCount: runtimeWorkerPool.occupiedSlotCount,
+      availableSlotCount: runtimeWorkerPool.availableSlotCount,
+      releasedLaneCount: runtimeWorkerPool.releasedLaneCount,
+      utilizationRatio: runtimeWorkerPool.utilizationRatio,
+      activeCodingLanes: deliveryRuntimeState?.activeCodingLanes
+    });
+  }
+
+  return createEmptyWorkerPoolCapital();
+}
+
+function suppressDeliveryRuntimeForMonitoring(deliveryRuntime, currentCycleIdleAuthority = null) {
+  const emptyDeliveryRuntime = deriveDeliveryRuntime(null);
+  return {
+    ...emptyDeliveryRuntime,
+    runtimeStatus: deliveryRuntime.runtimeStatus,
+    queueAuthorityRefresh: deliveryRuntime.queueAuthorityRefresh,
+    repoContextPivot: deliveryRuntime.repoContextPivot,
+    currentCycleIdleAuthority: currentCycleIdleAuthority || emptyDeliveryRuntime.currentCycleIdleAuthority
+  };
+}
+
+function shouldSuppressStaleDeliveryRuntime({ queueState, continuity, monitoringMode, wake }) {
+  return (
+    queueState.status === 'queue-empty' &&
+    continuity.status === 'maintained' &&
+    continuity.turnBoundary === 'safe-idle' &&
+    asOptional(monitoringMode?.summary?.status) === 'active' &&
+    asOptional(monitoringMode?.summary?.futureAgentAction) === 'future-agent-may-pivot' &&
+    wake.terminalState === null
+  );
 }
 
 function deriveQueueAuthority({ repoRoot, repository, deliveryRuntime, readOptionalJsonFn }) {
@@ -481,6 +1064,76 @@ function deriveQueueAuthority({ repoRoot, repository, deliveryRuntime, readOptio
   };
 }
 
+function deriveMarketplaceRecommendationRepository(deliveryRuntimeState) {
+  const repository = asOptional(deliveryRuntimeState?.marketplace?.recommendedLane?.repository);
+  if (
+    repository === COMPAREVI_UPSTREAM_REPOSITORY ||
+    repository === COMPAREVI_HISTORY_REPOSITORY ||
+    repository === TEMPLATE_CANONICAL_REPOSITORY
+  ) {
+    return repository;
+  }
+  return null;
+}
+
+function normalizeRepoContextPivot(repoContextPivot) {
+  const pivot = normalizeOptionalObject(repoContextPivot);
+  if (!pivot) {
+    return null;
+  }
+
+  const normalized = {
+    currentRepository: asOptional(pivot.currentRepository),
+    currentOwnerRepository: asOptional(pivot.currentOwnerRepository),
+    nextOwnerRepository: asOptional(pivot.nextOwnerRepository),
+    nextAction: asOptional(pivot.nextAction),
+    ownerDecisionSource: asOptional(pivot.ownerDecisionSource),
+    governorMode: asOptional(pivot.governorMode),
+    pivotStatus: asOptional(pivot.pivotStatus),
+    targetEntrypointPath: asOptional(pivot.targetEntrypointPath),
+    targetHeadSha: asOptional(pivot.targetHeadSha),
+    brokerSelectedIssueNumber: Number.isInteger(pivot.brokerSelectedIssueNumber) ? pivot.brokerSelectedIssueNumber : null,
+    brokerSelectedIssueUrl: asOptional(pivot.brokerSelectedIssueUrl),
+    brokerSelectedIssueTitle: asOptional(pivot.brokerSelectedIssueTitle),
+    brokerProviderId: asOptional(pivot.brokerProviderId),
+    brokerSlotId: asOptional(pivot.brokerSlotId),
+    brokerSelectionSource: asOptional(pivot.brokerSelectionSource),
+    releasedSlotId: asOptional(pivot.releasedSlotId),
+    waitingLaneLifecycle: asOptional(pivot.waitingLaneLifecycle),
+    waitingStateReason: asOptional(pivot.waitingStateReason)
+  };
+
+  const hasSignal =
+    Object.values(normalized).some((value) => value !== null && value !== undefined && value !== '') ||
+    normalized.brokerSelectedIssueNumber !== null;
+
+  return hasSignal ? normalized : null;
+}
+
+function deriveRepoContextPivotAuthority(deliveryRuntime) {
+  const pivot = normalizeOptionalObject(deliveryRuntime?.repoContextPivot);
+  if (!pivot) {
+    return null;
+  }
+
+  const currentOwnerRepository = asOptional(pivot.currentOwnerRepository) || asOptional(pivot.currentRepository);
+  const nextOwnerRepository = asOptional(pivot.nextOwnerRepository);
+  const nextAction = asOptional(pivot.nextAction);
+
+  if (!currentOwnerRepository || !nextOwnerRepository || !nextAction) {
+    return null;
+  }
+
+  return {
+    currentOwnerRepository,
+    nextOwnerRepository,
+    nextAction,
+    ownerDecisionSource: asOptional(pivot.ownerDecisionSource) || 'repo-context-pivot',
+    pivotStatus: asOptional(pivot.pivotStatus),
+    brokerSelectionSource: asOptional(pivot.brokerSelectionSource)
+  };
+}
+
 function deriveGovernorMode({ queueState, continuity, monitoringMode, wake }) {
   switch (wake.terminalState) {
     case 'compare-work':
@@ -533,46 +1186,75 @@ function deriveSignalQuality({ governorMode, wake }) {
   return 'unknown';
 }
 
-function deriveOwners({ governorMode, monitoringMode, wake, repository }) {
+function deriveOwners({
+  governorMode,
+  monitoringMode,
+  wake,
+  repository,
+  marketplaceRecommendationRepository = null,
+  repoContextPivotAuthority = null
+}) {
   const compareRepository =
     asOptional(monitoringMode?.policy?.compareRepository) ||
     asOptional(monitoringMode?.repository) ||
     asOptional(repository);
   const pivotTargetRepository = asOptional(monitoringMode?.policy?.pivotTargetRepository);
 
+  if (repoContextPivotAuthority) {
+    return {
+      currentOwnerRepository: repoContextPivotAuthority.currentOwnerRepository,
+      nextOwnerRepository: repoContextPivotAuthority.nextOwnerRepository,
+      ownerDecisionSource: repoContextPivotAuthority.ownerDecisionSource
+    };
+  }
+
   switch (governorMode) {
     case 'compare-governance-work':
       return {
         currentOwnerRepository: wake.recommendedOwnerRepository || compareRepository,
-        nextOwnerRepository: wake.recommendedOwnerRepository || compareRepository
+        nextOwnerRepository: wake.recommendedOwnerRepository || compareRepository,
+        ownerDecisionSource: 'wake-lifecycle'
       };
     case 'template-work':
       return {
         currentOwnerRepository: wake.recommendedOwnerRepository || pivotTargetRepository,
-        nextOwnerRepository: wake.recommendedOwnerRepository || pivotTargetRepository
+        nextOwnerRepository: wake.recommendedOwnerRepository || pivotTargetRepository,
+        ownerDecisionSource: 'wake-lifecycle'
       };
     case 'monitoring-active':
       return {
         currentOwnerRepository: compareRepository,
         nextOwnerRepository:
           asOptional(monitoringMode?.summary?.futureAgentAction) === 'future-agent-may-pivot'
-            ? pivotTargetRepository
-            : compareRepository
+            ? marketplaceRecommendationRepository || pivotTargetRepository
+            : compareRepository,
+        ownerDecisionSource:
+          asOptional(monitoringMode?.summary?.futureAgentAction) === 'future-agent-may-pivot' &&
+          marketplaceRecommendationRepository &&
+          marketplaceRecommendationRepository !== pivotTargetRepository
+            ? 'delivery-runtime-marketplace'
+            : 'compare-monitoring-mode'
       };
     case 'external-route':
       return {
         currentOwnerRepository: compareRepository,
-        nextOwnerRepository: wake.recommendedOwnerRepository || compareRepository
+        nextOwnerRepository: wake.recommendedOwnerRepository || compareRepository,
+        ownerDecisionSource: 'wake-lifecycle'
       };
     default:
       return {
         currentOwnerRepository: compareRepository,
-        nextOwnerRepository: compareRepository
+        nextOwnerRepository: compareRepository,
+        ownerDecisionSource: 'compare-monitoring-mode'
       };
   }
 }
 
-function deriveNextAction({ governorMode, monitoringMode, wake }) {
+function deriveNextAction({ governorMode, monitoringMode, wake, repoContextPivotAuthority = null }) {
+  if (repoContextPivotAuthority?.nextAction) {
+    return repoContextPivotAuthority.nextAction;
+  }
+
   switch (governorMode) {
     case 'compare-governance-work':
       return wake.issueNumber ? 'continue-standing-work' : 'continue-compare-governance-work';
@@ -607,6 +1289,16 @@ function buildReport({
   wakeInvestmentAccounting,
   deliveryRuntimeStatePath,
   deliveryRuntimeState,
+  observerHeartbeatPath,
+  observerHeartbeat,
+  releaseSigningReadinessPath,
+  releaseSigningReadinessReport,
+  queueSupervisorReportPath,
+  queueSupervisorReport,
+  throughputScorecardPath,
+  throughputScorecard,
+  treasuryLedgerPath,
+  treasuryLedger,
   readOptionalJsonFn,
   now
 }) {
@@ -619,8 +1311,26 @@ function buildReport({
   const queueState = deriveQueueState(queueEmptyReport, monitoringMode);
   const continuity = deriveContinuity(continuitySummary, monitoringMode);
   const wake = deriveWake(wakeLifecycle);
-  const funding = deriveFunding(wakeInvestmentAccounting);
-  const deliveryRuntime = deriveDeliveryRuntime(deliveryRuntimeState);
+  const funding = deriveFunding(wakeInvestmentAccounting, treasuryLedger);
+  const releaseSigningReadiness = deriveReleaseSigningReadiness(releaseSigningReadinessReport);
+  const rawDeliveryRuntime = deriveDeliveryRuntime(deliveryRuntimeState);
+  const currentCycleIdleAuthority = deriveCurrentCycleIdleAuthority({
+    deliveryRuntimeState,
+    observerHeartbeat,
+    now,
+    freshnessThresholdSeconds: DEFAULT_IDLE_AUTHORITY_FRESH_SECONDS
+  });
+  const deliveryRuntime = shouldSuppressStaleDeliveryRuntime({ queueState, continuity, monitoringMode, wake })
+    ? suppressDeliveryRuntimeForMonitoring(rawDeliveryRuntime, currentCycleIdleAuthority)
+    : {
+        ...rawDeliveryRuntime,
+        currentCycleIdleAuthority
+      };
+  const workerPoolCapital = deriveWorkerPoolCapital({
+    throughputScorecard,
+    queueSupervisorReport,
+    deliveryRuntimeState
+  });
   const queueAuthority = deriveQueueAuthority({
     repoRoot,
     repository,
@@ -629,8 +1339,17 @@ function buildReport({
   });
   const governorMode = deriveGovernorMode({ queueState, continuity, monitoringMode, wake });
   const signalQuality = deriveSignalQuality({ governorMode, wake });
-  const owners = deriveOwners({ governorMode, monitoringMode, wake, repository });
-  const nextAction = deriveNextAction({ governorMode, monitoringMode, wake });
+  const marketplaceRecommendationRepository = deriveMarketplaceRecommendationRepository(deliveryRuntimeState);
+  const repoContextPivotAuthority = deriveRepoContextPivotAuthority(deliveryRuntime);
+  const owners = deriveOwners({
+    governorMode,
+    monitoringMode,
+    wake,
+    repository,
+    marketplaceRecommendationRepository,
+    repoContextPivotAuthority
+  });
+  const nextAction = deriveNextAction({ governorMode, monitoringMode, wake, repoContextPivotAuthority });
 
   return {
     schema: 'priority/autonomous-governor-summary-report@v1',
@@ -642,7 +1361,12 @@ function buildReport({
       monitoringModePath: toRelative(repoRoot, monitoringModePath),
       wakeLifecyclePath: toRelative(repoRoot, wakeLifecyclePath),
       wakeInvestmentAccountingPath: toRelative(repoRoot, wakeInvestmentAccountingPath),
-      deliveryRuntimeStatePath: toRelative(repoRoot, deliveryRuntimeStatePath)
+      deliveryRuntimeStatePath: toRelative(repoRoot, deliveryRuntimeStatePath),
+      observerHeartbeatPath: toRelative(repoRoot, observerHeartbeatPath),
+      releaseSigningReadinessPath: toRelative(repoRoot, releaseSigningReadinessPath),
+      queueSupervisorReportPath: toRelative(repoRoot, queueSupervisorReportPath),
+      throughputScorecardPath: toRelative(repoRoot, throughputScorecardPath),
+      treasuryLedgerPath: toRelative(repoRoot, treasuryLedgerPath)
     },
     compare: {
       queueState,
@@ -654,7 +1378,9 @@ function buildReport({
           ? monitoringMode.summary.wakeConditionCount
           : null
       },
+      releaseSigningReadiness,
       deliveryRuntime,
+      workerPoolCapital,
       queueAuthority
     },
     wake,
@@ -664,16 +1390,64 @@ function buildReport({
       currentOwnerRepository: owners.currentOwnerRepository,
       nextOwnerRepository: owners.nextOwnerRepository,
       nextAction,
+      ownerDecisionSource: owners.ownerDecisionSource,
       signalQuality,
       queueState: queueState.status,
       continuityStatus: continuity.status,
       wakeTerminalState: wake.terminalState,
       monitoringStatus: asOptional(monitoringMode?.summary?.status),
       futureAgentAction: asOptional(monitoringMode?.summary?.futureAgentAction),
+      releaseSigningStatus: releaseSigningReadiness.status,
+      releaseSigningAuthorityState: releaseSigningReadiness.signingAuthorityState,
+      releaseConductorApplyState: releaseSigningReadiness.releaseConductorApplyState,
+      releaseSigningExternalBlocker: releaseSigningReadiness.externalBlocker,
+      releasePublicationState: releaseSigningReadiness.publicationState,
+      releasePublishedBundleState: releaseSigningReadiness.publishedBundleState,
+      releasePublishedBundleReleaseTag: releaseSigningReadiness.publishedBundleReleaseTag,
+      releasePublishedBundleAuthoritativeConsumerPin: releaseSigningReadiness.publishedBundleAuthoritativeConsumerPin,
+      executionTopologyStatus: deliveryRuntime.executionTopology.status,
+      executionTopologyExecutionPlane: deliveryRuntime.executionTopology.executionPlane,
+      executionTopologyProviderId: deliveryRuntime.executionTopology.providerId,
+      executionTopologyWorkerSlotId: deliveryRuntime.executionTopology.workerSlotId,
+      executionTopologyActiveLogicalLaneCount: deliveryRuntime.executionTopology.activeLogicalLaneCount,
+      executionTopologySeededLogicalLaneCount: deliveryRuntime.executionTopology.seededLogicalLaneCount,
+      executionTopologyRuntimeSurface: deliveryRuntime.executionTopology.runtimeSurface,
+      executionTopologyProcessModelClass: deliveryRuntime.executionTopology.processModelClass,
+      executionTopologyWindowsOnly: deliveryRuntime.executionTopology.windowsOnly,
+      executionTopologyRequestedSimultaneous: deliveryRuntime.executionTopology.requestedSimultaneous,
+      executionTopologyCellClass: deliveryRuntime.executionTopology.cellClass,
+      executionTopologySuiteClass: deliveryRuntime.executionTopology.suiteClass,
+      executionTopologyOperatorAuthorizationRef: deliveryRuntime.executionTopology.operatorAuthorizationRef,
+      executionBundleStatus: deliveryRuntime.executionBundle.status,
+      executionBundlePlaneBinding: deliveryRuntime.executionBundle.planeBinding,
+      executionBundlePremiumSaganMode: deliveryRuntime.executionBundle.premiumSaganMode,
+      executionBundleReciprocalLinkReady: deliveryRuntime.executionBundle.reciprocalLinkReady,
+      executionBundleEffectiveBillableRateUsdPerHour: deliveryRuntime.executionBundle.effectiveBillableRateUsdPerHour,
+      workerPoolAuthoritySource: workerPoolCapital.authoritySource,
+      workerPoolTargetSlotCount: workerPoolCapital.targetSlotCount,
+      workerPoolOccupiedSlotCount: workerPoolCapital.occupiedSlotCount,
+      workerPoolAvailableSlotCount: workerPoolCapital.availableSlotCount,
+      workerPoolReleasedLaneCount: workerPoolCapital.releasedLaneCount,
+      workerPoolUtilizationRatio: workerPoolCapital.utilizationRatio,
+      workerPoolActiveCodingLanes: workerPoolCapital.activeCodingLanes,
+      workerPoolReleasedCapitalAvailable: workerPoolCapital.releasedCapitalAvailable,
+      workerPoolIdleWorkerCapacityAvailable: workerPoolCapital.idleWorkerCapacityAvailable,
+      workerPoolUnderfilled: workerPoolCapital.underfilledWorkerPool,
+      workerPoolThroughputStatus: workerPoolCapital.throughputStatus,
+      workerPoolThroughputPressureReasons: workerPoolCapital.throughputPressureReasons,
+      workerPoolQueueThroughputMode: workerPoolCapital.queueThroughputMode,
       queueHandoffStatus: queueAuthority.status,
       queueHandoffNextWakeCondition: queueAuthority.nextWakeCondition,
       queueHandoffPrUrl: queueAuthority.prUrl,
-      queueAuthoritySource: queueAuthority.source
+      queueAuthoritySource: queueAuthority.source,
+      currentCycleIdleStatus: deliveryRuntime.currentCycleIdleAuthority.status,
+      currentCycleIdleSource: deliveryRuntime.currentCycleIdleAuthority.source,
+      currentCycleIdleNextWakeCondition: deliveryRuntime.currentCycleIdleAuthority.nextWakeCondition,
+      treasuryStatus: funding.treasuryStatus,
+      treasuryPosture: funding.treasuryPosture,
+      treasuryFundingWindowId: funding.treasuryFundingWindowId,
+      treasuryCapitalModeRecommended: funding.treasuryCapitalModeRecommended,
+      treasuryRemainingCapitalStatus: funding.treasuryRemainingCapitalStatus
     }
   };
 }
@@ -692,6 +1466,26 @@ export async function runAutonomousGovernorSummary(options = {}, deps = {}) {
     repoRoot,
     options.deliveryRuntimeStatePath || DEFAULT_DELIVERY_RUNTIME_STATE_PATH
   );
+  const observerHeartbeatPath = path.resolve(
+    repoRoot,
+    options.observerHeartbeatPath || DEFAULT_OBSERVER_HEARTBEAT_PATH
+  );
+  const releaseSigningReadinessPath = path.resolve(
+    repoRoot,
+    options.releaseSigningReadinessPath || DEFAULT_RELEASE_SIGNING_READINESS_PATH
+  );
+  const queueSupervisorReportPath = path.resolve(
+    repoRoot,
+    options.queueSupervisorReportPath || DEFAULT_QUEUE_SUPERVISOR_REPORT_PATH
+  );
+  const throughputScorecardPath = path.resolve(
+    repoRoot,
+    options.throughputScorecardPath || DEFAULT_THROUGHPUT_SCORECARD_PATH
+  );
+  const treasuryLedgerPath = path.resolve(
+    repoRoot,
+    options.treasuryLedgerPath || DEFAULT_TREASURY_LEDGER_PATH
+  );
   const outputPath = path.resolve(repoRoot, options.outputPath || DEFAULT_OUTPUT_PATH);
 
   const readOptionalJsonFn = deps.readOptionalJsonFn || readOptionalJson;
@@ -704,6 +1498,11 @@ export async function runAutonomousGovernorSummary(options = {}, deps = {}) {
   const wakeLifecycle = readOptionalJsonFn(wakeLifecyclePath);
   const wakeInvestmentAccounting = readOptionalJsonFn(wakeInvestmentAccountingPath);
   const deliveryRuntimeState = readOptionalJsonFn(deliveryRuntimeStatePath);
+  const observerHeartbeat = readOptionalJsonFn(observerHeartbeatPath);
+  const releaseSigningReadinessReport = readOptionalJsonFn(releaseSigningReadinessPath);
+  const queueSupervisorReport = readOptionalJsonFn(queueSupervisorReportPath);
+  const throughputScorecard = readOptionalJsonFn(throughputScorecardPath);
+  const treasuryLedger = readOptionalJsonFn(treasuryLedgerPath);
 
   if (queueEmptyReport) {
     ensureSchema(queueEmptyReport, queueEmptyReportPath, 'standing-priority/no-standing@v1');
@@ -723,6 +1522,25 @@ export async function runAutonomousGovernorSummary(options = {}, deps = {}) {
   if (deliveryRuntimeState) {
     ensureSchema(deliveryRuntimeState, deliveryRuntimeStatePath, 'priority/delivery-agent-runtime-state@v1');
   }
+  if (observerHeartbeat) {
+    ensureSchema(observerHeartbeat, observerHeartbeatPath, 'priority/runtime-observer-heartbeat@v1');
+  }
+  if (releaseSigningReadinessReport) {
+    ensureSchema(
+      releaseSigningReadinessReport,
+      releaseSigningReadinessPath,
+      'priority/release-signing-readiness-report@v1'
+    );
+  }
+  if (queueSupervisorReport) {
+    ensureSchema(queueSupervisorReport, queueSupervisorReportPath, 'priority/queue-supervisor-report@v1');
+  }
+  if (throughputScorecard) {
+    ensureSchema(throughputScorecard, throughputScorecardPath, 'priority/throughput-scorecard@v1');
+  }
+  if (treasuryLedger) {
+    ensureSchema(treasuryLedger, treasuryLedgerPath, 'priority/treasury-ledger@v1');
+  }
 
   const report = buildReport({
     repoRoot,
@@ -738,6 +1556,16 @@ export async function runAutonomousGovernorSummary(options = {}, deps = {}) {
     wakeInvestmentAccounting,
     deliveryRuntimeStatePath,
     deliveryRuntimeState,
+    observerHeartbeatPath,
+    observerHeartbeat,
+    releaseSigningReadinessPath,
+    releaseSigningReadinessReport,
+    queueSupervisorReportPath,
+    queueSupervisorReport,
+    throughputScorecardPath,
+    throughputScorecard,
+    treasuryLedgerPath,
+    treasuryLedger,
     readOptionalJsonFn,
     now
   });

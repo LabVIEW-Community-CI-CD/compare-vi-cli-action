@@ -1,7 +1,7 @@
 // @ts-nocheck
 
 import { spawnSync } from 'node:child_process';
-import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { appendFileSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
@@ -29,6 +29,7 @@ export const MANAGER_PID_SCHEMA = 'priority/unattended-delivery-agent-manager-pi
 export const DAEMON_PID_SCHEMA = 'priority/unattended-delivery-agent-wsl-daemon-pid@v1';
 export const STOP_REQUEST_SCHEMA = 'priority/unattended-delivery-agent-stop@v1';
 export const TRACE_SCHEMA = 'priority/unattended-delivery-agent-trace@v1';
+export const RUNTIME_EPOCH_SCHEMA = 'priority/unattended-delivery-agent-runtime-epoch@v1';
 export const MAX_BUFFER = 32 * 1024 * 1024;
 
 export function resolveRepoRoot() {
@@ -186,6 +187,35 @@ export function getOptionalDateTimeProperty(inputObject, name) {
   return Number.isFinite(parsed) ? new Date(parsed) : null;
 }
 
+export function getRuntimeEpochId(inputObject) {
+  return (
+    getOptionalStringProperty(inputObject, 'runtimeEpochId') ||
+    getOptionalStringProperty(getOptionalProperty(inputObject, 'activeLane'), 'runtimeEpochId')
+  );
+}
+
+export function describeRuntimeEpochAlignment(currentRuntimeEpochId, observedRuntimeEpochId) {
+  const current = normalizeText(currentRuntimeEpochId);
+  const observed = normalizeText(observedRuntimeEpochId);
+  if (!current) {
+    return 'not-required';
+  }
+  if (!observed) {
+    return 'missing';
+  }
+  return observed === current ? 'aligned' : 'mismatch';
+}
+
+function resolveRuntimeEpochMismatchReason(prefix, alignment) {
+  if (alignment === 'missing') {
+    return `${prefix}-runtime-epoch-missing`;
+  }
+  if (alignment === 'mismatch') {
+    return `${prefix}-runtime-epoch-mismatch`;
+  }
+  return `${prefix}-runtime-epoch-not-required`;
+}
+
 export function resolveObserverTelemetry(codexStateHygiene, reportPath) {
   const fallback = {
     plane: 'observer',
@@ -289,6 +319,79 @@ export function getArtifactPaths(repoRoot, runtimeDir) {
     runnerErrorPath: path.join(runtimeDirPath, 'delivery-agent-manager.stderr.log'),
     cyclePath: path.join(runtimeDirPath, 'delivery-agent-manager-cycle.json'),
     observerReportPath: path.join(runtimeDirPath, 'runtime-daemon-report.json'),
+    runtimeEpochPath: path.join(runtimeDirPath, 'delivery-agent-runtime-epoch.json'),
+    runtimeQuarantineRootPath: path.join(runtimeDirPath, 'quarantine'),
+  };
+}
+
+export function getIssueArtifactPaths(repoRoot) {
+  const issueDirPath = path.join(repoRoot, 'tests', 'results', '_agent', 'issue');
+  const handoffDirPath = path.join(repoRoot, 'tests', 'results', '_agent', 'handoff');
+  return {
+    issueDirPath,
+    handoffDirPath,
+    queueEmptyReportPath: path.join(issueDirPath, 'no-standing-priority.json'),
+    routerPath: path.join(issueDirPath, 'router.json'),
+    monitoringModePath: path.join(handoffDirPath, 'monitoring-mode.json'),
+  };
+}
+
+export function isQueueEmptyMonitoringReady({ queueEmptyReport, router }) {
+  const queueEmptyReason = getOptionalStringProperty(queueEmptyReport, 'reason');
+  const routerIssue = getOptionalIntProperty(router, 'issue');
+  return queueEmptyReason === 'queue-empty' && routerIssue <= 0;
+}
+
+export function buildQueueEmptyMonitoringDeliveryState({
+  repo,
+  runtimeDir,
+  generatedAt = null,
+  paths,
+  queueEmptyReportPath = null,
+  monitoringMode = null,
+  runtimeEpochId = null,
+}) {
+  const monitoringAction = getOptionalStringProperty(monitoringMode, 'futureAgentAction') || 'future-agent-may-pivot';
+  const iso = generatedAt ? toIso(generatedAt) : toIso();
+  return {
+    schema: 'priority/delivery-agent-runtime-state@v1',
+    generatedAt: iso,
+    repository: repo,
+    runtimeDir,
+    runtimeEpochId,
+    status: 'idle',
+    laneLifecycle: 'idle',
+    activeCodingLanes: 0,
+    derivedFromQueueEmptyState: true,
+    queueState: {
+      status: 'queue-empty',
+      reason: 'queue-empty',
+      reportPath: queueEmptyReportPath,
+    },
+    activeLane: {
+      schema: 'priority/delivery-agent-lane-state@v1',
+      generatedAt: iso,
+      runtimeEpochId,
+      laneId: 'queue-empty-monitoring',
+      issue: null,
+      epic: null,
+      branch: null,
+      forkRemote: null,
+      prUrl: null,
+      blockerClass: 'none',
+      laneLifecycle: 'idle',
+      actionType: 'monitoring-idle',
+      outcome: 'queue-empty',
+      reason: 'queue-empty',
+      retryable: false,
+      nextWakeCondition: monitoringAction,
+      syntheticIdle: true,
+    },
+    artifacts: {
+      statePath: paths.deliveryStatePath,
+      lanePath: null,
+      concurrentLaneApplyReceiptPath: null,
+    },
   };
 }
 
@@ -322,6 +425,94 @@ export function writeManagerTrace({ repo, runtimeDir, distro, tracePath, eventTy
     eventType,
     ...detail,
   });
+}
+
+export function buildRuntimeEpochId({ repo = '', startedAt = new Date() } = {}) {
+  const startedAtIso = toIso(startedAt).replace(/[:.]/g, '-');
+  const repoSlug = normalizeText(repo)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '') || 'repo';
+  return `${startedAtIso}-${repoSlug}`;
+}
+
+export function resolveRuntimeEpochTimestamp(payload) {
+  if (!payload || typeof payload !== 'object') {
+    return null;
+  }
+  for (const propertyName of ['generatedAt', 'startedAt', 'requestedAt', 'updatedAt']) {
+    const value = getOptionalDateTimeProperty(payload, propertyName);
+    if (value) {
+      return value;
+    }
+  }
+  return null;
+}
+
+export function quarantineStaleRuntimeReceipts({
+  repo,
+  runtimeDir,
+  paths,
+  runtimeEpochId,
+  managerStartedAt,
+}) {
+  const quarantineEntries = [];
+  const managerStartedAtIso = toIso(managerStartedAt);
+  const quarantineDirPath = path.join(paths.runtimeQuarantineRootPath, runtimeEpochId);
+  const candidates = [
+    ['runtime-epoch', paths.runtimeEpochPath],
+    ['manager-state', paths.managerStatePath],
+    ['manager-cycle', paths.cyclePath],
+    ['observer-heartbeat', paths.observerHeartbeatPath],
+    ['delivery-state', paths.deliveryStatePath],
+    ['runtime-state', paths.runtimeStatePath],
+    ['task-packet', paths.taskPacketPath],
+    ['delivery-memory', paths.deliveryMemoryPath],
+    ['wsl-daemon-pid', paths.wslDaemonPidPath],
+    ['host-signal', paths.hostSignalPath],
+    ['host-isolation', paths.hostIsolationPath],
+    ['wsl-native-docker', paths.wslNativeDockerPath],
+    ['observer-report', paths.observerReportPath],
+  ];
+
+  for (const [artifactId, artifactPath] of candidates) {
+    if (!existsSync(artifactPath)) {
+      continue;
+    }
+    const payload = readJsonFile(artifactPath);
+    const generatedAt = resolveRuntimeEpochTimestamp(payload);
+    const shouldQuarantine =
+      payload == null ||
+      generatedAt == null ||
+      generatedAt < managerStartedAt;
+    if (!shouldQuarantine) {
+      continue;
+    }
+
+    mkdirSync(quarantineDirPath, { recursive: true });
+    const quarantinePath = path.join(quarantineDirPath, path.basename(artifactPath));
+    rmSync(quarantinePath, { force: true, recursive: true });
+    renameSync(artifactPath, quarantinePath);
+    quarantineEntries.push({
+      artifactId,
+      sourcePath: artifactPath,
+      quarantinePath,
+      reason: payload == null ? 'invalid-json' : generatedAt == null ? 'missing-timestamp' : 'predates-current-manager-epoch',
+      generatedAt: generatedAt ? generatedAt.toISOString() : null,
+    });
+  }
+
+  return {
+    schema: 'priority/unattended-delivery-agent-startup-quarantine@v1',
+    generatedAt: toIso(),
+    repo,
+    runtimeDir,
+    runtimeEpochId,
+    managerStartedAt: managerStartedAtIso,
+    quarantineDirPath: quarantineEntries.length > 0 ? quarantineDirPath : null,
+    entryCount: quarantineEntries.length,
+    entries: quarantineEntries,
+  };
 }
 
 export function writeLogTailTrace({ repo, runtimeDir, distro, tracePath, source, reason, logPath, lines = null, detail = {} }) {
@@ -585,12 +776,14 @@ export function convertRuntimeArtifactsToDeliveryState({ repo, runtimeDir, runti
       ? taskPacketGeneratedAt
       : runtimeGeneratedAt;
   const iso = generatedAt ? generatedAt.toISOString() : toIso();
+  const runtimeEpochId = getRuntimeEpochId(taskPacket) || getRuntimeEpochId(runtimeState) || null;
 
   return {
     schema: 'priority/delivery-agent-runtime-state@v1',
     generatedAt: iso,
     repository: repo,
     runtimeDir,
+    runtimeEpochId,
     status,
     laneLifecycle,
     activeCodingLanes: laneLifecycle === 'coding' ? 1 : 0,
@@ -599,6 +792,7 @@ export function convertRuntimeArtifactsToDeliveryState({ repo, runtimeDir, runti
     activeLane: {
       schema: 'priority/delivery-agent-lane-state@v1',
       generatedAt: iso,
+      runtimeEpochId,
       laneId: getOptionalStringProperty(activeLane, 'laneId'),
       issue,
       epic: getOptionalIntProperty(activeLane, 'epic'),
@@ -646,15 +840,34 @@ export function resolveDeliveryStateForStatus({
   daemonStartedAt = null,
   daemonAlive = false,
   heartbeatFreshnessSeconds = 300,
+  currentRuntimeEpochId = null,
 }) {
+  const runtimeEpochId = normalizeText(currentRuntimeEpochId) || null;
   const deliveryGeneratedAt = getOptionalDateTimeProperty(deliveryState, 'generatedAt');
   const heartbeatGeneratedAt = getOptionalDateTimeProperty(heartbeat, 'generatedAt');
   const runtimeGeneratedAt = getOptionalDateTimeProperty(runtimeState, 'generatedAt');
   const taskPacketGeneratedAt = getOptionalDateTimeProperty(taskPacket, 'generatedAt');
+  const deliveryRuntimeEpochId = getRuntimeEpochId(deliveryState);
+  const heartbeatRuntimeEpochId = getRuntimeEpochId(heartbeat);
+  const runtimeStateRuntimeEpochId = getRuntimeEpochId(runtimeState);
+  const taskPacketRuntimeEpochId = getRuntimeEpochId(taskPacket);
+  const deliveryRuntimeEpochAlignment = describeRuntimeEpochAlignment(runtimeEpochId, deliveryRuntimeEpochId);
+  const heartbeatRuntimeEpochAlignment = describeRuntimeEpochAlignment(runtimeEpochId, heartbeatRuntimeEpochId);
+  const runtimeStateRuntimeEpochAlignment = describeRuntimeEpochAlignment(runtimeEpochId, runtimeStateRuntimeEpochId);
+  const taskPacketRuntimeEpochAlignment = describeRuntimeEpochAlignment(runtimeEpochId, taskPacketRuntimeEpochId);
   const diagnostics = {
     usedHeartbeat: false,
     usedRuntimeState: false,
     reason: 'delivery-state-missing',
+    currentRuntimeEpochId: runtimeEpochId,
+    deliveryRuntimeEpochId,
+    heartbeatRuntimeEpochId,
+    runtimeStateRuntimeEpochId,
+    taskPacketRuntimeEpochId,
+    deliveryRuntimeEpochAlignment,
+    heartbeatRuntimeEpochAlignment,
+    runtimeStateRuntimeEpochAlignment,
+    taskPacketRuntimeEpochAlignment,
     heartbeatGeneratedAt: heartbeatGeneratedAt ? heartbeatGeneratedAt.toISOString() : null,
     deliveryGeneratedAt: deliveryGeneratedAt ? deliveryGeneratedAt.toISOString() : null,
     runtimeGeneratedAt: runtimeGeneratedAt ? runtimeGeneratedAt.toISOString() : null,
@@ -667,14 +880,35 @@ export function resolveDeliveryStateForStatus({
     runtimeRepository: getOptionalStringProperty(runtimeState, 'repository'),
   };
 
+  let effectiveDeliveryState = deliveryState;
+  let effectiveDeliveryGeneratedAt = deliveryGeneratedAt;
+  if (runtimeEpochId && deliveryState && deliveryRuntimeEpochAlignment !== 'aligned') {
+    effectiveDeliveryState = null;
+    effectiveDeliveryGeneratedAt = null;
+    diagnostics.reason = resolveRuntimeEpochMismatchReason('delivery-state', deliveryRuntimeEpochAlignment);
+  }
+
+  const effectiveTaskPacket =
+    runtimeEpochId && taskPacket && taskPacketRuntimeEpochAlignment !== 'aligned'
+      ? null
+      : taskPacket;
+
   let runtimeDeliveryState = null;
   let runtimeIssue = 0;
   const runtimeRepo = getOptionalStringProperty(runtimeState, 'repository');
   if (runtimeState) {
     if (runtimeRepo && runtimeRepo !== repo) {
       diagnostics.reason = 'runtime-state-repository-mismatch';
+    } else if (runtimeEpochId && runtimeStateRuntimeEpochAlignment !== 'aligned') {
+      diagnostics.reason = resolveRuntimeEpochMismatchReason('runtime-state', runtimeStateRuntimeEpochAlignment);
     } else {
-      runtimeDeliveryState = convertRuntimeArtifactsToDeliveryState({ repo, runtimeDir, runtimeState, taskPacket, paths });
+      runtimeDeliveryState = convertRuntimeArtifactsToDeliveryState({
+        repo,
+        runtimeDir,
+        runtimeState,
+        taskPacket: effectiveTaskPacket,
+        paths,
+      });
       if (runtimeDeliveryState?.activeLane) {
         runtimeIssue = getOptionalIntProperty(runtimeDeliveryState.activeLane, 'issue');
       }
@@ -690,36 +924,43 @@ export function resolveDeliveryStateForStatus({
   if (!heartbeat?.activeLane) {
     if (
       runtimeDeliveryState &&
-      (!deliveryGeneratedAt ||
-        runtimeGeneratedAt > deliveryGeneratedAt ||
-        (deliveryState?.activeLane && getOptionalIntProperty(deliveryState.activeLane, 'issue') !== runtimeIssue))
+      (!effectiveDeliveryGeneratedAt ||
+        runtimeGeneratedAt > effectiveDeliveryGeneratedAt ||
+        (effectiveDeliveryState?.activeLane &&
+          getOptionalIntProperty(effectiveDeliveryState.activeLane, 'issue') !== runtimeIssue))
     ) {
       return useRuntimeIfCurrent();
     }
-    if (deliveryState) {
+    if (effectiveDeliveryState) {
       diagnostics.reason = 'delivery-state-current';
     }
-    return { state: deliveryState, diagnostics };
+    return { state: effectiveDeliveryState, diagnostics };
   }
 
   const heartbeatLane = heartbeat.activeLane;
-  const deliveryIssue = deliveryState?.activeLane ? getOptionalIntProperty(deliveryState.activeLane, 'issue') : 0;
+  const deliveryIssue = effectiveDeliveryState?.activeLane ? getOptionalIntProperty(effectiveDeliveryState.activeLane, 'issue') : 0;
   const heartbeatIssue = getOptionalIntProperty(heartbeatLane, 'issue');
   if (heartbeatIssue <= 0) {
-    if (runtimeDeliveryState && (!deliveryGeneratedAt || runtimeGeneratedAt > deliveryGeneratedAt || deliveryIssue !== runtimeIssue)) {
+    if (
+      runtimeDeliveryState &&
+      (!effectiveDeliveryGeneratedAt || runtimeGeneratedAt > effectiveDeliveryGeneratedAt || deliveryIssue !== runtimeIssue)
+    ) {
       return useRuntimeIfCurrent();
     }
     diagnostics.reason = 'heartbeat-missing-issue';
-    return { state: deliveryState, diagnostics };
+    return { state: effectiveDeliveryState, diagnostics };
   }
 
   const heartbeatRepo = getOptionalStringProperty(heartbeat, 'repository');
   if (heartbeatRepo && heartbeatRepo !== repo) {
-    if (runtimeDeliveryState && (!deliveryGeneratedAt || runtimeGeneratedAt > deliveryGeneratedAt || deliveryIssue !== runtimeIssue)) {
+    if (
+      runtimeDeliveryState &&
+      (!effectiveDeliveryGeneratedAt || runtimeGeneratedAt > effectiveDeliveryGeneratedAt || deliveryIssue !== runtimeIssue)
+    ) {
       return useRuntimeIfCurrent();
     }
     diagnostics.reason = 'heartbeat-repository-mismatch';
-    return { state: deliveryState, diagnostics };
+    return { state: effectiveDeliveryState, diagnostics };
   }
 
   const nowUtc = new Date();
@@ -729,39 +970,63 @@ export function resolveDeliveryStateForStatus({
       : false;
   const beforeCurrentManager = Boolean(managerStartedAt && heartbeatGeneratedAt && heartbeatGeneratedAt < managerStartedAt);
   const beforeCurrentDaemon = Boolean(daemonStartedAt && heartbeatGeneratedAt && heartbeatGeneratedAt < daemonStartedAt);
-  if (!daemonAlive && (beforeCurrentManager || beforeCurrentDaemon)) {
-    if (runtimeDeliveryState && (!deliveryGeneratedAt || runtimeGeneratedAt > deliveryGeneratedAt || deliveryIssue !== runtimeIssue)) {
+  const heartbeatPredatesCurrentEpoch = beforeCurrentManager || beforeCurrentDaemon;
+  if (heartbeatPredatesCurrentEpoch) {
+    if (
+      runtimeDeliveryState &&
+      (!effectiveDeliveryGeneratedAt || runtimeGeneratedAt > effectiveDeliveryGeneratedAt || deliveryIssue !== runtimeIssue)
+    ) {
       return useRuntimeIfCurrent();
     }
     diagnostics.reason = 'stale-before-current-manager';
-    return { state: deliveryState, diagnostics };
+    return { state: effectiveDeliveryState, diagnostics };
   }
   if (!daemonAlive && heartbeatTooOld) {
-    if (runtimeDeliveryState && (!deliveryGeneratedAt || runtimeGeneratedAt > deliveryGeneratedAt || deliveryIssue !== runtimeIssue)) {
+    if (
+      runtimeDeliveryState &&
+      (!effectiveDeliveryGeneratedAt || runtimeGeneratedAt > effectiveDeliveryGeneratedAt || deliveryIssue !== runtimeIssue)
+    ) {
       return useRuntimeIfCurrent();
     }
     diagnostics.reason = 'stale-heartbeat-daemon-dead';
-    return { state: deliveryState, diagnostics };
+    return { state: effectiveDeliveryState, diagnostics };
+  }
+  if (runtimeEpochId && heartbeatRuntimeEpochAlignment !== 'aligned') {
+    if (
+      runtimeDeliveryState &&
+      (!effectiveDeliveryGeneratedAt || runtimeGeneratedAt > effectiveDeliveryGeneratedAt || deliveryIssue !== runtimeIssue)
+    ) {
+      return useRuntimeIfCurrent();
+    }
+    diagnostics.reason = resolveRuntimeEpochMismatchReason('heartbeat', heartbeatRuntimeEpochAlignment);
+    return { state: effectiveDeliveryState, diagnostics };
   }
 
-  if (deliveryState && deliveryGeneratedAt && (!heartbeatGeneratedAt || deliveryGeneratedAt >= heartbeatGeneratedAt)) {
+  if (
+    effectiveDeliveryState &&
+    effectiveDeliveryGeneratedAt &&
+    (!heartbeatGeneratedAt || effectiveDeliveryGeneratedAt >= heartbeatGeneratedAt)
+  ) {
     diagnostics.reason = 'delivery-state-current';
-    return { state: deliveryState, diagnostics };
+    return { state: effectiveDeliveryState, diagnostics };
   }
 
-  let freshestBaseGeneratedAt = deliveryGeneratedAt;
-  if (runtimeGeneratedAt && (!freshestBaseGeneratedAt || runtimeGeneratedAt > freshestBaseGeneratedAt)) {
+  let freshestBaseGeneratedAt = effectiveDeliveryGeneratedAt;
+  if (runtimeDeliveryState && runtimeGeneratedAt && (!freshestBaseGeneratedAt || runtimeGeneratedAt > freshestBaseGeneratedAt)) {
     freshestBaseGeneratedAt = runtimeGeneratedAt;
   }
   const currentBaseIssue = runtimeIssue > 0 ? runtimeIssue : deliveryIssue;
   const heartbeatNewer = Boolean(heartbeatGeneratedAt && (!freshestBaseGeneratedAt || heartbeatGeneratedAt > freshestBaseGeneratedAt));
   const issueDrift = currentBaseIssue !== heartbeatIssue;
   if (!heartbeatNewer && !issueDrift) {
-    if (runtimeDeliveryState && (!deliveryGeneratedAt || runtimeGeneratedAt > deliveryGeneratedAt || deliveryIssue !== runtimeIssue)) {
+    if (
+      runtimeDeliveryState &&
+      (!effectiveDeliveryGeneratedAt || runtimeGeneratedAt > effectiveDeliveryGeneratedAt || deliveryIssue !== runtimeIssue)
+    ) {
       return useRuntimeIfCurrent();
     }
     diagnostics.reason = 'delivery-state-current';
-    return { state: deliveryState, diagnostics };
+    return { state: effectiveDeliveryState, diagnostics };
   }
 
   const laneId = getOptionalStringProperty(heartbeatLane, 'laneId');
@@ -788,6 +1053,7 @@ export function resolveDeliveryStateForStatus({
       generatedAt: heartbeatGeneratedAt ? heartbeatGeneratedAt.toISOString() : toIso(),
       repository: repo,
       runtimeDir,
+      runtimeEpochId: runtimeEpochId || heartbeatRuntimeEpochId || null,
       status,
       laneLifecycle,
       activeCodingLanes: laneLifecycle === 'coding' ? 1 : 0,
@@ -796,6 +1062,7 @@ export function resolveDeliveryStateForStatus({
       activeLane: {
         schema: 'priority/delivery-agent-lane-state@v1',
         generatedAt: heartbeatGeneratedAt ? heartbeatGeneratedAt.toISOString() : toIso(),
+        runtimeEpochId: runtimeEpochId || heartbeatRuntimeEpochId || null,
         laneId,
         issue: heartbeatIssue,
         epic: getOptionalIntProperty(heartbeatLane, 'epic'),

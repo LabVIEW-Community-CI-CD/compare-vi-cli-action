@@ -8,7 +8,10 @@ function createGovernorPortfolioSummary({
   nextOwnerRepository = 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
   nextAction = 'continue-compare-governance-work',
   ownerDecisionSource = 'compare-governor-summary',
-  governorMode = 'compare-governance-work'
+  governorMode = 'compare-governance-work',
+  viHistoryDistributorDependencyStatus = 'unknown',
+  viHistoryDistributorDependencyExternalBlocker = null,
+  viHistoryDistributorDependencyPublicationState = null
 } = {}) {
   return {
     schema: 'priority/autonomous-governor-portfolio-summary-report@v1',
@@ -25,11 +28,30 @@ function createGovernorPortfolioSummary({
       monitoringStatus: 'active',
       futureAgentAction: 'future-agent-may-pivot',
       governorMode,
-      nextAction
+      nextAction,
+      queueHandoffStatus: null,
+      queueHandoffNextWakeCondition: null,
+      queueHandoffPrUrl: null,
+      queueAuthoritySource: null
     },
     portfolio: {
       repositoryCount: 4,
       repositories: [],
+      dependencies: [
+        {
+          id: 'vi-history-producer-native-distributor',
+          status: viHistoryDistributorDependencyStatus,
+          ownerRepository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+          dependentRepository: 'LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate',
+          requiredCapability: 'vi-history',
+          source: 'compare-release-signing-readiness',
+          releaseSigningStatus: null,
+          releasePublicationState: viHistoryDistributorDependencyPublicationState,
+          signingCapabilityState: null,
+          externalBlocker: viHistoryDistributorDependencyExternalBlocker,
+          detail: 'fixture'
+        }
+      ],
       unsupportedPaths: []
     },
     summary: {
@@ -42,6 +64,14 @@ function createGovernorPortfolioSummary({
       templateMonitoringStatus: 'pass',
       supportedProofStatus: 'pass',
       repoGraphStatus: 'pass',
+      queueHandoffStatus: null,
+      queueHandoffNextWakeCondition: null,
+      queueHandoffPrUrl: null,
+      queueAuthoritySource: null,
+      viHistoryDistributorDependencyStatus,
+      viHistoryDistributorDependencyTargetRepository: 'LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate',
+      viHistoryDistributorDependencyExternalBlocker,
+      viHistoryDistributorDependencyPublicationState,
       portfolioWakeConditionCount: 0,
       triggeredWakeConditions: []
     }
@@ -167,6 +197,44 @@ test('planCompareviRuntimeStep keeps queue-empty compare ownership as idle with 
   );
 });
 
+test('planCompareviRuntimeStep explains blocked vi-history distributor dependency during queue-empty compare ownership', async () => {
+  const decision = await compareviRuntimeTest.planCompareviRuntimeStep({
+    repoRoot: '/tmp/repo',
+    env: { GITHUB_REPOSITORY: 'LabVIEW-Community-CI-CD/compare-vi-cli-action' },
+    options: {},
+    deps: {
+      loadDeliveryAgentPolicyFn: async () => ({ implementationRemote: 'origin' }),
+      runMonitoringWorkInjectionFn: async () => ({
+        issueNumber: null,
+        outputPath: '/tmp/repo/tests/results/_agent/issue/monitoring-work-injection.json',
+        ledgerPath: '/tmp/repo/tests/results/_agent/ops/ops-decision-ledger.json'
+      }),
+      classifyNoStandingPriorityConditionFn: async () => ({
+        status: 'classified',
+        reason: 'queue-empty',
+        openIssueCount: 0,
+        message: 'queue empty'
+      }),
+      resolveStandingPriorityForRepoFn: async () => ({ found: null }),
+      readGovernorPortfolioSummaryFn: async () =>
+        createGovernorPortfolioSummary({
+          nextAction: 'complete-compare-vi-history-producer-release',
+          ownerDecisionSource: 'compare-vi-history-distributor-dependency',
+          governorMode: 'monitoring-active',
+          viHistoryDistributorDependencyStatus: 'blocked',
+          viHistoryDistributorDependencyExternalBlocker: 'workflow-signing-secret-missing',
+          viHistoryDistributorDependencyPublicationState: 'unobserved'
+        })
+    }
+  });
+
+  assert.equal(decision.outcome, 'idle');
+  assert.match(decision.reason, /vi-history distributor dependency/i);
+  assert.match(decision.reason, /workflow-signing-secret-missing/i);
+  assert.equal(decision.artifacts.governorPortfolioHandoff.status, 'owner-match');
+  assert.equal(decision.artifacts.governorPortfolioHandoff.viHistoryDistributorDependencyStatus, 'blocked');
+});
+
 test('planCompareviRuntimeStep describes repo-context pivot preparation when compare remains current owner but template is next', async () => {
   const decision = await compareviRuntimeTest.planCompareviRuntimeStep({
     repoRoot: '/tmp/repo',
@@ -202,6 +270,59 @@ test('planCompareviRuntimeStep describes repo-context pivot preparation when com
   assert.equal(
     decision.artifacts.governorPortfolioHandoff.nextOwnerRepository,
     'LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate'
+  );
+});
+
+test('planCompareviRuntimeStep surfaces a ready cross-repo broker decision when queue-empty compare can offload to another repo', async () => {
+  const decision = await compareviRuntimeTest.planCompareviRuntimeStep({
+    repoRoot: '/tmp/repo',
+    env: { GITHUB_REPOSITORY: 'LabVIEW-Community-CI-CD/compare-vi-cli-action' },
+    options: {},
+    deps: {
+      loadDeliveryAgentPolicyFn: async () => ({ implementationRemote: 'origin' }),
+      runMonitoringWorkInjectionFn: async () => ({
+        issueNumber: null,
+        outputPath: '/tmp/repo/tests/results/_agent/issue/monitoring-work-injection.json',
+        ledgerPath: '/tmp/repo/tests/results/_agent/ops/ops-decision-ledger.json'
+      }),
+      classifyNoStandingPriorityConditionFn: async () => ({
+        status: 'classified',
+        reason: 'queue-empty',
+        openIssueCount: 0,
+        message: 'queue empty'
+      }),
+      resolveStandingPriorityForRepoFn: async () => ({ found: null }),
+      readGovernorPortfolioSummaryFn: async () =>
+        createGovernorPortfolioSummary({
+          nextOwnerRepository: 'LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate',
+          nextAction: 'future-agent-may-pivot',
+          ownerDecisionSource: 'compare-monitoring-mode',
+          governorMode: 'monitoring-active'
+        }),
+      runCrossRepoLaneBrokerFn: async () => ({
+        outputPath: '/tmp/repo/tests/results/_agent/runtime/cross-repo-lane-broker-decision.json',
+        report: {
+          schema: 'priority/cross-repo-lane-broker-decision@v1',
+          decision: {
+            status: 'ready',
+            selectedRepository: 'LabVIEW-Community-CI-CD/comparevi-history',
+            selectedIssueNumber: 301,
+            selectedProviderId: 'local-codex'
+          }
+        }
+      })
+    }
+  });
+
+  assert.equal(decision.outcome, 'idle');
+  assert.match(decision.reason, /cross-repo broker selects/i);
+  assert.equal(
+    decision.artifacts.crossRepoLaneBrokerDecision.decision.selectedRepository,
+    'LabVIEW-Community-CI-CD/comparevi-history'
+  );
+  assert.equal(
+    decision.artifacts.crossRepoLaneBrokerDecisionPath,
+    '/tmp/repo/tests/results/_agent/runtime/cross-repo-lane-broker-decision.json'
   );
 });
 

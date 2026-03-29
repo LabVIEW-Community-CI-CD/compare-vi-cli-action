@@ -21,6 +21,23 @@ async function writeJson(filePath, payload) {
   await writeFile(filePath, `${JSON.stringify(payload, null, 2)}\n`, 'utf8');
 }
 
+async function readTextIfExists(filePath) {
+  try {
+    return await readFile(filePath, 'utf8');
+  } catch {
+    return null;
+  }
+}
+
+async function restoreTextFile(filePath, text) {
+  if (text == null) {
+    await rm(filePath, { force: true });
+    return;
+  }
+  await mkdir(path.dirname(filePath), { recursive: true });
+  await writeFile(filePath, text, 'utf8');
+}
+
 async function copyRepoFile(relativePath, tempRoot) {
   const destinationPath = path.join(tempRoot, relativePath);
   await mkdir(path.dirname(destinationPath), { recursive: true });
@@ -352,6 +369,291 @@ test('delivery-agent manager status ignores stale host-signal artifacts from bef
   assert.equal(status.hostSignalDiagnostics.reason, 'stale-before-current-manager');
   assert.equal(status.hostSignalDiagnostics.hostSignalGeneratedAt, hostSignalGeneratedAt);
   assert.equal(status.hostSignalDiagnostics.managerStartedAt, managerStartedAt);
+});
+
+test('delivery-agent manager status projects queue-empty monitoring when the current manager is alive and historical lane receipts are stale', async (t) => {
+  const runtimeDirPath = await mkdtemp(path.join(repoRoot, 'tests', 'results', '_agent', 'tmp-manager-status-queue-empty-'));
+  const relativeRuntimeDir = path.relative(repoRoot, runtimeDirPath);
+  const issueDirPath = path.join(repoRoot, 'tests', 'results', '_agent', 'issue');
+  const handoffDirPath = path.join(repoRoot, 'tests', 'results', '_agent', 'handoff');
+  const queueEmptyReportPath = path.join(issueDirPath, 'no-standing-priority.json');
+  const routerPath = path.join(issueDirPath, 'router.json');
+  const monitoringModePath = path.join(handoffDirPath, 'monitoring-mode.json');
+  const originalQueueEmptyReport = await readTextIfExists(queueEmptyReportPath);
+  const originalRouter = await readTextIfExists(routerPath);
+  const originalMonitoringMode = await readTextIfExists(monitoringModePath);
+
+  t.after(async () => {
+    await rm(runtimeDirPath, { recursive: true, force: true });
+    await restoreTextFile(queueEmptyReportPath, originalQueueEmptyReport);
+    await restoreTextFile(routerPath, originalRouter);
+    await restoreTextFile(monitoringModePath, originalMonitoringMode);
+  });
+
+  const now = Date.now();
+  const deliveryGeneratedAt = new Date(now - 120_000).toISOString();
+  const heartbeatGeneratedAt = new Date(now - 60_000).toISOString();
+  const managerStartedAt = new Date(now - 10_000).toISOString();
+  const daemonStartedAt = new Date(now - 9_000).toISOString();
+
+  await writeJson(path.join(runtimeDirPath, 'delivery-agent-state.json'), {
+    schema: 'priority/delivery-agent-runtime-state@v1',
+    generatedAt: deliveryGeneratedAt,
+    repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+    runtimeDir: runtimeDirPath,
+    status: 'blocked',
+    laneLifecycle: 'blocked',
+    activeCodingLanes: 0,
+    activeLane: {
+      schema: 'priority/delivery-agent-lane-state@v1',
+      generatedAt: deliveryGeneratedAt,
+      laneId: 'origin-1010',
+      issue: 1010,
+      branch: 'issue/origin-1010-example',
+      forkRemote: 'origin',
+      blockerClass: 'validation-failure',
+      laneLifecycle: 'blocked'
+    }
+  });
+  await writeJson(path.join(runtimeDirPath, 'observer-heartbeat.json'), {
+    schema: 'priority/runtime-observer-heartbeat@v1',
+    generatedAt: heartbeatGeneratedAt,
+    repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+    outcome: 'lease-blocked',
+    activeLane: {
+      laneId: 'origin-959',
+      issue: 959,
+      branch: 'issue/origin-959-example',
+      forkRemote: 'origin',
+      blockerClass: 'none'
+    }
+  });
+  await writeJson(path.join(runtimeDirPath, 'delivery-agent-manager-pid.json'), {
+    schema: 'priority/unattended-delivery-agent-manager-pid@v1',
+    startedAt: managerStartedAt,
+    pid: process.pid
+  });
+  await writeJson(path.join(runtimeDirPath, 'delivery-agent-wsl-daemon-pid.json'), {
+    schema: 'priority/unattended-delivery-agent-wsl-daemon-pid@v1',
+    startedAt: daemonStartedAt,
+    pid: 0
+  });
+  await writeJson(queueEmptyReportPath, {
+    schema: 'standing-priority/no-standing@v1',
+    repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+    reason: 'queue-empty',
+    generatedAt: new Date(now - 5_000).toISOString(),
+    openIssueCount: 0,
+    message: 'Queue empty for unattended monitoring.'
+  });
+  await writeJson(routerPath, {
+    schema: 'agent/priority-router@v1',
+    issue: null,
+    updatedAt: new Date(now - 5_000).toISOString(),
+    actions: []
+  });
+  await writeJson(monitoringModePath, {
+    status: 'active',
+    futureAgentAction: 'future-agent-may-pivot'
+  });
+
+  const status = await invokeManagerStatus(relativeRuntimeDir);
+
+  assert.equal(status.delivery.derivedFromQueueEmptyState, true);
+  assert.equal(status.delivery.status, 'idle');
+  assert.equal(status.delivery.laneLifecycle, 'idle');
+  assert.equal(status.delivery.activeCodingLanes, 0);
+  assert.equal(status.delivery.activeLane.issue, null);
+  assert.equal(status.delivery.activeLane.laneId, 'queue-empty-monitoring');
+  assert.equal(status.delivery.activeLane.syntheticIdle, true);
+  assert.equal(status.delivery.activeLane.nextWakeCondition, 'future-agent-may-pivot');
+  assert.equal(status.heartbeatDiagnostics.reason, 'queue-empty-current-manager');
+  assert.equal(status.heartbeatDiagnostics.usedHeartbeat, false);
+  assert.equal(status.heartbeatDiagnostics.usedRuntimeState, false);
+  assert.equal(status.heartbeatDiagnostics.usedQueueEmptyState, true);
+  assert.equal(status.heartbeatDiagnostics.queueState, 'queue-empty');
+  assert.equal(status.heartbeatDiagnostics.monitoringAction, 'future-agent-may-pivot');
+});
+
+test('delivery-agent manager status preserves a persisted fail-closed outcome after the manager stops', async (t) => {
+  const runtimeDirPath = await mkdtemp(path.join(repoRoot, 'tests', 'results', '_agent', 'tmp-manager-status-fail-closed-'));
+  const relativeRuntimeDir = path.relative(repoRoot, runtimeDirPath);
+  t.after(async () => {
+    await rm(runtimeDirPath, { recursive: true, force: true });
+  });
+
+  await writeJson(path.join(runtimeDirPath, 'delivery-agent-manager-state.json'), {
+    schema: 'priority/unattended-delivery-agent-report@v1',
+    generatedAt: new Date('2026-03-26T20:00:00.000Z').toISOString(),
+    repo: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+    runtimeDir: relativeRuntimeDir,
+    status: 'fail-closed',
+    outcome: 'manager-stopped-fail-closed',
+    managerFailureCircuitBreaker: {
+      status: 'fail-closed',
+      threshold: 3,
+      consecutiveCycleFailures: 3,
+      failureSignature: 'worker-blocked|origin-2010|2010|worker-slot-1|validation-failure',
+      observerOutcome: 'worker-blocked',
+      observerOutcomeSource: 'report',
+      reason: 'repeated-daemon-cycle-failures',
+    },
+  });
+
+  const status = await invokeManagerStatus(relativeRuntimeDir);
+
+  assert.equal(status.status, 'fail-closed');
+  assert.equal(status.outcome, 'manager-stopped-fail-closed');
+  assert.equal(status.managerFailureCircuitBreaker.status, 'fail-closed');
+  assert.equal(status.managerFailureCircuitBreaker.consecutiveCycleFailures, 3);
+  assert.equal(status.managerFailureCircuitBreaker.reason, 'repeated-daemon-cycle-failures');
+});
+
+test('delivery-agent manager status exposes the current runtime epoch and startup quarantine summary', async (t) => {
+  const runtimeDirPath = await mkdtemp(path.join(repoRoot, 'tests', 'results', '_agent', 'tmp-manager-status-runtime-epoch-'));
+  const relativeRuntimeDir = path.relative(repoRoot, runtimeDirPath);
+  t.after(async () => {
+    await rm(runtimeDirPath, { recursive: true, force: true });
+  });
+
+  await writeJson(path.join(runtimeDirPath, 'delivery-agent-manager-pid.json'), {
+    schema: 'priority/unattended-delivery-agent-manager-pid@v1',
+    startedAt: '2026-03-26T20:10:00.000Z',
+    pid: process.pid,
+    runtimeEpochId: '2026-03-26T20-10-00-000Z-labview-community-ci-cd-compare-vi-cli-action',
+  });
+  await writeJson(path.join(runtimeDirPath, 'delivery-agent-runtime-epoch.json'), {
+    schema: 'priority/unattended-delivery-agent-runtime-epoch@v1',
+    generatedAt: '2026-03-26T20:10:00.500Z',
+    repo: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+    runtimeDir: relativeRuntimeDir,
+    runtimeEpochId: '2026-03-26T20-10-00-000Z-labview-community-ci-cd-compare-vi-cli-action',
+    managerStartedAt: '2026-03-26T20:10:00.000Z',
+    startupQuarantine: {
+      schema: 'priority/unattended-delivery-agent-startup-quarantine@v1',
+      generatedAt: '2026-03-26T20:10:00.500Z',
+      repo: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+      runtimeDir: relativeRuntimeDir,
+      runtimeEpochId: '2026-03-26T20-10-00-000Z-labview-community-ci-cd-compare-vi-cli-action',
+      managerStartedAt: '2026-03-26T20:10:00.000Z',
+      quarantineDirPath: path.join(runtimeDirPath, 'quarantine', '2026-03-26T20-10-00-000Z-labview-community-ci-cd-compare-vi-cli-action'),
+      entryCount: 2,
+      entries: [],
+    },
+  });
+
+  const status = await invokeManagerStatus(relativeRuntimeDir);
+
+  assert.equal(status.runtimeEpoch.runtimeEpochId, '2026-03-26T20-10-00-000Z-labview-community-ci-cd-compare-vi-cli-action');
+  assert.equal(status.runtimeEpoch.startupQuarantine.entryCount, 2);
+  assert.equal(status.paths.runtimeEpochPath, path.join(runtimeDirPath, 'delivery-agent-runtime-epoch.json'));
+});
+
+test('delivery-agent manager status prefers an aligned runtime receipt over a fresher but wrong-epoch canonical delivery receipt', async (t) => {
+  const runtimeDirPath = await mkdtemp(path.join(repoRoot, 'tests', 'results', '_agent', 'tmp-manager-status-epoch-alignment-'));
+  const relativeRuntimeDir = path.relative(repoRoot, runtimeDirPath);
+  t.after(async () => {
+    await rm(runtimeDirPath, { recursive: true, force: true });
+  });
+
+  const currentRuntimeEpochId = '2026-03-26T20-10-00-000Z-labview-community-ci-cd-compare-vi-cli-action';
+  const staleRuntimeEpochId = '2026-03-11T16-22-59-000Z-labview-community-ci-cd-compare-vi-cli-action';
+
+  await writeJson(path.join(runtimeDirPath, 'delivery-agent-runtime-epoch.json'), {
+    schema: 'priority/unattended-delivery-agent-runtime-epoch@v1',
+    generatedAt: '2026-03-26T20:10:00.500Z',
+    repo: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+    runtimeDir: relativeRuntimeDir,
+    runtimeEpochId: currentRuntimeEpochId,
+    managerStartedAt: '2026-03-26T20:10:00.000Z',
+    startupQuarantine: {
+      schema: 'priority/unattended-delivery-agent-startup-quarantine@v1',
+      generatedAt: '2026-03-26T20:10:00.500Z',
+      repo: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+      runtimeDir: relativeRuntimeDir,
+      runtimeEpochId: currentRuntimeEpochId,
+      managerStartedAt: '2026-03-26T20:10:00.000Z',
+      quarantineDirPath: path.join(runtimeDirPath, 'quarantine', currentRuntimeEpochId),
+      entryCount: 0,
+      entries: [],
+    },
+  });
+  await writeJson(path.join(runtimeDirPath, 'delivery-agent-state.json'), {
+    schema: 'priority/delivery-agent-runtime-state@v1',
+    generatedAt: '2026-03-26T20:10:30.000Z',
+    repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+    runtimeDir: runtimeDirPath,
+    runtimeEpochId: staleRuntimeEpochId,
+    status: 'blocked',
+    laneLifecycle: 'blocked',
+    activeCodingLanes: 0,
+    activeLane: {
+      schema: 'priority/delivery-agent-lane-state@v1',
+      generatedAt: '2026-03-26T20:10:30.000Z',
+      runtimeEpochId: staleRuntimeEpochId,
+      laneId: 'origin-1010',
+      issue: 1010,
+      branch: 'issue/origin-1010-example',
+      forkRemote: 'origin',
+      blockerClass: 'ci',
+      laneLifecycle: 'blocked',
+    },
+  });
+  await writeJson(path.join(runtimeDirPath, 'runtime-state.json'), {
+    schema: 'priority/runtime-supervisor-state@v1',
+    generatedAt: '2026-03-26T20:10:40.000Z',
+    repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+    runtimeEpochId: currentRuntimeEpochId,
+    lifecycle: {
+      status: 'coding',
+      cycle: 1,
+      startedAt: '2026-03-26T20:10:00.000Z',
+      updatedAt: '2026-03-26T20:10:40.000Z',
+      lastAction: 'step',
+      stopRequested: false,
+    },
+    activeLane: {
+      laneId: 'origin-2014',
+      issue: 2014,
+      branch: 'issue/origin-2014-runtime-epoch-alignment',
+      forkRemote: 'origin',
+      runtimeEpochId: currentRuntimeEpochId,
+    },
+  });
+  await writeJson(path.join(runtimeDirPath, 'task-packet.json'), {
+    schema: 'priority/runtime-worker-task-packet@v1',
+    generatedAt: '2026-03-26T20:10:45.000Z',
+    repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+    runtimeEpochId: currentRuntimeEpochId,
+    laneId: 'origin-2014',
+    status: 'coding',
+    branch: {
+      name: 'issue/origin-2014-runtime-epoch-alignment',
+      forkRemote: 'origin',
+    },
+    pullRequest: {
+      url: null,
+    },
+    checks: {
+      blockerClass: 'none',
+    },
+    evidence: {
+      delivery: {
+        selectedActionType: 'advance-standing-issue',
+        laneLifecycle: 'coding',
+      },
+    },
+  });
+
+  const status = await invokeManagerStatus(relativeRuntimeDir);
+
+  assert.equal(status.delivery.runtimeEpochId, currentRuntimeEpochId);
+  assert.equal(status.delivery.activeLane.runtimeEpochId, currentRuntimeEpochId);
+  assert.equal(status.delivery.activeLane.issue, 2014);
+  assert.equal(status.heartbeatDiagnostics.usedRuntimeState, true);
+  assert.equal(status.heartbeatDiagnostics.reason, 'runtime-state-current');
+  assert.equal(status.heartbeatDiagnostics.deliveryRuntimeEpochAlignment, 'mismatch');
+  assert.equal(status.heartbeatDiagnostics.runtimeStateRuntimeEpochAlignment, 'aligned');
 });
 
 test('Manage-UnattendedDeliveryAgent suppresses fallback build chatter before JSON status output', async (t) => {

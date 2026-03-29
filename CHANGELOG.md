@@ -7,36 +7,81 @@ The format is based on Keep a Changelog, and this project adheres to Semantic Ve
 
 ## [Unreleased]
 
+## [v0.6.4] - 2026-03-29
+
 ### Changed
 
-- `tools/Compare-VIHistory.ps1` now walks every reachable commit pair by default. Wrapper scripts and workflows only cap
-  history when `-MaxPairs`/`max_pairs` is explicitly supplied, keeping manifests and reports complete without extra flags.
-- Release branch tooling now synchronizes the backend release surfaces together:
-  `package.json`, `Directory.Build.props`, and
+- `tools/Compare-VIHistory.ps1` now walks every reachable commit pair by
+  default. Wrapper scripts and workflows only cap history when
+  `-MaxPairs`/`max_pairs` is explicitly supplied, keeping manifests and reports
+  complete without extra flags.
+- Release branch tooling now synchronizes the backend release surfaces
+  together: `package.json`, `Directory.Build.props`, and
   `tools/CompareVI.Tools/CompareVI.Tools.psd1`.
 - `comparevi-cli`, `CompareVi.Shared`, and `CompareVI.Tools` now follow the
-  backend release line (`0.6.3` on `develop`) instead of advertising stale
-  `0.1.0` internal versions.
+  backend release line (`0.6.4` for this stable cut) instead of advertising
+  stale internal versions.
+- The public trust packet, usage docs, and release helper surfaces now align on
+  the stable `v0.6.4` cut instead of leaving downstream consumers on the prior
+  `v0.6.3` baseline or RC-only guidance.
+- Downstream onboarding now ignores inline-script `uses:` literals, keeping
+  workflow-reference evidence deterministic for hardened consumer repositories.
 
 ### Added
 
-- Release review platform foundation for standing priority #216: release-review scenario summary schema
-  (`docs/schemas/release-review-scenario-summary-v1.schema.json`), review index schema
-  (`docs/schemas/release-review-index-v1.schema.json`), scenario profile manifest
-  (`tools/release-review/scenario-profiles.json`), gate policy file (`tools/policy/release-review-gates.json`),
-  scenario writer/evaluator scripts under `tools/release-review/`, and `release.yml` wiring that validates schemas,
-  produces a policy decision index, and publishes a standardized reviewer summary artifact per release tag.
+- Release review platform foundation for standing priority #216: release-review
+  scenario summary schema
+  (`docs/schemas/release-review-scenario-summary-v1.schema.json`), review index
+  schema (`docs/schemas/release-review-index-v1.schema.json`), scenario profile
+  manifest (`tools/release-review/scenario-profiles.json`), gate policy file
+  (`tools/policy/release-review-gates.json`), scenario writer/evaluator scripts
+  under `tools/release-review/`, and `release.yml` wiring that validates
+  schemas, produces a policy decision index, and publishes a standardized
+  reviewer summary artifact per release tag.
+- Supported product boundary, minimal adopter contract, workflow criticality
+  map, maintainer continuity profile, and first-consumer success path docs now
+  define the supported product/adopter surface explicitly for maintainers and
+  downstream teams.
+- Downstream proving against `LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate`
+  now ships with a hardened no-warning baseline: stable upstream pin, required
+  policy/promotion checks, and a protected `production` environment.
 
 ### Documentation
 
-- Updated README, developer guide, and workflow notes to describe the optional `-MaxPairs` cap and refreshed examples to
-  highlight the new default behaviour.
+- Updated README, developer guide, and workflow notes to describe the optional
+  `-MaxPairs` cap and refreshed examples to highlight the new default
+  behaviour.
 - Added Session Index cutover docs (`docs/SESSION_INDEX_V1_DEPRECATION.md`,
-  `docs/SESSION_INDEX_V2_CONSUMER_MATRIX.md`) to formalize v1 freeze rules, deprecation window criteria, and final
-  v2-only evidence expectations.
+  `docs/SESSION_INDEX_V2_CONSUMER_MATRIX.md`) to formalize v1 freeze rules,
+  deprecation window criteria, and final v2-only evidence expectations.
 - Clarified the stable backend release surface map and the coordination
   expectations between backend releases in this repo and facade releases in
   `comparevi-history`.
+- Updated release notes, tag checklist, usage examples, and downstream proof
+  references so the stable `v0.6.4` release is the checked-in baseline.
+
+## [v0.6.4-rc.2] - 2026-03-25
+
+### Changed
+
+- Release signing readiness now fails before unsigned tag publication, and the
+  conductor distinguishes code-path, signing-capability, and signing-authority
+  blockers so RC publication stops on the real trust failure.
+- Release publication now supports repair/replay handling for existing unsigned
+  tags, allowing immutable GitHub Release publication to recover without
+  pretending a broken authoritative tag is acceptable.
+- Queue-empty, governor portfolio, and runtime handoff surfaces now project the
+  VI-history distributor and concentrated execution topology more explicitly,
+  reducing hidden release blockers in the standing-priority control plane.
+
+### Added
+
+- Execution-cell, TestStand, kernel-coordinator, and runtime-topology receipts
+  are now projected through governor and loop-status evidence so the RC ships
+  with a clearer execution topology contract.
+- Published `v0.6.4-rc.2` release materials now include the archived release
+  notes and a full set of distribution artifacts, checksums, SBOM, and
+  provenance evidence for the released RC.
 
 ## [v0.6.4-rc.1] - 2026-03-22
 

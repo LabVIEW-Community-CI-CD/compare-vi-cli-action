@@ -49,13 +49,16 @@ test('package scripts and runbook expose downstream promotion manifest and score
   assert.match(runbook, /cookiecutter/i);
   assert.match(runbook, /rollback/i);
   assert.match(runbook, /replay/i);
+  assert.match(runbook, /vi-history-lv32-shadow-proof-receipt-v1\.schema\.json/);
+  assert.match(runbook, /vi-history-lv32-shadow-proof-receipt\.json/);
+  assert.match(runbook, /optional LV32 shadow proof receipt/i);
   assert.match(runbook, /downstream-develop-promotion-scorecard\.json/);
   assert.match(runbook, /template-agent-verification-report\.json/);
   assert.match(runbook, /`pending` snapshot/);
   assert.match(runbook, /reservedSlotCount = 1/);
   assert.match(runbook, /minimumImplementationSlots = 3/);
   assert.match(runbook, /hosted-first/);
-  assert.match(runbook, /LabVIEW-Community-CI-CD\/LabviewGitHubCiTemplate@v0\.1\.0/);
+  assert.match(runbook, /LabVIEW-Community-CI-CD\/LabviewGitHubCiTemplate@v0\.1\.1/);
   assert.match(runbook, /cookiecutter==2\.7\.1/);
   assert.match(runbook, /ghcr\.io\/labview-community-ci-cd\/comparevi-tools:latest/);
   assert.match(runbook, /Release consumption/);
@@ -72,6 +75,7 @@ test('downstream promotion workflow turns the proving rail into checked-in autom
   assert.match(workflow, /comparevi_history_release:/);
   assert.match(workflow, /scenario_pack_id:/);
   assert.match(workflow, /cookiecutter_template_id:/);
+  assert.match(workflow, /vi_history_lv32_shadow_proof_receipt:/);
   assert.match(workflow, /Resolve pinned template dependency policy/);
   assert.match(workflow, /tools\/policy\/template-dependency\.json/);
   assert.match(workflow, /Record pinned template dependency/);
@@ -83,6 +87,8 @@ test('downstream promotion workflow turns the proving rail into checked-in autom
   assert.match(workflow, /template-agent-verification-report-v1\.schema\.json/);
   assert.match(workflow, /Generate downstream promotion manifest/);
   assert.match(workflow, /downstream-promotion-manifest\.mjs/);
+  assert.match(workflow, /Validate LV32 shadow proof receipt schema/);
+  assert.match(workflow, /--vi-history-lv32-shadow-proof-receipt/);
   assert.match(workflow, /Build downstream promotion scorecard/);
   assert.match(workflow, /downstream-promotion-scorecard\.mjs/);
   assert.match(workflow, /--template-agent-verification-report tests\/results\/_agent\/promotion\/template-agent-verification-report\.json/);

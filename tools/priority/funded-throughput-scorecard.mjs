@@ -302,6 +302,11 @@ function extractThroughputEvidence(throughputScorecard = null, throughputScoreca
     concurrentLaneActiveCount != null && meanTerminalDurationMinutes != null
       ? roundNumber(concurrentLaneActiveCount * meanTerminalDurationMinutes)
       : null;
+  const currentCycleIdleAuthority =
+    throughputScorecard?.workerPool?.currentCycleIdleAuthority
+    && typeof throughputScorecard.workerPool.currentCycleIdleAuthority === 'object'
+      ? throughputScorecard.workerPool.currentCycleIdleAuthority
+      : null;
 
   if (validatedMergedPullRequestCount == null) {
     blockers.push(
@@ -333,6 +338,12 @@ function extractThroughputEvidence(throughputScorecard = null, throughputScoreca
 
   return {
     blockers,
+    throughputWindow: {
+      currentCycleIdleStatus: normalizeText(currentCycleIdleAuthority?.status) || 'missing',
+      currentCycleIdleSource: normalizeText(currentCycleIdleAuthority?.source) || null,
+      currentCycleIdleObservedAt: normalizeText(currentCycleIdleAuthority?.observedAt) || null,
+      currentCycleIdleNextWakeCondition: normalizeText(currentCycleIdleAuthority?.nextWakeCondition) || null
+    },
     validatedMergedPullRequestCount: validatedMergedPullRequestCount ?? 0,
     closedIssueCount: closedIssueCount ?? 0,
     promotionEvidenceCount: promotionEvidenceCount ?? 0,
@@ -359,6 +370,9 @@ function resolveRecommendation({ blockers, reasons }) {
   }
   if (reasons.includes('invoice-reconciliation-pending')) {
     return 'continue-invoice-reconciliation';
+  }
+  if (reasons.includes('current-cycle-idle-window')) {
+    return 'observe-funded-window';
   }
   if (reasons.includes('zero-validated-throughput')) {
     return 'increase-validated-throughput';
@@ -462,7 +476,13 @@ export function buildFundedThroughputScorecard({
     if (costEvidence.fundingWindow.reconciliationStatus !== 'actual-observed') {
       reasons.push('invoice-reconciliation-pending');
     }
-    if (metrics.fundedUsd > 0 && metrics.validatedMergedPullRequestCount === 0) {
+    if (
+      metrics.fundedUsd > 0
+      && metrics.validatedMergedPullRequestCount === 0
+      && throughputEvidence.throughputWindow.currentCycleIdleStatus === 'observed'
+    ) {
+      reasons.push('current-cycle-idle-window');
+    } else if (metrics.fundedUsd > 0 && metrics.validatedMergedPullRequestCount === 0) {
       reasons.push('zero-validated-throughput');
     }
   }
@@ -481,6 +501,7 @@ export function buildFundedThroughputScorecard({
       deferredMetrics: DEFERRED_METRICS.map((entry) => ({ ...entry }))
     },
     fundingWindow: costEvidence.fundingWindow,
+    throughputWindow: throughputEvidence.throughputWindow,
     summary: {
       status: blockers.length > 0 ? 'fail' : reasons.length > 0 ? 'warn' : 'pass',
       recommendation: resolveRecommendation({ blockers, reasons }),
