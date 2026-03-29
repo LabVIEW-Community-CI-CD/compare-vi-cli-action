@@ -57,7 +57,9 @@ Canonical required-check lists for `develop` and `release/*` must remain in sync
   - `branches.develop.required_status_checks`
   - `branches.release/*.required_status_checks`
   - `rulesets.develop.required_status_checks` (develop)
-  - `rulesets.8614172.required_status_checks` (release/*)
+  - `rulesets.8614172.required_status_checks` (stable manifest identity for
+    `release/*`; `priority:policy` resolves it to the current live GitHub
+    ruleset)
 
 The workflow context `Promotion Contract / promotion-contract` remains an operational evidence check, but it is not a
 branch-protection required status on `develop` or `release/*` because the workflow is intentionally path-scoped for

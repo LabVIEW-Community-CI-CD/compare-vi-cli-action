@@ -82,21 +82,25 @@ promotion behavior, not the branch-class source of truth.
   ```
 
 ### GitHub rulesets
-| Ruleset ID | Scope                | Highlights                                                                                   |
-|------------|----------------------|----------------------------------------------------------------------------------------------|
+| Manifest identity | Scope                | Highlights                                                                                   |
+|-------------------|----------------------|----------------------------------------------------------------------------------------------|
 | `develop` (live id may drift) | `refs/heads/develop` | Merge queue enabled (`merge_method=SQUASH`, `grouping=ALLGREEN`, build queue <=20 entries, 1-minute quiet window). Required checks: `lint`, `fixtures`, `session-index`, `issue-snapshot`, `semver`, `Policy Guard (Upstream) / policy-guard`, `vi-history-scenarios-linux`, `agent-review-policy`, `hook-parity`, `commit-integrity`. Non-required hosted proof lanes may run alongside the queue contract, including `vi-history-scenarios-windows` on GitHub-hosted `windows-2022`. Copilot review settings are no longer enforced through policy; draft/ready review semantics are repo-owned and validated by `agent-review-policy`. |
-| `8614140`  | `refs/heads/main`    | Merge queue enabled (`merge_method=SQUASH`, `grouping=ALLGREEN`, build queue <=5 entries, 1-minute quiet window). Required checks: `lint`, `pester`, `vi-binary-check`, `vi-compare`, `Policy Guard (Upstream) / policy-guard`, `commit-integrity`. Required approving reviews: `0`. |
-| `8614172`  | `refs/heads/release/*` | No merge queue; protects against force-push/deletion. Required checks: `lint`, `pester / normalize`, `smoke-gate`, `Policy Guard (Upstream) / policy-guard`, `commit-integrity`. Required approving reviews: `0`. |
+| `main` (`tools/priority/policy.json` key `8614140`) | `refs/heads/main`    | Merge queue enabled (`merge_method=SQUASH`, `grouping=ALLGREEN`, build queue <=5 entries, 1-minute quiet window). Required checks: `lint`, `pester`, `vi-binary-check`, `vi-compare`, `Policy Guard (Upstream) / policy-guard`, `commit-integrity`. Required approving reviews: `0`. |
+| `release` (`tools/priority/policy.json` key `8614172`) | `refs/heads/release/*` | No merge queue; protects against force-push/deletion. Required checks: `lint`, `pester / normalize`, `smoke-gate`, `Policy Guard (Upstream) / policy-guard`, `commit-integrity`. Required approving reviews: `0`. |
 
 `node tools/npm/run-script.mjs priority:policy` queries these rulesets and fails if the live configuration drifts from
 `tools/priority/policy.json`; run it whenever you adjust protections.
+The numeric keys in `tools/priority/policy.json` are stable manifest identities, not a promise that GitHub will keep
+the same live ruleset ids forever. `priority:policy` resolves those identities to the current live GitHub rulesets by
+name/target/include matching and records the resolved ids in its verification output.
 `node tools/npm/run-script.mjs priority:policy:snapshot` now also emits `state.copilotReview`, which must show
 `rulesetCopilotCodeReviewPresent = false` for the local CLI review contract. The repository-level
 "Automatic request Copilot review" setting is still a manual settings-page verification point because GitHub's REST
 ruleset/branch-protection APIs do not expose that toggle directly.
 
 Fork release exception:
-- `forkProfile.rulesets.8614172.enabled = false` keeps fork `release/*` rulesets disabled by contract.
+- `forkProfile.rulesets.8614172.enabled = false` keeps fork `release/*` rulesets disabled by contract (`8614172`
+  is the stable manifest identity for the release ruleset).
 - Reason: fork release branches are disposable automation maintenance lanes, so follow-up RC repair pushes must not be blocked by PR-only or required-check ruleset enforcement.
 
 ## Prescriptive Protection Settings
@@ -263,7 +267,8 @@ checked into `tools/priority/policy.json` so `priority:policy` stays authoritati
   generic data error.
 
 ### `main`
-- **Ruleset**: `8614140` (repository ruleset, scope `refs/heads/main`).
+- **Ruleset**: stable manifest identity `8614140` for the `main` branch ruleset. Live GitHub ids may drift; use the
+  policy helpers or a name-based ruleset query to resolve the current id before patching settings.
 - **Allowed merges**: queue-managed squash enforced by the `merge_queue` rule (`merge_method=SQUASH`); direct merges and
   fast-forwards are disallowed while the queue is active.
 - **Merge queue parameters** (ruleset API terms; UI "Only merge non-failing pull requests" corresponds to
@@ -277,13 +282,14 @@ checked into `tools/priority/policy.json` so `priority:policy` stays authoritati
 - **Approval policy**: 0 required reviews; stale review dismissal and thread resolution are not enforced.
 - **Quick verification**:
   ```powershell
-  gh api repos/$REPO/rulesets/8614140 --jq '{name,enforcement,conditions,rules:[.rules[]|{type,parameters}]}'
+  gh api repos/$REPO/rulesets --jq '.[] | select(.name=="main" and .target=="branch") | {id,name,enforcement,conditions,rules:[.rules[]|{type,parameters}]}'
   ```
-  Update via the UI or with the REST API (for example, `gh api repos/$REPO/rulesets/8614140 -X PATCH --input payload.json`)
-  if any parameter deviates from `tools/priority/policy.json`.
+  Resolve the current live id from that query (or from `priority:policy:snapshot`) before updating via the UI or the
+  REST API if any parameter deviates from `tools/priority/policy.json`.
 
 ### `release/*`
-- **Ruleset**: `8614172` (scope `refs/heads/release/*`).
+- **Ruleset**: stable manifest identity `8614172` for the `release/*` ruleset. Live GitHub ids may drift; resolve the
+  current id via `priority:policy`/`priority:policy:snapshot` or a name-based ruleset query before applying manual changes.
 - **Required checks**: `lint`, `pester / normalize`, `smoke-gate`, `Policy Guard (Upstream) / policy-guard`, `commit-integrity`.
 - **Approvals**: 0 required reviews; stale review dismissal remains enabled.
 - **Merge queue**: intentionally disabled; rely on manual review + required checks.
