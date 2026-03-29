@@ -64,11 +64,14 @@ instead of waiting indefinitely:
   with:
     base: VI1.vi
     head: VI2.vi
-    compare-timeout-seconds: 180
+    compare-timeout-seconds: 1200
     fail-on-diff: false
 ```
 
-Use `0` to disable the timeout and preserve the unbounded legacy wait.
+Use `0` to disable the timeout and preserve the unbounded legacy wait. Choose
+the bound for your real compare duration; the specialized LV32 workflow in this
+repo now uses `1200` seconds because a successful native compare can take
+several minutes on that lane.
 
 ## Path resolution tips
 

@@ -181,7 +181,7 @@ test('labview-cli-compare routes through the explicit lv32 host plane contract',
   assert.match(workflow, /tests\/results\/_agent\/host-planes\/labview-2026-host-plane-report\.json/);
   assert.match(workflow, /\$report\.native\.planes\.x32\.status -ne 'ready'/);
   assert.match(workflow, /LABVIEW_CLI_PATH:\s*\$\{\{\s*steps\.host_plane\.outputs\.cli\s*\}\}/);
-  assert.match(workflow, /compare-timeout-seconds:\s*'180'/);
+  assert.match(workflow, /compare-timeout-seconds:\s*'1200'/);
   assert.match(action, /compare-timeout-seconds:/);
   assert.doesNotMatch(
     workflow,

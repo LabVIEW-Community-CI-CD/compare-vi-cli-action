@@ -76,7 +76,7 @@ test('labview-cli-compare consumes an explicit LV32 host-plane readiness receipt
   assert.match(jobBlock, /tests\/results\/_agent\/host-planes\/labview-2026-host-plane-report\.json/);
   assert.match(jobBlock, /\$report\.native\.planes\.x32\.status -ne 'ready'/);
   assert.match(jobBlock, /LABVIEW_CLI_PATH:\s*\$\{\{\s*steps\.host_plane\.outputs\.cli\s*\}\}/);
-  assert.match(jobBlock, /compare-timeout-seconds:\s*'180'/);
+  assert.match(jobBlock, /compare-timeout-seconds:\s*'1200'/);
   assert.doesNotMatch(
     jobBlock,
     /Program Files \(x86\)\\National Instruments\\Shared\\LabVIEW CLI\\LabVIEWCLI\.exe/,
