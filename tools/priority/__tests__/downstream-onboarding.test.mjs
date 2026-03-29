@@ -113,6 +113,33 @@ jobs:
   assert.equal(refs[1].lineNumber > refs[0].lineNumber, true);
 });
 
+test('extractActionReferencesFromWorkflow ignores uses-like literals inside inline scripts', () => {
+  const yaml = `
+name: Promotion Contract
+jobs:
+  promotion-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Validate comparevi stable pin contract
+        shell: bash
+        run: |
+          node <<'EOF'
+          ensureIncludes('.github/workflows/template-smoke.yml', \`uses: LabVIEW-Community-CI-CD/compare-vi-cli-action@\${pin}\`);
+          EOF
+      - uses: LabVIEW-Community-CI-CD/compare-vi-cli-action@v0.6.3
+`;
+  const refs = extractActionReferencesFromWorkflow(
+    yaml,
+    '.github/workflows/promotion-contract.yml',
+    'LabVIEW-Community-CI-CD/compare-vi-cli-action'
+  );
+  assert.deepEqual(
+    refs.map((entry) => ({ lineNumber: entry.lineNumber, ref: entry.ref })),
+    [{ lineNumber: 14, ref: 'v0.6.3' }]
+  );
+});
+
 test('classifyActionReference identifies stable, rc, and commit refs', () => {
   assert.equal(classifyActionReference('v1.2.3').kind, 'stable-tag');
   assert.equal(classifyActionReference('v1.2.3-rc.4').kind, 'rc-tag');
