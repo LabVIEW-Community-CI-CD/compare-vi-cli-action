@@ -349,7 +349,7 @@ export function extractActionReferencesFromWorkflow(content, workflowPath, actio
   const lines = String(content || '').split(/\r?\n/);
   for (let index = 0; index < lines.length; index += 1) {
     const line = lines[index];
-    const match = line.match(/\buses\s*:\s*['"]?([^'"#\s]+)['"]?/i);
+    const match = line.match(/^\s*(?:-\s*)?uses\s*:\s*['"]?([^'"#\s]+)['"]?(?:\s+#.*)?\s*$/i);
     if (!match) continue;
     const usesToken = match[1];
     const separator = usesToken.indexOf('@');
