@@ -1,1 +1,3 @@
+# Current codeowner routing is single-maintainer. Keep the continuity model
+# explicit; see docs/MAINTAINER_CONTINUITY_PROFILE.md.
 * @svelderrainruiz

@@ -29,6 +29,7 @@ tuning.
 - This repository publishes the compare action surface and also carries maintainer/operator platform workflows; downstream consumers should start from the action contract and usage docs first
 - Product boundary: [`docs/SUPPORTED_PRODUCT_BOUNDARY.md`](./docs/SUPPORTED_PRODUCT_BOUNDARY.md)
 - Minimal adopter contract: [`docs/MINIMAL_ADOPTER_CONTRACT.md`](./docs/MINIMAL_ADOPTER_CONTRACT.md)
+- Maintainer continuity profile: [`docs/MAINTAINER_CONTINUITY_PROFILE.md`](./docs/MAINTAINER_CONTINUITY_PROFILE.md)
 
 ## Documentation portal
 
@@ -42,6 +43,7 @@ The authoritative documentation still lives in this repository:
 - `docs/` for runbooks, policy, and technical contracts
 - `docs/SUPPORTED_PRODUCT_BOUNDARY.md` for the supported public-vs-platform scope boundary
 - `docs/MINIMAL_ADOPTER_CONTRACT.md` for the shortest supported downstream adoption path
+- `docs/MAINTAINER_CONTINUITY_PROFILE.md` for the current ownership and recovery model
 - `docs/WORKFLOW_CRITICALITY_MAP.md` for maintainer workflow tiers and release-critical lanes
 - `AGENTS.md` for future-agent operating rules
 - `docs/knowledgebase/GitHub-Intake-Layer.md` for issue/PR intake guidance

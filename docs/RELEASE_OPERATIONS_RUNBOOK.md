@@ -5,6 +5,12 @@
 Define a deterministic operating model for release and promotion events so execution does not depend on a single
 operator.
 
+Current continuity note: ownership is still routed through a single checked-in
+codeowner entry in [`.github/CODEOWNERS`](../.github/CODEOWNERS). The release
+runbook and workflow automation reduce memory risk and improve recoverability,
+but they do not create multi-maintainer approval depth on their own. See
+[`MAINTAINER_CONTINUITY_PROFILE.md`](./MAINTAINER_CONTINUITY_PROFILE.md).
+
 Related migration playbook: `docs/COMPAREVI_SHARED_PACKAGE_MIGRATION.md`.
 Downstream onboarding runbook: `docs/DOWNSTREAM_RELEASE_TRAIN_ONBOARDING.md`.
 
