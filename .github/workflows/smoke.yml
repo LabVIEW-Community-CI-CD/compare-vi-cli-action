@@ -44,6 +44,9 @@ on:
         type: string
         default: ""
 
+permissions:
+  contents: read
+
 jobs:
   preflight:
     runs-on: [self-hosted, Windows, X64, comparevi, capability-ingress]

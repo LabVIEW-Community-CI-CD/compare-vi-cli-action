@@ -827,10 +827,22 @@ function appendSummary(report, reportPath) {
   if (report.failures.length > 0) {
     lines.push('', '| Code | Target | Message |', '| --- | --- | --- |');
     for (const failure of report.failures) {
-      lines.push(`| \`${failure.code}\` | \`${failure.target || 'n/a'}\` | ${failure.message.replace(/\|/g, '\\|')} |`);
+      lines.push(
+        `| <code>${escapeSummaryTableCell(failure.code)}</code> | <code>${escapeSummaryTableCell(failure.target || 'n/a')}</code> | ${escapeSummaryTableCell(failure.message)} |`
+      );
     }
   }
   fs.appendFileSync(summaryPath, `${lines.join('\n')}\n`, 'utf8');
+}
+
+export function escapeSummaryTableCell(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/`/g, '&#96;')
+    .replace(/\|/g, '&#124;')
+    .replace(/\r\n|\r|\n/g, '<br>');
 }
 
 function writeReport(filePath, payload) {

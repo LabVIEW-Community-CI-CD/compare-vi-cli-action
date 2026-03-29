@@ -28,6 +28,7 @@ export const PREMIUM_RATE_MULTIPLIER = 1.5;
 export const ORDINARY_RATE_MULTIPLIER = 1.0;
 export const DOCKER_LANE_CAPABILITY = 'docker-lane';
 export const NATIVE_LV32_CAPABILITY = 'native-labview-2026-32';
+const DEFAULT_AGENT_ID_USAGE = 'env/actor-derived lease owner';
 
 export const STATUS = Object.freeze({
   requested: 'requested',
@@ -424,7 +425,7 @@ function printUsage() {
   console.log(`  --output <path>                    Report output path (default: ${DEFAULT_OUTPUT_PATH}).`);
   console.log('  --lane-id <id>                     Logical isolated Docker lane id.');
   console.log('  --action <name>                    Handshake action (request|grant|commit|heartbeat|release|inspect).');
-  console.log(`  --agent-id <id>                    Request owner (default: ${defaultOwner()}).`);
+  console.log(`  --agent-id <id>                    Request owner (default: ${DEFAULT_AGENT_ID_USAGE}).`);
   console.log('  --agent-class <sagan|subagent|other> Agent class (default: subagent).');
   console.log(`  --host-plane-report <path>         Host-plane report path (default: ${DEFAULT_HOST_PLANE_REPORT_PATH}).`);
   console.log(`  --operator-cost-profile <path>     Operator cost profile path (default: ${DEFAULT_OPERATOR_COST_PROFILE_PATH}).`);

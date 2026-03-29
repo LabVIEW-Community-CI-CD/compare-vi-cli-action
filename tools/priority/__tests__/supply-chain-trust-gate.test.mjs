@@ -6,6 +6,7 @@ import os from 'node:os';
 import path from 'node:path';
 import {
   DEFAULT_REPORT_PATH,
+  escapeSummaryTableCell,
   evaluateLocalIntegrity,
   parseArgs,
   parseChecksumManifest,
@@ -262,6 +263,11 @@ test('verifyAttestations reports gh unavailable and retry classifier catches tra
   assert.ok(result.failures.some((failure) => failure.code === 'attestation-cli-unavailable'));
   assert.equal(result.results.length, 1);
   assert.equal(result.results[0].verified, false);
+});
+
+test('escapeSummaryTableCell neutralizes markdown and html control characters', () => {
+  const escaped = escapeSummaryTableCell('line `one` | <tag> & detail\r\nline two');
+  assert.equal(escaped, 'line &#96;one&#96; &#124; &lt;tag&gt; &amp; detail<br>line two');
 });
 
 test('verifyReleaseTagSignature passes for verified annotated tag', async () => {

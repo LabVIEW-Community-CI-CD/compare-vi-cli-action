@@ -439,3 +439,29 @@ test('docker lane handshake CLI main writes a request receipt', async () => {
     assert.equal(receipt.summary.handshakeState, 'requested');
   });
 });
+
+test('docker lane handshake help text does not echo environment-derived owner defaults', async () => {
+  const originalOwner = process.env.AGENT_WRITER_LEASE_OWNER;
+  const originalLog = console.log;
+  const lines = [];
+  process.env.AGENT_WRITER_LEASE_OWNER = 'sensitive-owner@example.test';
+  console.log = (...args) => {
+    lines.push(args.join(' '));
+  };
+
+  try {
+    const exitCode = await main(['node', 'docker-lane-handshake.mjs', '--help']);
+    assert.equal(exitCode, 0);
+  } finally {
+    console.log = originalLog;
+    if (originalOwner === undefined) {
+      delete process.env.AGENT_WRITER_LEASE_OWNER;
+    } else {
+      process.env.AGENT_WRITER_LEASE_OWNER = originalOwner;
+    }
+  }
+
+  const output = lines.join('\n');
+  assert.doesNotMatch(output, /sensitive-owner@example\.test/);
+  assert.match(output, /env\/actor-derived lease owner/);
+});

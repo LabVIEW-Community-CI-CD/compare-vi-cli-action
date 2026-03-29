@@ -59,6 +59,9 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.event.inputs.sample_id || github.ref }}
   cancel-in-progress: false
 
+permissions:
+  contents: read
+
 jobs:
   preflight:
     runs-on: [self-hosted, Windows, X64, comparevi, capability-ingress]
