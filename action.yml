@@ -67,6 +67,10 @@ inputs:
     description: "Fail the job if differences are found"
     required: false
     default: "true"
+  compare-timeout-seconds:
+    description: "Max seconds to wait for LVCompare before failing the compare and returning exit code 124 (0 disables the timeout)."
+    required: false
+    default: "0"
   working-directory:
     description: "Directory to run LVCompare from (sets process CWD for relative paths)"
     required: false
@@ -145,6 +149,7 @@ runs:
         $ActionPath = '${{ github.action_path }}'
         . (Join-Path $ActionPath 'scripts' 'CompareVI.ps1')
         $bitnessPreference = '${{ inputs.lvCompareBitness }}'
+        $compareTimeoutSeconds = [int]'${{ inputs.compare-timeout-seconds }}'
 
         $loopEnabled = [System.Convert]::ToBoolean('${{ inputs.loop-enabled }}')
         if ($loopEnabled) {
@@ -289,6 +294,7 @@ runs:
           -LvCompareArgs '${{ inputs.lvCompareArgs }}' `
           -WorkingDirectory $wd `
           -FailOnDiff ([System.Convert]::ToBoolean('${{ inputs.fail-on-diff }}')) `
+          -TimeoutSeconds $compareTimeoutSeconds `
           -GitHubOutputPath $outPath `
           -GitHubStepSummaryPath $sumPath
 

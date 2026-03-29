@@ -37,6 +37,7 @@ location. Update the runner install if the CLI lives elsewhere.
 | 0 | Identical | No diffs detected |
 | 1 | Differences | Review outputs, HTML report |
 | 2 | Invocation error | Inspect logs, rerun locally |
+| 124 | Timeout | Compare exceeded `compare-timeout-seconds` and was terminated |
 
 Set `fail-on-diff: false` to treat code 1 as notice-only.
 
