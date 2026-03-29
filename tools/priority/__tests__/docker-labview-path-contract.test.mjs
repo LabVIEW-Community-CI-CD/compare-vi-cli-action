@@ -176,7 +176,8 @@ test('labview-cli-compare routes through the explicit lv32 host plane contract',
     workflow,
     /runs-on:\s*\[self-hosted, Windows, X64, comparevi, capability-ingress, labview-2026, lv32\]/
   );
-  assert.match(workflow, /node tools\/npm\/run-script\.mjs env:labview:2026:host-planes/);
+  assert.match(workflow, /Write-LabVIEW2026HostPlaneDiagnostics\.ps1 -OutputPath \$reportPath/);
+  assert.match(workflow, /tests\/results\/_agent\/host-planes\/labview-2026-host-plane-report\.json/);
   assert.match(workflow, /\$report\.native\.planes\.x32\.status -ne 'ready'/);
   assert.match(workflow, /LABVIEW_CLI_PATH:\s*\$\{\{\s*steps\.host_plane\.outputs\.cli\s*\}\}/);
   assert.doesNotMatch(
