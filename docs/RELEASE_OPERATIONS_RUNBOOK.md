@@ -5,6 +5,12 @@
 Define a deterministic operating model for release and promotion events so execution does not depend on a single
 operator.
 
+Current continuity note: ownership is still routed through a single checked-in
+codeowner entry in [`.github/CODEOWNERS`](../.github/CODEOWNERS). The release
+runbook and workflow automation reduce memory risk and improve recoverability,
+but they do not create multi-maintainer approval depth on their own. See
+[`MAINTAINER_CONTINUITY_PROFILE.md`](./MAINTAINER_CONTINUITY_PROFILE.md).
+
 Related migration playbook: `docs/COMPAREVI_SHARED_PACKAGE_MIGRATION.md`.
 Downstream onboarding runbook: `docs/DOWNSTREAM_RELEASE_TRAIN_ONBOARDING.md`.
 
@@ -13,6 +19,11 @@ Downstream onboarding runbook: `docs/DOWNSTREAM_RELEASE_TRAIN_ONBOARDING.md`.
 - Promotion events (`rc -> stable -> lts`) and monthly stability cuts.
 - Deployment approval gates (`production`, `monthly-stability-release`).
 - Incident triage, escalation, and rollback communication.
+
+Workflow tiering reference: [`WORKFLOW_CRITICALITY_MAP.md`](./WORKFLOW_CRITICALITY_MAP.md).
+Treat Tier 1 as the default release-critical workflow inventory. If a release
+decision depends on a Tier 2 proof for a specific cut, call that dependency out
+explicitly in the governing issue or PR.
 
 ## Roles and ownership
 

@@ -3,7 +3,11 @@
 
 Supported versions
 
-- v0.1.x
+| Version line | Status |
+| --- | --- |
+| `v0.6.x` | Supported stable line |
+| `v0.6.x-rc` | Release-candidate evaluation builds; may change before stable promotion |
+| Older lines | Not supported unless explicitly stated in a release note |
 
 Reporting a vulnerability
 

@@ -3,7 +3,7 @@
   "version": "0.0.0-dev",
   "private": true,
   "type": "module",
-  "license": "MIT",
+  "license": "BSD-3-Clause",
   "description": "Portable runtime core for autonomous repository orchestration.",
   "main": "./index.mjs",
   "exports": {

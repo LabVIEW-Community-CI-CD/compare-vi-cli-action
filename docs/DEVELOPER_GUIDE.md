@@ -3,6 +3,19 @@
 
 Quick reference for building, testing, and releasing the LVCompare composite action.
 
+## Workflow criticality
+
+Before editing `.github/workflows/**`, classify the target lane with
+[`WORKFLOW_CRITICALITY_MAP.md`](./WORKFLOW_CRITICALITY_MAP.md).
+
+- Tier 1 and Tier 2 workflows should be treated as release-path or product-path
+  changes and should carry explicit validation evidence.
+- Tier 3 workflows are maintainer/operator lanes; keep changes narrow and
+  update runbook or policy documentation when the operating model changes.
+- Tier 4 workflows are supporting proofs or diagnostics. They are useful, but
+  they are not the baseline support contract unless another checked-in document
+  explicitly promotes them into a gate.
+
 ## Testing
 
 - **Unit tests** (no LabVIEW required)
