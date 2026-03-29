@@ -30,11 +30,16 @@ test('workflow executes onboarding, success, feedback, and promotion scorecard c
   assert.match(workflow, /GH_TOKEN:\s*\$\{\{\s*github\.token\s*\}\}/);
   assert.match(workflow, /DOWNSTREAM_REPO:\s*\$\{\{\s*inputs\.downstream_repo\s*\}\}/);
   assert.match(workflow, /DOWNSTREAM_PILOT_REPO:\s*\$\{\{\s*vars\.DOWNSTREAM_PILOT_REPO\s*\}\}/);
+  assert.doesNotMatch(workflow, /DOWNSTREAM_PILOT_REPO:-\$GITHUB_REPOSITORY/);
   assert.match(workflow, /Resolve pinned template dependency policy/);
   assert.match(workflow, /tools\/policy\/template-dependency\.json/);
   assert.match(workflow, /Resolve immutable upstream source/);
   assert.match(workflow, /git fetch --no-tags origin '\+refs\/heads\/develop:refs\/remotes\/upstream\/develop'/);
   assert.match(workflow, /downstream-onboarding-feedback\.mjs/);
+  assert.match(
+    workflow,
+    /Downstream repository is not configured\. Pass workflow_dispatch\.downstream_repo or set vars\.DOWNSTREAM_PILOT_REPO\./
+  );
   assert.match(workflow, /--parent-issue 1497/);
   assert.match(workflow, /downstream-onboarding-report-v1\.schema\.json/);
   assert.match(workflow, /downstream-onboarding-success-v1\.schema\.json/);
@@ -60,6 +65,10 @@ test('workflow executes onboarding, success, feedback, and promotion scorecard c
   assert.match(workflow, /--manifest-report tests\/results\/_agent\/promotion\/downstream-develop-promotion-manifest\.json/);
   assert.match(workflow, /downstream-promotion-scorecard-v1\.schema\.json/);
   assert.match(workflow, /tests\/results\/_agent\/promotion\/downstream-develop-promotion-scorecard\.json/);
+  assert.match(workflow, /grep -q 'GH013:'/);
+  assert.match(workflow, /result=blocked-by-repository-rules/);
+  assert.match(workflow, /RESOLVED_REPO:\s*\$\{\{\s*inputs\.downstream_repo\s*\|\|\s*vars\.DOWNSTREAM_PILOT_REPO\s*\}\}/);
+  assert.doesNotMatch(workflow, /github\.repository/);
   assert.ok(
     workflow.indexOf('Generate downstream promotion manifest') < workflow.indexOf('Build downstream promotion scorecard')
   );

@@ -97,7 +97,16 @@ test('downstream promotion workflow turns the proving rail into checked-in autom
   );
   assert.match(workflow, /Upload downstream promotion artifacts/);
   assert.match(workflow, /name:\s*downstream-promotion-\$\{\{\s*github\.run_id\s*\}\}/);
-  assert.match(workflow, /git push origin '\$\{\{ steps\.source\.outputs\.source_sha \}\}:refs\/heads\/downstream\/develop'/);
+  assert.match(
+    workflow,
+    /Downstream repository is not configured\. Pass workflow_dispatch\.downstream_repo or set vars\.DOWNSTREAM_PILOT_REPO\./
+  );
+  assert.match(workflow, /git push origin "\$\{\{ steps\.source\.outputs\.source_sha \}\}:refs\/heads\/downstream\/develop"/);
+  assert.match(workflow, /id:\s*promote_downstream_ref/);
+  assert.match(workflow, /grep -q 'GH013:'/);
+  assert.match(workflow, /result=blocked-by-repository-rules/);
+  assert.match(workflow, /result=updated/);
+  assert.match(workflow, /downstream\/develop update: \\`\$\{promotionResult\}\\`/);
 });
 
 test('branch required checks and priority policy recognize downstream/develop as a first-class proving rail', () => {

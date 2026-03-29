@@ -201,8 +201,8 @@ may ingest it through the optional LV32 receipt path. The receipt is
 non-blocking when absent, but when present it must prove the same source commit
 and the expected self-hosted Windows `lv32` runner contract.
 
-That means release should select a successful `downstream-promotion.yml` run
-whose `downstream-develop-promotion-scorecard.json`:
+That means release should select the `downstream-promotion.yml` artifact whose
+`downstream-develop-promotion-scorecard.json`:
 
 - reports `summary.status = pass`
 - proves `targetBranch = downstream/develop`
@@ -211,6 +211,11 @@ whose `downstream-develop-promotion-scorecard.json`:
 
 Release evidence should retain the machine-readable selection report that points
 back to the exact downstream promotion run and scorecard artifact used.
+
+The proving artifact is authoritative even when the workflow cannot update
+`downstream/develop` directly because repository rules require the branch PR or
+merge-queue path. In that case the workflow records the handoff in the step
+summary instead of treating the proof artifact itself as invalid.
 
 ## Template pivot gate
 
