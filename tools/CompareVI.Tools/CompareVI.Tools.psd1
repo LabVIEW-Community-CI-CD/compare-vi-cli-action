@@ -21,7 +21,7 @@
     PSData = @{
       Tags = @('CompareVI','LabVIEW','VIHistory')
       ProjectUri = 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action'
-      Prerelease = 'rc.1'
+      Prerelease = 'rc.2'
     }
   }
 }
