@@ -42,6 +42,7 @@ The authoritative documentation still lives in this repository:
 - `docs/` for runbooks, policy, and technical contracts
 - `docs/SUPPORTED_PRODUCT_BOUNDARY.md` for the supported public-vs-platform scope boundary
 - `docs/MINIMAL_ADOPTER_CONTRACT.md` for the shortest supported downstream adoption path
+- `docs/WORKFLOW_CRITICALITY_MAP.md` for maintainer workflow tiers and release-critical lanes
 - `AGENTS.md` for future-agent operating rules
 - `docs/knowledgebase/GitHub-Intake-Layer.md` for issue/PR intake guidance
 - `docs/knowledgebase/GitHub-Wiki-Portal.md` for the wiki-vs-repo-docs contract

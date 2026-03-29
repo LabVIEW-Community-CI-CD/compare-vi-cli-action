@@ -14,6 +14,11 @@ Downstream onboarding runbook: `docs/DOWNSTREAM_RELEASE_TRAIN_ONBOARDING.md`.
 - Deployment approval gates (`production`, `monthly-stability-release`).
 - Incident triage, escalation, and rollback communication.
 
+Workflow tiering reference: [`WORKFLOW_CRITICALITY_MAP.md`](./WORKFLOW_CRITICALITY_MAP.md).
+Treat Tier 1 as the default release-critical workflow inventory. If a release
+decision depends on a Tier 2 proof for a specific cut, call that dependency out
+explicitly in the governing issue or PR.
+
 ## Roles and ownership
 
 | Role | Responsibility | Evidence owner |
