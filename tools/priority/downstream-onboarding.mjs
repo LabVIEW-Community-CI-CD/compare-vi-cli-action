@@ -343,6 +343,44 @@ async function fetchWorkflowContent(repo, workflowPath, branch, token) {
   return null;
 }
 
+export function resolveBranchProtectionContractPath(branch) {
+  const normalizedBranch = String(branch || '').trim();
+  if (!normalizedBranch) {
+    return null;
+  }
+  const sanitizedBranch = normalizedBranch.replace(/[^A-Za-z0-9._-]+/g, '-');
+  return `docs/policy/${sanitizedBranch}-branch-protection.json`;
+}
+
+export function deriveBranchProtectionStatusFromContract(contract, requiredChecks, contractPath) {
+  const contextEntries = [];
+  if (Array.isArray(contract?.required_status_checks?.contexts)) {
+    contextEntries.push(...contract.required_status_checks.contexts);
+  }
+  if (Array.isArray(contract?.required_status_checks?.checks)) {
+    for (const entry of contract.required_status_checks.checks) {
+      if (typeof entry === 'string') {
+        contextEntries.push(entry);
+        continue;
+      }
+      if (entry && typeof entry.context === 'string') {
+        contextEntries.push(entry.context);
+      }
+    }
+  }
+  const contexts = [...new Set(contextEntries.map((entry) => String(entry).trim()).filter(Boolean))];
+  const contextSet = new Set(contexts.map((entry) => entry.toLowerCase()));
+  const missingChecks = requiredChecks.filter((entry) => !contextSet.has(entry.toLowerCase()));
+  return {
+    observable: true,
+    error: null,
+    source: 'checked-in-contract',
+    contractPath,
+    contexts,
+    missingChecks
+  };
+}
+
 export function extractActionReferencesFromWorkflow(content, workflowPath, actionRepo) {
   const references = [];
   const normalizedActionRepo = String(actionRepo || '').toLowerCase();
@@ -543,9 +581,33 @@ async function fetchBranchProtectionStatus(repo, branch, token, requiredChecks) 
     'GET'
   );
   if (!response.ok) {
+    const contractPath = resolveBranchProtectionContractPath(branch);
+    if (contractPath) {
+      const contractContent = await fetchWorkflowContent(repo, contractPath, branch, token);
+      if (contractContent) {
+        try {
+          return deriveBranchProtectionStatusFromContract(
+            JSON.parse(contractContent),
+            requiredChecks,
+            contractPath
+          );
+        } catch {
+          return {
+            observable: false,
+            error: 'branch-protection-contract-invalid',
+            source: 'checked-in-contract',
+            contractPath,
+            contexts: [],
+            missingChecks: [...requiredChecks]
+          };
+        }
+      }
+    }
     return {
       observable: false,
       error: `branch-protection-api-${response.status}`,
+      source: 'live-api',
+      contractPath: null,
       contexts: [],
       missingChecks: [...requiredChecks]
     };
@@ -560,6 +622,8 @@ async function fetchBranchProtectionStatus(repo, branch, token, requiredChecks) 
   return {
     observable: true,
     error: null,
+    source: 'live-api',
+    contractPath: null,
     contexts,
     missingChecks
   };
@@ -690,6 +754,8 @@ export function evaluateChecklist(policy, context) {
         : context.branchProtection.error || 'branch-protection-unavailable',
       {
         required: policy.requiredBranchChecks,
+        source: context.branchProtection.source || 'live-api',
+        contractPath: context.branchProtection.contractPath || null,
         configured: context.branchProtection.contexts,
         missing: context.branchProtection.missingChecks
       }
@@ -856,6 +922,8 @@ export function buildInfrastructureFailureReport({
   const branchProtection = {
     observable: false,
     error: 'not-evaluated',
+    source: 'live-api',
+    contractPath: null,
     contexts: [],
     missingChecks: [...policy.requiredBranchChecks]
   };
@@ -1074,6 +1142,8 @@ export async function main(argv = process.argv) {
     let branchProtection = {
       observable: false,
       error: 'not-evaluated',
+      source: 'live-api',
+      contractPath: null,
       contexts: [],
       missingChecks: [...policy.requiredBranchChecks]
     };

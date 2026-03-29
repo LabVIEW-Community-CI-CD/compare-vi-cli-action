@@ -6,6 +6,8 @@ import {
   DEFAULT_POLICY_PATH,
   parseArgs,
   resolveBranchResolution,
+  resolveBranchProtectionContractPath,
+  deriveBranchProtectionStatusFromContract,
   extractActionReferencesFromWorkflow,
   classifyActionReference,
   evaluateChecklist,
@@ -94,6 +96,73 @@ test('resolveBranchResolution distinguishes explicit overrides from live reposit
       source: 'live-repository-default-branch'
     }
   );
+});
+
+test('resolveBranchProtectionContractPath normalizes checked-in contract paths', () => {
+  assert.equal(
+    resolveBranchProtectionContractPath('develop'),
+    'docs/policy/develop-branch-protection.json'
+  );
+  assert.equal(
+    resolveBranchProtectionContractPath('downstream/develop'),
+    'docs/policy/downstream-develop-branch-protection.json'
+  );
+  assert.equal(resolveBranchProtectionContractPath(''), null);
+});
+
+test('deriveBranchProtectionStatusFromContract accepts checked-in branch protection contexts', () => {
+  const status = deriveBranchProtectionStatusFromContract(
+    {
+      required_status_checks: {
+        contexts: [
+          'Policy Guard (Upstream) / policy-guard',
+          'Promotion Contract / promotion-contract'
+        ]
+      }
+    },
+    [
+      'Policy Guard (Upstream) / policy-guard',
+      'Promotion Contract / promotion-contract'
+    ],
+    'docs/policy/develop-branch-protection.json'
+  );
+
+  assert.deepEqual(status, {
+    observable: true,
+    error: null,
+    source: 'checked-in-contract',
+    contractPath: 'docs/policy/develop-branch-protection.json',
+    contexts: [
+      'Policy Guard (Upstream) / policy-guard',
+      'Promotion Contract / promotion-contract'
+    ],
+    missingChecks: []
+  });
+});
+
+test('deriveBranchProtectionStatusFromContract accepts checks-array branch protection manifests', () => {
+  const status = deriveBranchProtectionStatusFromContract(
+    {
+      required_status_checks: {
+        checks: [
+          { context: 'Policy Guard (Upstream) / policy-guard' },
+          { context: 'Promotion Contract / promotion-contract' }
+        ]
+      }
+    },
+    [
+      'Policy Guard (Upstream) / policy-guard',
+      'Promotion Contract / promotion-contract'
+    ],
+    'docs/policy/develop-branch-protection.json'
+  );
+
+  assert.equal(status.observable, true);
+  assert.deepEqual(status.contexts, [
+    'Policy Guard (Upstream) / policy-guard',
+    'Promotion Contract / promotion-contract'
+  ]);
+  assert.deepEqual(status.missingChecks, []);
 });
 
 test('extractActionReferencesFromWorkflow finds compare-vi uses entries', () => {
