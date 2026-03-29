@@ -2,7 +2,7 @@
   "$schema": "./schemas/documentation-manifest-v1.schema.json",
   "schema": "documentation-manifest-v1",
   "version": "1.0.0",
-      "updated": "2026-03-29T19:45:00Z",
+      "updated": "2026-03-29T22:53:00Z",
   "entries": [
     {
       "name": "Root Entry Points",
@@ -27,6 +27,7 @@
         "docs/release/README.md",
         "docs/release/POST_RELEASE_FOLLOWUPS.md",
         "docs/release/PR_NOTES.md",
+        "docs/release/RELEASE_EVIDENCE_v0.6.6.md",
         "docs/release/ROLLBACK_PLAN.md",
         "docs/release/TAG_PREP_CHECKLIST.md"
       ]
@@ -40,7 +41,8 @@
         "docs/archive/releases/RELEASE_NOTES_v0.6.4-rc.1.md",
         "docs/archive/releases/RELEASE_NOTES_v0.6.4-rc.2.md",
         "docs/archive/releases/RELEASE_NOTES_v0.6.4.md",
-        "docs/archive/releases/RELEASE_NOTES_v0.6.5.md"
+        "docs/archive/releases/RELEASE_NOTES_v0.6.5.md",
+        "docs/archive/releases/RELEASE_NOTES_v0.6.6.md"
       ]
     },
     {

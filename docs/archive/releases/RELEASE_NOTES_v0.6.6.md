@@ -22,12 +22,21 @@ hardening fixes that landed on `develop` after `v0.6.5`.
 
 - Release branch `release/v0.6.6` updates the stable version surfaces to
   `0.6.6`.
+- Immutable GitHub Release published:
+  - release: `https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/releases/tag/v0.6.6`
+  - published at: `2026-03-29T22:32:09Z`
+  - protected replay: `https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/actions/runs/23720737438`
 - Post-merge downstream proving replay succeeded with:
   - workflow run `23718997600`
   - scorecard `status=pass`
   - scorecard `blockers=0`
   - downstream onboarding success `status=pass`
   - downstream onboarding success `totalWarnings=0`
+- Certified downstream consumer rollout completed:
+  - consumer repo: `LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate`
+  - rollout PR: `https://github.com/LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate/pull/51`
+  - canonical smoke proof: `https://github.com/LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate/actions/runs/23720949271`
+  - upstream onboarding drift proof: `https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/actions/runs/23721023554`
 
 ## Consumer impact
 

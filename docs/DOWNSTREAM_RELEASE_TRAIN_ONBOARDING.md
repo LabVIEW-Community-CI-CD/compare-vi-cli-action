@@ -304,6 +304,11 @@ node tools/npm/run-script.mjs priority:onboard:feedback -- \
   --feedback-output tests/results/_agent/onboarding/downstream-onboarding-feedback.json
 ```
 
+For the current shipped baseline, treat this workflow as the certified-consumer
+drift detector for `LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate` on
+`develop`. `v0.6.6` evidence for that ring is recorded in
+[`release/RELEASE_EVIDENCE_v0.6.6.md`](release/RELEASE_EVIDENCE_v0.6.6.md).
+
 The hosted workflow exports `GH_TOKEN`, attempts to leave behind a valid onboarding report even on infrastructure
 failures, validates all report schemas that were produced, and uploads the resulting JSON artifacts for auditability.
 When hardening issues are requested, it also forwards the explicit consumer issue target into the onboarding helper

@@ -1,9 +1,10 @@
 <!-- markdownlint-disable-next-line MD041 -->
-# Post-Release Follow-Up Items (v0.6.5 -> v0.6.6 Planning)
+# Post-Release Follow-Up Items (v0.6.6 Closeout)
 
-**Status**: `v0.6.5` packages the compare-timeout guard and the verified native
-wrapper proof. The items below are the remaining maintenance backlog after that
-cut, not prerequisites for publishing `v0.6.5`.
+**Status**: `v0.6.6` is published, immutable, and backed by both the protected
+`verify-existing-release` replay and the certified consumer rollout on
+`LabviewGitHubCiTemplate/develop`. The items below are the remaining optional
+maintenance backlog after that cut, not blockers for the shipped baseline.
 
 ## Completed In v0.6.5
 
@@ -28,13 +29,24 @@ cut, not prerequisites for publishing `v0.6.5`.
   release notes to reflect `v0.6.5`.
 - Replaced the stale `v0.5.0` planning backlog in this tracker.
 
+## Completed In v0.6.6
+
+### ✅ Follow-Up 1 – Publish and repin certified consumers
+
+- Published immutable release `v0.6.6` and closed the release-contract repair
+  path through:
+  - release conductor run `23720581794`
+  - publish run `23720604131`
+  - downstream proving repair run `23720719499`
+  - protected replay run `23720737438`
+- Repinned the certified downstream consumer
+  `LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate` through PR `#51`.
+- Re-ran the upstream onboarding feedback workflow against the merged consumer
+  baseline:
+  - workflow run `23721023554`
+  - `status=success`
+
 ## Deferred Follow-Ups
-
-### ⏸️ Follow-Up 1 – Publish and repin certified consumers
-
-- Publish `v0.6.5` and repin certified downstream consumers that should track
-  the new stable maintenance baseline.
-- Re-run downstream proving after those pins move.
 
 ### ⏸️ Follow-Up 2 – Extend timeout guard only where live evidence justifies it
 
@@ -58,8 +70,8 @@ cut, not prerequisites for publishing `v0.6.5`.
 
 ## Summary
 
-- **Completed in v0.6.5**: compare timeout guard, tuned specialized workflow
-  budget, refreshed release packet.
-- **Deferred**: publish/repin, selective rollout to other workflows, telemetry
-  enrichment, archive/index hygiene.
+- **Completed in v0.6.6**: immutable publication, release-contract repair,
+  certified consumer repin, hosted downstream drift proof.
+- **Deferred**: selective rollout of timeout controls, telemetry enrichment,
+  archive/index hygiene.
 - **Last updated**: 2026-03-29.
