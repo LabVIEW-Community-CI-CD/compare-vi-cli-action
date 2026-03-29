@@ -2,7 +2,7 @@
   "name": "compare-vi-cli-action",
   "private": true,
   "version": "0.6.4-rc.1",
-  "license": "MIT",
+  "license": "BSD-3-Clause",
   "type": "module",
   "scripts": {
     "build": "tsc -p tsconfig.json",

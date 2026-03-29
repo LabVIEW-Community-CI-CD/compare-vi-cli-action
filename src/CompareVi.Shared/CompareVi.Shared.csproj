@@ -13,7 +13,7 @@
     <RepositoryUrl>https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
     <PublishRepositoryUrl>true</PublishRepositoryUrl>
-    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageLicenseExpression>BSD-3-Clause</PackageLicenseExpression>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <PackageTags>LabVIEW;LVCompare;Pester;CI</PackageTags>
     <IncludeSymbols>true</IncludeSymbols>
