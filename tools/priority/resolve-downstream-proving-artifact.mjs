@@ -27,6 +27,7 @@ export const DEFAULT_REPORT_PATH = path.join(
 );
 const WORKFLOW_RUNS_PAGE_SIZE = 20;
 const WORKFLOW_RUNS_MAX_PAGES = 5;
+const WORKFLOW_RUN_QUERY_STATUSES = ['success', 'completed'];
 
 function normalizeText(value) {
   if (value == null) return null;
@@ -337,6 +338,7 @@ export async function runResolveDownstreamProvingArtifact(
 
   const candidates = [];
   let selected = null;
+  const seenRunIds = new Set();
   const rootSelection = resolveArtifactDestinationRoot({
     repoRoot: process.cwd(),
     destinationRoot: options.destinationRoot,
@@ -345,91 +347,102 @@ export async function runResolveDownstreamProvingArtifact(
     env
   });
 
-  for (let page = 1; page <= WORKFLOW_RUNS_MAX_PAGES; page += 1) {
-    const payload = await runGhJsonFn([
-      'api',
-      buildWorkflowRunsApiPath(options.repo, options.workflow, {
-        page,
-        branch: options.branch,
-        status: 'success'
-      })
-    ]);
-    const runs = Array.isArray(payload?.workflow_runs) ? payload.workflow_runs : [];
+  for (const queryStatus of WORKFLOW_RUN_QUERY_STATUSES) {
+    for (let page = 1; page <= WORKFLOW_RUNS_MAX_PAGES; page += 1) {
+      const payload = await runGhJsonFn([
+        'api',
+        buildWorkflowRunsApiPath(options.repo, options.workflow, {
+          page,
+          branch: options.branch,
+          status: queryStatus
+        })
+      ]);
+      const runs = Array.isArray(payload?.workflow_runs) ? payload.workflow_runs : [];
 
-    for (const rawRun of runs) {
-      const run = normalizeRunPayload(rawRun);
-      if (!run.id) {
-        continue;
-      }
-      const artifactName = `${options.artifactPrefix}${run.id}`;
-      const candidateRoot = path.join(rootSelection.destinationRoot, String(run.id));
-      const downloadReportPath = path.join(candidateRoot, 'download-report.json');
-      const downloadResult = await downloadNamedArtifactsFn({
-        repository: options.repo,
-        runId: String(run.id),
-        artifactNames: [artifactName],
-        repoRoot: process.cwd(),
-        destinationRoot: candidateRoot,
-        destinationRootExplicit: true,
-        reportPath: downloadReportPath
-      });
-      const scorecardPath = findArtifactFile(candidateRoot, 'downstream-develop-promotion-scorecard.json');
-      const templateAgentVerificationReportPath = findArtifactFile(candidateRoot, 'template-agent-verification-report.json');
-      let scorecard = null;
-      let scorecardGate = null;
-      let scorecardError = null;
-      let templateAgentVerificationReport = null;
-      let templateAgentVerificationGate = null;
-      let templateAgentVerificationError = null;
-      if (scorecardPath) {
-        try {
-          scorecard = readJson(scorecardPath);
-          scorecardGate = classifyScorecard(scorecard, options.expectedSourceSha);
-        } catch (error) {
-          scorecardError = error instanceof Error ? error.message : String(error);
+      for (const rawRun of runs) {
+        const run = normalizeRunPayload(rawRun);
+        if (!run.id || seenRunIds.has(run.id)) {
+          continue;
+        }
+        seenRunIds.add(run.id);
+
+        const artifactName = `${options.artifactPrefix}${run.id}`;
+        const candidateRoot = path.join(rootSelection.destinationRoot, String(run.id));
+        const candidateRootInput = rootSelection.destinationRootPolicy.usesExternalRoot
+          ? candidateRoot
+          : path.relative(process.cwd(), candidateRoot);
+        const downloadReportPath = path.join(candidateRoot, 'download-report.json');
+        const downloadResult = await downloadNamedArtifactsFn({
+          repository: options.repo,
+          runId: String(run.id),
+          artifactNames: [artifactName],
+          repoRoot: process.cwd(),
+          destinationRoot: candidateRootInput,
+          destinationRootExplicit: true,
+          reportPath: downloadReportPath
+        });
+        const scorecardPath = findArtifactFile(candidateRoot, 'downstream-develop-promotion-scorecard.json');
+        const templateAgentVerificationReportPath = findArtifactFile(candidateRoot, 'template-agent-verification-report.json');
+        let scorecard = null;
+        let scorecardGate = null;
+        let scorecardError = null;
+        let templateAgentVerificationReport = null;
+        let templateAgentVerificationGate = null;
+        let templateAgentVerificationError = null;
+        if (scorecardPath) {
+          try {
+            scorecard = readJson(scorecardPath);
+            scorecardGate = classifyScorecard(scorecard, options.expectedSourceSha);
+          } catch (error) {
+            scorecardError = error instanceof Error ? error.message : String(error);
+          }
+        }
+        if (templateAgentVerificationReportPath) {
+          try {
+            templateAgentVerificationReport = readJson(templateAgentVerificationReportPath);
+            templateAgentVerificationGate = classifyTemplateAgentVerificationReport(
+              templateAgentVerificationReport,
+              options.expectedSourceSha
+            );
+          } catch (error) {
+            templateAgentVerificationError = error instanceof Error ? error.message : String(error);
+          }
+        }
+
+        const candidate = {
+          run,
+          artifactName,
+          artifactRoot: path.resolve(candidateRoot),
+          downloadStatus: downloadResult.report.status,
+          downloadReportPath: downloadResult.reportPath,
+          scorecardPath: scorecardPath ? path.resolve(scorecardPath) : null,
+          scorecardStatus: scorecardGate?.status ?? 'missing',
+          scorecard: scorecardGate,
+          scorecardError,
+          templateAgentVerificationReportPath: templateAgentVerificationReportPath
+            ? path.resolve(templateAgentVerificationReportPath)
+            : null,
+          templateAgentVerificationStatus: templateAgentVerificationGate?.status ?? 'missing',
+          templateAgentVerification: templateAgentVerificationGate,
+          templateAgentVerificationError
+        };
+        candidates.push(candidate);
+
+        if (
+          downloadResult.report.status === 'pass' &&
+          scorecardGate?.status === 'pass'
+        ) {
+          selected = candidate;
+          break;
         }
       }
-      if (templateAgentVerificationReportPath) {
-        try {
-          templateAgentVerificationReport = readJson(templateAgentVerificationReportPath);
-          templateAgentVerificationGate = classifyTemplateAgentVerificationReport(
-            templateAgentVerificationReport,
-            options.expectedSourceSha
-          );
-        } catch (error) {
-          templateAgentVerificationError = error instanceof Error ? error.message : String(error);
-        }
-      }
 
-      const candidate = {
-        run,
-        artifactName,
-        artifactRoot: path.resolve(candidateRoot),
-        downloadStatus: downloadResult.report.status,
-        downloadReportPath: downloadResult.reportPath,
-        scorecardPath: scorecardPath ? path.resolve(scorecardPath) : null,
-        scorecardStatus: scorecardGate?.status ?? 'missing',
-        scorecard: scorecardGate,
-        scorecardError,
-        templateAgentVerificationReportPath: templateAgentVerificationReportPath
-          ? path.resolve(templateAgentVerificationReportPath)
-          : null,
-        templateAgentVerificationStatus: templateAgentVerificationGate?.status ?? 'missing',
-        templateAgentVerification: templateAgentVerificationGate,
-        templateAgentVerificationError
-      };
-      candidates.push(candidate);
-
-      if (
-        downloadResult.report.status === 'pass' &&
-        scorecardGate?.status === 'pass'
-      ) {
-        selected = candidate;
+      if (selected || runs.length < WORKFLOW_RUNS_PAGE_SIZE) {
         break;
       }
     }
 
-    if (selected || runs.length < WORKFLOW_RUNS_PAGE_SIZE) {
+    if (selected) {
       break;
     }
   }

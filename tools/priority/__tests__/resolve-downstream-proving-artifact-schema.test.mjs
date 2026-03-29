@@ -3,7 +3,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
@@ -13,6 +12,13 @@ import { runResolveDownstreamProvingArtifact } from '../resolve-downstream-provi
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 
+function makeRepoTempDir(prefix) {
+  return path.relative(
+    process.cwd(),
+    fs.mkdtempSync(path.join(path.resolve('tests', 'results', '_agent'), prefix))
+  );
+}
+
 function writeJson(filePath, payload) {
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
   fs.writeFileSync(filePath, `${JSON.stringify(payload, null, 2)}\n`, 'utf8');
@@ -21,8 +27,8 @@ function writeJson(filePath, payload) {
 test('downstream proving selection schema validates generated selection payload', async (t) => {
   const schemaPath = path.join(repoRoot, 'docs', 'schemas', 'downstream-proving-selection-v1.schema.json');
   const schema = JSON.parse(await readFile(schemaPath, 'utf8'));
-  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'downstream-proving-selection-schema-'));
-  t.after(() => fs.rmSync(tmpDir, { recursive: true, force: true }));
+  const tmpDir = makeRepoTempDir('downstream-proving-selection-schema-');
+  t.after(() => fs.rmSync(path.resolve(tmpDir), { recursive: true, force: true }));
 
   const expectedSourceSha = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
   const result = await runResolveDownstreamProvingArtifact(
