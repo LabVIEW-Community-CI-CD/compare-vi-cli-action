@@ -38,6 +38,29 @@ The format is based on Keep a Changelog, and this project adheres to Semantic Ve
   expectations between backend releases in this repo and facade releases in
   `comparevi-history`.
 
+## [v0.6.4-rc.2] - 2026-03-25
+
+### Changed
+
+- Release signing readiness now fails before unsigned tag publication, and the
+  conductor distinguishes code-path, signing-capability, and signing-authority
+  blockers so RC publication stops on the real trust failure.
+- Release publication now supports repair/replay handling for existing unsigned
+  tags, allowing immutable GitHub Release publication to recover without
+  pretending a broken authoritative tag is acceptable.
+- Queue-empty, governor portfolio, and runtime handoff surfaces now project the
+  VI-history distributor and concentrated execution topology more explicitly,
+  reducing hidden release blockers in the standing-priority control plane.
+
+### Added
+
+- Execution-cell, TestStand, kernel-coordinator, and runtime-topology receipts
+  are now projected through governor and loop-status evidence so the RC ships
+  with a clearer execution topology contract.
+- Published `v0.6.4-rc.2` release materials now include the archived release
+  notes and a full set of distribution artifacts, checksums, SBOM, and
+  provenance evidence for the released RC.
+
 ## [v0.6.4-rc.1] - 2026-03-22
 
 ### Changed
