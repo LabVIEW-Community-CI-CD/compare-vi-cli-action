@@ -51,3 +51,7 @@ A downstream adoption should be considered successful only when:
 
 If those five conditions are not met, the consumer is still in onboarding, not
 in stable adoption.
+
+Use [`FIRST_CONSUMER_SUCCESS_PATH.md`](./FIRST_CONSUMER_SUCCESS_PATH.md) when a
+team needs the shortest operator-ready walkthrough to satisfy those five
+conditions before moving into the deeper onboarding program.
