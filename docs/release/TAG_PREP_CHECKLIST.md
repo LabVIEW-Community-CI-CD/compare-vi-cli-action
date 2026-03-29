@@ -1,14 +1,14 @@
-# v0.6.5 Tag Preparation Checklist
+# v0.6.6 Tag Preparation Checklist
 <!-- markdownlint-disable-next-line MD041 -->
 
-Helper reference for cutting or replaying the `v0.6.5` maintenance release.
+Helper reference for cutting or replaying the `v0.6.6` maintenance release.
 Aligns with the archived release notes
-(`../archive/releases/RELEASE_NOTES_v0.6.5.md`) and the checked-in stable
+(`../archive/releases/RELEASE_NOTES_v0.6.6.md`) and the checked-in stable
 release surfaces.
 
 ## 1. Pre-flight Verification
 
-- [ ] Work from `release/v0.6.5` and ensure it contains the final maintenance
+- [ ] Work from `release/v0.6.6` and ensure it contains the final maintenance
       changes.
 - [ ] CI is green on the release branch (`lint`, `pester / normalize`,
       `smoke-gate`, `Policy Guard (Upstream) / policy-guard`,
@@ -22,39 +22,40 @@ release surfaces.
 ## 2. Version & Metadata Consistency
 
 - [ ] `CHANGELOG.md` contains a finalized
-      `## [v0.6.5] - 2026-03-29` section.
-- [ ] Stable docs reference `v0.6.5` consistently.
-- [ ] `package.json`, `package-lock.json`, `Directory.Build.props`, and
-      `tools/CompareVI.Tools/CompareVI.Tools.psd1` all report `0.6.5`.
+      `## [v0.6.6] - 2026-03-29` section.
+- [ ] Stable docs reference `v0.6.6` consistently.
+- [ ] `package.json`, `Directory.Build.props`, and
+      `tools/CompareVI.Tools/CompareVI.Tools.psd1` all report `0.6.6`.
 - [ ] `docs/action-outputs.md` still matches `action.yml`.
 - [ ] Update `docs/documentation-manifest.json` if release-doc coverage changed.
 
-## 3. Runtime Guard Validation
+## 3. Downstream Hardening Validation
 
-- [ ] Focused compare/runtime tests pass locally:
+- [ ] Focused downstream onboarding tests pass locally:
 
-```pwsh
-Invoke-Pester -Path 'tests/CompareVI.Timeout.Tests.ps1','tests/CompareVI.InputOutput.Tests.ps1','tests/Action.CompositeOutputs.Tests.ps1' -Output Detailed -CI
+```bash
+node --test tools/priority/__tests__/downstream-onboarding.test.mjs tools/priority/__tests__/downstream-onboarding-success.test.mjs
 ```
 
 - [ ] Workflow contract assertions pass:
 
 ```bash
-node --test tools/priority/__tests__/docker-labview-path-contract.test.mjs tools/priority/__tests__/capability-ingress-runner-routing.test.mjs
+node --test tools/priority/__tests__/downstream-promotion-contract.test.mjs tools/priority/__tests__/downstream-onboarding-contract.test.mjs
 ```
 
-- [ ] Confirm the specialized `labview-cli-compare` workflow still uses
-      `compare-timeout-seconds: '1200'` and that the action input remains
-      opt-in for other consumers.
+- [ ] Confirm the post-merge proving replay stays green on `develop` while
+      routing direct `downstream/develop` updates through the documented
+      `blocked-by-repository-rules` handoff.
+- [ ] Confirm `required-checks-visible` can resolve from the consumer's
+      checked-in `docs/policy/develop-branch-protection.json` contract when the
+      live branch-protection API is not observable.
 
 ## 4. Release Materials Review
 
 - [ ] `PR_NOTES.md`, this checklist, and
-      `../archive/releases/RELEASE_NOTES_v0.6.5.md` are consistent.
-- [ ] `README.md` and `docs/USAGE_GUIDE.md` treat `v0.6.5` as the current
-      supported stable pin.
-- [ ] `POST_RELEASE_FOLLOWUPS.md` reflects the current maintenance backlog
-      instead of historical `v0.5.0` planning debt.
+      `../archive/releases/RELEASE_NOTES_v0.6.6.md` are consistent.
+- [ ] `README.md` and `docs/USAGE_GUIDE.md` still treat `v0.6.5` as the
+      previously released stable pin until `v0.6.6` publication completes.
 
 ## 5. Tag Creation
 
@@ -62,7 +63,7 @@ node --test tools/priority/__tests__/docker-labview-path-contract.test.mjs tools
 
 ```pwsh
 node tools/npm/run-script.mjs priority:release:signing:readiness
-node tools/npm/run-script.mjs priority:release:conductor -- --apply --channel stable --version 0.6.5
+node tools/npm/run-script.mjs priority:release:conductor -- --apply --channel stable --version 0.6.6
 ```
 
 - [ ] Confirm `tests/results/_agent/release/release-signing-readiness.json`
@@ -73,32 +74,33 @@ node tools/npm/run-script.mjs priority:release:conductor -- --apply --channel st
 - [ ] Create an annotated stable tag:
 
 ```pwsh
-git tag -a v0.6.5 -m "v0.6.5: publish compare timeout guard maintenance release"
+git tag -a v0.6.6 -m "v0.6.6: publish downstream proving maintenance release"
 ```
 
 - [ ] Push the tag:
 
 ```pwsh
-git push origin v0.6.5
+git push origin v0.6.6
 ```
 
 ## 6. Validation After Publish
 
-- [ ] Run `node tools/npm/run-script.mjs release:finalize -- 0.6.5` from a
+- [ ] Run `node tools/npm/run-script.mjs release:finalize -- 0.6.6` from a
       clean helper lane to fast-forward `main` and `develop`, then record the
       finalize metadata.
-- [ ] Install the action via `@v0.6.5` in a sample workflow and confirm a
+- [ ] Install the action via `@v0.6.6` in a sample workflow and confirm a
       compare using the canonical fixtures succeeds.
-- [ ] Re-run the native wrapper path and confirm:
-  - the compare still succeeds under the `1200` second budget
-  - `Runner Unblock Guard` executes afterward
-  - the lane does not emit timeout exit code `124`
+- [ ] Re-run downstream proving and confirm:
+  - the scorecard still reports `status=pass` and `blockers=0`
+  - the workflow reports `blocked-by-repository-rules` instead of failing when
+    `GH013` blocks a direct `downstream/develop` push
+  - the downstream onboarding success report stays `pass` with `totalWarnings=0`
 
 ## 7. Communication
 
-- [ ] Announce the maintenance cut, calling out the guarded compare runtime and
-      verified native wrapper proof.
-- [ ] Notify consumers that `v0.6.5` supersedes `v0.6.4` as the supported
+- [ ] Announce the maintenance cut, calling out the rule-aware downstream
+      promotion handoff and checked-in branch-protection fallback.
+- [ ] Notify consumers that `v0.6.6` supersedes `v0.6.5` as the supported
       stable pin.
 
---- Updated: 2026-03-29 (prepared for the `v0.6.5` maintenance cut).
+--- Updated: 2026-03-29 (prepared for the `v0.6.6` maintenance cut).

@@ -7,6 +7,32 @@ The format is based on Keep a Changelog, and this project adheres to Semantic Ve
 
 ## [Unreleased]
 
+## [v0.6.6] - 2026-03-29
+
+### Changed
+
+- Downstream promotion now treats `GH013` repository-rule rejections on direct
+  `downstream/develop` updates as an explicit handoff instead of a proving
+  failure, so release replay can keep the scorecard evidence and route the
+  branch advance through the required PR or merge-queue path.
+- Downstream onboarding now falls back to a consumer repo's checked-in
+  `docs/policy/<branch>-branch-protection.json` contract when the live
+  branch-protection API is not observable, keeping `required-checks-visible`
+  evidence anchored to the consumer's declared policy instead of warning on a
+  cross-repo token permission gap.
+
+### Added
+
+- Checked-in onboarding coverage for branch-protection contract fallback and
+  checked-in contract path resolution in
+  `tools/priority/__tests__/downstream-onboarding.test.mjs`.
+
+### Documentation
+
+- Updated the downstream onboarding runbook and release helper packet to treat
+  `v0.6.6` as the current maintenance cut that closes the remaining
+  downstream-proving seam.
+
 ## [v0.6.5] - 2026-03-29
 
 ### Changed

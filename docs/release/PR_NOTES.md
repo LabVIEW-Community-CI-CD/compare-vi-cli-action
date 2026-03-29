@@ -1,37 +1,35 @@
 <!-- markdownlint-disable-next-line MD041 -->
-# Release v0.6.5 - PR Notes Helper
+# Release v0.6.6 - PR Notes Helper
 
-Reference sheet for the `v0.6.5` maintenance release. This cut publishes the
-compare timeout guard and the verified native LV32 wrapper proof without
-reopening the broader `v0.6.4` trust-reset scope.
+Reference sheet for the `v0.6.6` maintenance release. This cut ships the last
+two downstream hardening fixes from `develop` without reopening the broader
+`v0.6.5` runtime guard scope.
 
 ## 1. Summary
 
-Release `v0.6.5` focuses on four themes:
+Release `v0.6.6` focuses on three themes:
 
-- **Guarded native compare runtime**: `Invoke-CompareVI` and the composite
-  action now support `compare-timeout-seconds`, so self-hosted native compares
-  can fail closed with exit code `124` instead of waiting indefinitely.
-- **Proven workflow budget**: the specialized
-  `.github/workflows/labview-cli-compare.yml` lane now uses a `1200` second
-  timeout budget derived from a real successful runtime, not a guessed ceiling.
-- **Live wrapper proof**: manual `labview-cli-compare` runs on `develop`
-  completed successfully before and after the guard tuning, and the tuned run
-  still reached `Runner Unblock Guard`.
-- **Release packet alignment**: changelog, usage docs, release helpers, and
-  archived notes now treat `v0.6.5` as the current stable maintenance target.
+- **Rule-aware downstream proving**: `.github/workflows/downstream-promotion.yml`
+  now treats direct `downstream/develop` push rejection under repository rules
+  as a documented handoff instead of collapsing the proving run.
+- **Contract-backed branch protection evidence**:
+  `tools/priority/downstream-onboarding.mjs` now falls back to the consumer's
+  checked-in `docs/policy/<branch>-branch-protection.json` contract when the
+  live branch-protection API is not observable.
+- **Shipped maintenance baseline**: the two post-`v0.6.5` hardening fixes are
+  now packaged into an immutable stable release line instead of remaining
+  `develop`-only behavior.
 
 ## 2. Maintenance Highlights
 
-- The compare runtime now has an explicit bounded-wait path in
-  `scripts/CompareVI.psm1` plus a public action input in `action.yml`.
-- The specialized native LV32 wrapper workflow now protects the self-hosted
-  runner from indefinite compare waits while still allowing the observed
-  successful runtime envelope.
-- Stable usage surfaces now pin `@v0.6.5`, so the published maintenance line
-  matches the documented action contract.
-- The release helper packet no longer carries the stale `v0.5.0` planning
-  backlog in `POST_RELEASE_FOLLOWUPS.md`.
+- Downstream proving now ends `success` with a `blocked-by-repository-rules`
+  handoff when `GH013` blocks a direct push to `downstream/develop`, while the
+  scorecard still records `status=pass` and `blockers=0`.
+- Downstream onboarding now resolves `required-checks-visible` from the
+  consumer template's checked-in branch-protection contract when the workflow
+  token cannot read live protected-branch settings across repositories.
+- Stable release surfaces now pin `0.6.6`, so the shipped maintenance line
+  includes both downstream hardening slices.
 
 ## 3. Validation Snapshot
 
@@ -41,42 +39,41 @@ Release `v0.6.5` focuses on four themes:
   - `smoke-gate`
   - `Policy Guard (Upstream) / policy-guard`
   - `commit-integrity`
-- [x] Manual native wrapper proof on `develop` succeeded:
-  - baseline run:
-    `https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/actions/runs/23716842026`
-  - tuned timeout run:
-    `https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/actions/runs/23717187193`
-- [ ] `node tools/npm/run-script.mjs release:finalize -- 0.6.5` completes from
+- [x] Post-merge downstream proving replay on `develop` succeeded with
+      branch-rule handoff:
+  - initial handoff proof:
+    `https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/actions/runs/23718725540`
+  - checked-in branch-protection contract proof:
+    `https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/actions/runs/23718997600`
+- [ ] `node tools/npm/run-script.mjs release:finalize -- 0.6.6` completes from
       a clean helper lane and writes fresh finalize metadata under
       `tests/results/_agent/release/`
-- [ ] Published release `v0.6.5` includes the signed distribution assets,
+- [ ] Published release `v0.6.6` includes the signed distribution assets,
       `SHA256SUMS.txt`, `sbom.spdx.json`, and `provenance.json`
 
 ## 4. Reviewer Focus
 
 - Confirm the maintenance release surfaces align across:
   - `package.json`
-  - `package-lock.json`
   - `Directory.Build.props`
   - `tools/CompareVI.Tools/CompareVI.Tools.psd1`
-- Check that public entry docs and examples now point to the stable
-  `v0.6.5` line instead of `v0.6.4`.
-- Verify that the timeout guard is opt-in at the action layer and only
-  specialized workflows consume it by default.
+- Review the downstream maintenance fixes for correctness:
+  - `.github/workflows/downstream-promotion.yml`
+  - `tools/priority/downstream-onboarding.mjs`
+  - `tools/priority/__tests__/downstream-onboarding.test.mjs`
 - Review the release helper packet for consistency:
   - `CHANGELOG.md`
   - `docs/release/TAG_PREP_CHECKLIST.md`
-  - `docs/archive/releases/RELEASE_NOTES_v0.6.5.md`
-  - `docs/release/POST_RELEASE_FOLLOWUPS.md`
+  - `docs/archive/releases/RELEASE_NOTES_v0.6.6.md`
 
 ## 5. Follow-Up After Stable
 
-1. Re-pin certified downstream consumers to `v0.6.5` if they need the new
-   timeout guard or the refreshed stable baseline.
-2. Watch the first maintenance cycle for timeout regressions or
-   `Runner Unblock Guard` noise before extending the same control to other
-   self-hosted compare workflows.
-3. Reopen runtime hardening only if live evidence shows another native compare
-   lane can still strand the runner beyond the bounded budget.
+1. Re-pin certified downstream consumers from `v0.6.5` to `v0.6.6` so the
+   shipped stable line includes the downstream-proving hardening.
+2. Keep watching `downstream-promotion` for real consumer drift, not
+   cross-repo branch-protection visibility noise.
+3. Reopen downstream proving only if a later consumer contract surface still
+   cannot be proven from either live API evidence or a checked-in policy
+   contract.
 
---- Updated: 2026-03-29 (prepared for the `v0.6.5` maintenance cut).
+--- Updated: 2026-03-29 (prepared for the `v0.6.6` maintenance cut).
