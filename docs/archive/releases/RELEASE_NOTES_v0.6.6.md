@@ -37,6 +37,10 @@ hardening fixes that landed on `develop` after `v0.6.5`.
   - rollout PR: `https://github.com/LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate/pull/51`
   - canonical smoke proof: `https://github.com/LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate/actions/runs/23720949271`
   - upstream onboarding drift proof: `https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/actions/runs/23721023554`
+  - consumer repo: `LabVIEW-Community-CI-CD/comparevi-history`
+  - rollout PR: `https://github.com/LabVIEW-Community-CI-CD/comparevi-history/pull/188`
+  - native smoke proof: `https://github.com/LabVIEW-Community-CI-CD/comparevi-history/actions/runs/23721302976`
+  - native release proof: `https://github.com/LabVIEW-Community-CI-CD/comparevi-history/actions/runs/23721302977`
 
 ## Consumer impact
 

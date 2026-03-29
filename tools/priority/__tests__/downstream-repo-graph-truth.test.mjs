@@ -69,6 +69,19 @@ function createPolicy() {
         ]
       },
       {
+        id: 'comparevi-history',
+        repository: 'LabVIEW-Community-CI-CD/comparevi-history',
+        kind: 'certified-consumer',
+        roles: [
+          {
+            id: 'comparevi-history-stable-baseline',
+            role: 'certified-stable-baseline',
+            branch: 'main',
+            required: true
+          }
+        ]
+      },
+      {
         id: 'org-consumer-fork',
         repository: 'LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate-fork',
         kind: 'consumer-fork',
@@ -115,6 +128,7 @@ test('runDownstreamRepoGraphTruth reports pass when required branches exist and 
   const branchMap = new Map([
     ['repos/LabVIEW-Community-CI-CD/compare-vi-cli-action/branches/develop', { commit: { sha: 'cmp123' } }],
     ['repos/LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate/branches/develop', { commit: { sha: 'tpl123' } }],
+    ['repos/LabVIEW-Community-CI-CD/comparevi-history/branches/main', { commit: { sha: 'hist123' } }],
     ['repos/LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate-fork/branches/develop', { commit: { sha: 'tpl123' } }]
   ]);
 
@@ -141,13 +155,18 @@ test('runDownstreamRepoGraphTruth reports pass when required branches exist and 
   assert.equal(report.summary.requiredMissingRoleCount, 0);
   assert.equal(report.summary.optionalMissingRoleCount, 2);
   assert.equal(report.summary.alignmentFailureCount, 0);
-  assert.equal(report.summary.repositoryCount, 3);
-  assert.equal(report.summary.roleCount, 6);
+  assert.equal(report.summary.repositoryCount, 4);
+  assert.equal(report.summary.roleCount, 7);
 
   const fork = report.repositories.find((entry) => entry.id === 'org-consumer-fork');
   assert.equal(fork.status, 'pass');
   assert.equal(fork.roles[0].relationship.status, 'pass');
   assert.equal(fork.roles[0].relationship.reason, 'head-sha-match');
+
+  const history = report.repositories.find((entry) => entry.id === 'comparevi-history');
+  assert.equal(history.status, 'pass');
+  assert.equal(history.roles[0].status, 'pass');
+  assert.equal(history.roles[0].headSha, 'hist123');
 });
 
 test('runDownstreamRepoGraphTruth fails when a required tracked branch drifts from canonical head', async () => {
@@ -171,6 +190,8 @@ test('runDownstreamRepoGraphTruth fails when a required tracked branch drifts fr
             return { commit: { sha: 'cmp123' } };
           case 'repos/LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate/branches/develop':
             return { commit: { sha: 'tpl123' } };
+          case 'repos/LabVIEW-Community-CI-CD/comparevi-history/branches/main':
+            return { commit: { sha: 'hist123' } };
           case 'repos/LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate-fork/branches/develop':
             return { commit: { sha: 'drift999' } };
           default:
@@ -205,6 +226,8 @@ test('runDownstreamRepoGraphTruth writes the default output path when none is pr
             return { commit: { sha: 'cmp123' } };
           case 'repos/LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate/branches/develop':
             return { commit: { sha: 'tpl123' } };
+          case 'repos/LabVIEW-Community-CI-CD/comparevi-history/branches/main':
+            return { commit: { sha: 'hist123' } };
           case 'repos/LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate-fork/branches/develop':
             return { commit: { sha: 'tpl123' } };
           default:

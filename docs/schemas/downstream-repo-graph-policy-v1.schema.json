@@ -49,7 +49,8 @@
           "enum": [
             "supervisor",
             "canonical-template",
-            "consumer-fork"
+            "consumer-fork",
+            "certified-consumer"
           ]
         },
         "roles": {
@@ -83,7 +84,8 @@
             "canonical-development",
             "consumer-proving-rail",
             "upstream-producer-lineage",
-            "canonical-development-mirror"
+            "canonical-development-mirror",
+            "certified-stable-baseline"
           ]
         },
         "branch": {
