@@ -116,6 +116,21 @@ Suggested draft-release outline:
       compare using the canonical fixtures succeeds.
 - [ ] Exercise the pinned template conveyor and downstream proving rail against
       the RC release summary.
+- [ ] Re-run downstream onboarding against
+      `LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate`:
+
+```bash
+node tools/npm/run-script.mjs priority:onboard:downstream -- \
+  --repo LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate \
+  --parent-issue 715 \
+  --output tests/results/_agent/onboarding/downstream-onboarding-labview-template.json
+```
+
+- [ ] Confirm the onboarding report no longer fails
+      `certified-reference-pinned` after the stable consumer ref is updated. If
+      protected-environment or required-check warnings remain, record them as
+      explicit follow-up backlog instead of treating the downstream proof as
+      complete.
 - [ ] Re-run the LabVIEW CLI wrapper path to ensure rogue detection and cleanup
       guard stay green.
 

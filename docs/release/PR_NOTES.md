@@ -74,5 +74,12 @@ Release `v0.6.4-rc.2` focuses on four themes:
 2. Re-run the template pivot gate after the RC version is published.
 3. Keep the downstream proving rail pinned to the released template tag until a
    deliberate dependency bump is queued.
+4. Re-run downstream onboarding against
+   `LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate` after stable promotion and
+   replace the current `v0.6.4-rc.2` consumer pin with the certified stable
+   ref before calling downstream adoption complete.
+5. If downstream onboarding still reports environment or branch-check warnings
+   after the stable pin update, record those warnings explicitly as backlog
+   instead of leaving them as implicit drift.
 
 --- Updated: 2026-03-29 (aligned with the published `v0.6.4-rc.2` release candidate).
