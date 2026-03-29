@@ -101,7 +101,7 @@ test('downstream promotion workflow turns the proving rail into checked-in autom
     workflow,
     /Downstream repository is not configured\. Pass workflow_dispatch\.downstream_repo or set vars\.DOWNSTREAM_PILOT_REPO\./
   );
-  assert.match(workflow, /git push origin '\$\{\{ steps\.source\.outputs\.source_sha \}\}:refs\/heads\/downstream\/develop'/);
+  assert.match(workflow, /git push origin "\$\{\{ steps\.source\.outputs\.source_sha \}\}:refs\/heads\/downstream\/develop"/);
   assert.match(workflow, /id:\s*promote_downstream_ref/);
   assert.match(workflow, /grep -q 'GH013:'/);
   assert.match(workflow, /result=blocked-by-repository-rules/);

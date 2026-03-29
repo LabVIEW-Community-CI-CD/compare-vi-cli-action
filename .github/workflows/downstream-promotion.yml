@@ -320,7 +320,7 @@ jobs:
           }
           NODE
           push_log="$(mktemp)"
-          if git push origin '${{ steps.source.outputs.source_sha }}:refs/heads/downstream/develop' >"${push_log}" 2>&1; then
+          if git push origin "${{ steps.source.outputs.source_sha }}:refs/heads/downstream/develop" >"${push_log}" 2>&1; then
             cat "${push_log}"
             echo "result=updated" >> "$GITHUB_OUTPUT"
             exit 0
