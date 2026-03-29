@@ -22,11 +22,16 @@ tuning.
 
 ## Trust and support status
 
-- Supported stable release line: `v0.6.4`
-- Future pre-release work may use `v0.6.x-rc` tags only when a later stable cut is being prepared
+- Supported stable release line: `v0.6.5`
+- Future pre-release work may use `v0.6.x-rc` tags only when a later stable
+  cut is being prepared
 - License: `BSD-3-Clause`
-- Full compare execution still assumes the maintained self-hosted Windows + LabVIEW + LVCompare runtime described in [`CONTRIBUTING.md`](./CONTRIBUTING.md)
-- This repository publishes the compare action surface and also carries maintainer/operator platform workflows; downstream consumers should start from the action contract and usage docs first
+- Full compare execution still assumes the maintained self-hosted Windows +
+  LabVIEW + LVCompare runtime described in
+  [`CONTRIBUTING.md`](./CONTRIBUTING.md)
+- This repository publishes the compare action surface and also carries
+  maintainer/operator platform workflows; downstream consumers should start
+  from the action contract and usage docs first
 - Product boundary: [`docs/SUPPORTED_PRODUCT_BOUNDARY.md`](./docs/SUPPORTED_PRODUCT_BOUNDARY.md)
 - Minimal adopter contract: [`docs/MINIMAL_ADOPTER_CONTRACT.md`](./docs/MINIMAL_ADOPTER_CONTRACT.md)
 - Maintainer continuity profile: [`docs/MAINTAINER_CONTINUITY_PROFILE.md`](./docs/MAINTAINER_CONTINUITY_PROFILE.md)

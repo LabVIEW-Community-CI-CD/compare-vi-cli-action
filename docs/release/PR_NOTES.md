@@ -1,39 +1,37 @@
 <!-- markdownlint-disable-next-line MD041 -->
-# Release v0.6.4 - PR Notes Helper
+# Release v0.6.5 - PR Notes Helper
 
-Reference sheet for the final `v0.6.4` stable release. This cut promotes the
-trusted `v0.6.4-rc.2` publication path into the supported stable line, aligns
-the public product/adopter contract, and closes the downstream onboarding noise
-seam that remained after consumer hardening.
+Reference sheet for the `v0.6.5` maintenance release. This cut publishes the
+compare timeout guard and the verified native LV32 wrapper proof without
+reopening the broader `v0.6.4` trust-reset scope.
 
 ## 1. Summary
 
-Release `v0.6.4` focuses on four themes:
+Release `v0.6.5` focuses on four themes:
 
-- **Trusted stable publication baseline**: the signing/readiness and
-  repair/replay flow proven in `v0.6.4-rc.2` now become the supported stable
-  release path.
-- **Public trust packet alignment**: the supported product boundary, minimal
-  adopter contract, and current stable version now align on `v0.6.4`.
-- **Honest maintainer governance**: workflow criticality, continuity, and
-  release-runbook surfaces now match the repository's actual single-owner
-  operating model.
-- **Downstream proof closure**: the hardened `LabviewGitHubCiTemplate`
-  consumer path passes cleanly, and the onboarding scanner no longer emits the
-  false workflow-reference artifact from inline scripts.
+- **Guarded native compare runtime**: `Invoke-CompareVI` and the composite
+  action now support `compare-timeout-seconds`, so self-hosted native compares
+  can fail closed with exit code `124` instead of waiting indefinitely.
+- **Proven workflow budget**: the specialized
+  `.github/workflows/labview-cli-compare.yml` lane now uses a `1200` second
+  timeout budget derived from a real successful runtime, not a guessed ceiling.
+- **Live wrapper proof**: manual `labview-cli-compare` runs on `develop`
+  completed successfully before and after the guard tuning, and the tuned run
+  still reached `Runner Unblock Guard`.
+- **Release packet alignment**: changelog, usage docs, release helpers, and
+  archived notes now treat `v0.6.5` as the current stable maintenance target.
 
-## 2. Stable Highlights
+## 2. Maintenance Highlights
 
-- The release conductor stable path now stands on a proven RC trust baseline
-  instead of an unresolved publication experiment.
-- Public entry docs now expose the supported product boundary, minimal adopter
-  contract, first-consumer success path, workflow criticality map, and
-  continuity profile as first-class checked-in surfaces.
-- The downstream proving rail is no longer blocked on stale stable pins,
-  missing required checks, or a missing protected deployment environment in the
-  certified template consumer.
-- Downstream onboarding evidence remains `pass` without the prior harmless
-  inline-script `uses:` false positive.
+- The compare runtime now has an explicit bounded-wait path in
+  `scripts/CompareVI.psm1` plus a public action input in `action.yml`.
+- The specialized native LV32 wrapper workflow now protects the self-hosted
+  runner from indefinite compare waits while still allowing the observed
+  successful runtime envelope.
+- Stable usage surfaces now pin `@v0.6.5`, so the published maintenance line
+  matches the documented action contract.
+- The release helper packet no longer carries the stale `v0.5.0` planning
+  backlog in `POST_RELEASE_FOLLOWUPS.md`.
 
 ## 3. Validation Snapshot
 
@@ -43,38 +41,42 @@ Release `v0.6.4` focuses on four themes:
   - `smoke-gate`
   - `Policy Guard (Upstream) / policy-guard`
   - `commit-integrity`
-- [ ] Latest `fixture-drift.yml` run for `release/v0.6.4` is green and
-      uploads the NI Linux review-suite evidence bundle.
-- [ ] Latest downstream onboarding report for
-      `LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate` is `pass` with zero
-      warning/fail backlog.
-- [ ] `node tools/npm/run-script.mjs release:finalize -- 0.6.4` completes
-      from a clean helper lane and writes fresh finalize metadata under
-      `tests/results/_agent/release/`.
-- [ ] Published release `v0.6.4` includes the signed distribution assets,
-      `SHA256SUMS.txt`, `sbom.spdx.json`, and `provenance.json`.
+- [x] Manual native wrapper proof on `develop` succeeded:
+  - baseline run:
+    `https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/actions/runs/23716842026`
+  - tuned timeout run:
+    `https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/actions/runs/23717187193`
+- [ ] `node tools/npm/run-script.mjs release:finalize -- 0.6.5` completes from
+      a clean helper lane and writes fresh finalize metadata under
+      `tests/results/_agent/release/`
+- [ ] Published release `v0.6.5` includes the signed distribution assets,
+      `SHA256SUMS.txt`, `sbom.spdx.json`, and `provenance.json`
 
 ## 4. Reviewer Focus
 
-- Confirm `CHANGELOG.md`, this helper, `TAG_PREP_CHECKLIST.md`, and
-  `../archive/releases/RELEASE_NOTES_v0.6.4.md` all reference `v0.6.4`
-  consistently.
-- Review the stable release-surface alignment across:
+- Confirm the maintenance release surfaces align across:
   - `package.json`
+  - `package-lock.json`
   - `Directory.Build.props`
   - `tools/CompareVI.Tools/CompareVI.Tools.psd1`
-- Check that public usage docs and downstream proof surfaces now point at the
-  stable `v0.6.4` line instead of the prior stable tag or an RC-only pin.
-- Check that the release conductor stable path still points at the
-  authoritative trust gate rather than relying on local/manual tag mutation.
+- Check that public entry docs and examples now point to the stable
+  `v0.6.5` line instead of `v0.6.4`.
+- Verify that the timeout guard is opt-in at the action layer and only
+  specialized workflows consume it by default.
+- Review the release helper packet for consistency:
+  - `CHANGELOG.md`
+  - `docs/release/TAG_PREP_CHECKLIST.md`
+  - `docs/archive/releases/RELEASE_NOTES_v0.6.5.md`
+  - `docs/release/POST_RELEASE_FOLLOWUPS.md`
 
 ## 5. Follow-Up After Stable
 
-1. Re-pin `LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate` and any other
-   certified downstream consumers to `v0.6.4`.
-2. Re-run downstream onboarding and template smoke after the stable pin update
-   and record the passing artifact as the new consumer baseline.
-3. Watch the first maintenance cycle for merge-queue drift, Dependabot noise,
-   or security/regression regressions before opening a new hardening stream.
+1. Re-pin certified downstream consumers to `v0.6.5` if they need the new
+   timeout guard or the refreshed stable baseline.
+2. Watch the first maintenance cycle for timeout regressions or
+   `Runner Unblock Guard` noise before extending the same control to other
+   self-hosted compare workflows.
+3. Reopen runtime hardening only if live evidence shows another native compare
+   lane can still strand the runner beyond the bounded budget.
 
---- Updated: 2026-03-29 (prepared for the final `v0.6.4` stable cut).
+--- Updated: 2026-03-29 (prepared for the `v0.6.5` maintenance cut).

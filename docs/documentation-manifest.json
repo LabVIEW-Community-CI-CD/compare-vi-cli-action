@@ -2,7 +2,7 @@
   "$schema": "./schemas/documentation-manifest-v1.schema.json",
   "schema": "documentation-manifest-v1",
   "version": "1.0.0",
-      "updated": "2026-03-25T12:00:00Z",
+      "updated": "2026-03-29T19:45:00Z",
   "entries": [
     {
       "name": "Root Entry Points",
@@ -29,6 +29,18 @@
         "docs/release/PR_NOTES.md",
         "docs/release/ROLLBACK_PLAN.md",
         "docs/release/TAG_PREP_CHECKLIST.md"
+      ]
+    },
+    {
+      "name": "Archived Release Notes",
+      "category": "supporting",
+      "status": "reference",
+      "description": "Recent archived release notes retained for release-candidate and stable publication history.",
+      "files": [
+        "docs/archive/releases/RELEASE_NOTES_v0.6.4-rc.1.md",
+        "docs/archive/releases/RELEASE_NOTES_v0.6.4-rc.2.md",
+        "docs/archive/releases/RELEASE_NOTES_v0.6.4.md",
+        "docs/archive/releases/RELEASE_NOTES_v0.6.5.md"
       ]
     },
     {

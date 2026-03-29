@@ -7,6 +7,35 @@ The format is based on Keep a Changelog, and this project adheres to Semantic Ve
 
 ## [Unreleased]
 
+## [v0.6.5] - 2026-03-29
+
+### Changed
+
+- `Invoke-CompareVI` and the composite action now support an opt-in compare
+  timeout via `TimeoutSeconds` / `compare-timeout-seconds`, returning
+  deterministic exit code `124` when LVCompare does not exit in time instead of
+  leaving self-hosted lanes unbounded.
+- The specialized `labview-cli-compare.yml` workflow now routes through a
+  bounded `1200` second compare budget derived from the observed successful
+  native LV32 compare runtime, while still preserving `Runner Unblock Guard`
+  cleanup and output handling.
+- Stable release surfaces now align on `0.6.5`, including the npm lockfile
+  version metadata used by downstream package consumers.
+
+### Added
+
+- Direct timeout coverage for the compare runtime in
+  `tests/CompareVI.Timeout.Tests.ps1`.
+- Workflow contract assertions that pin the specialized LV32 wrapper lane to
+  the explicit timeout budget and action input wiring.
+
+### Documentation
+
+- Updated the stable pin references, troubleshooting guidance, release helper
+  packet, and archived release notes for the `v0.6.5` maintenance cut.
+- Replaced the stale `v0.5.0` post-release tracker with a current
+  `v0.6.5 -> v0.6.6` maintenance backlog.
+
 ## [v0.6.4] - 2026-03-29
 
 ### Changed

@@ -1,82 +1,65 @@
 <!-- markdownlint-disable-next-line MD041 -->
-# Post-Release Follow-Up Items (v0.4.0 → v0.5.0 Planning)
+# Post-Release Follow-Up Items (v0.6.5 -> v0.6.6 Planning)
 
-**Status**: 4 of 10 issues completed and integrated into v0.5.0. Remaining six items are documented below for
-future releases.
+**Status**: `v0.6.5` packages the compare-timeout guard and the verified native
+wrapper proof. The items below are the remaining maintenance backlog after that
+cut, not prerequisites for publishing `v0.6.5`.
 
-## Completed Issues (Implemented in v0.5.0)
+## Completed In v0.6.5
 
-### ✅ Issue 1 – Remove artifact fallback and expand guard
+### ✅ Guarded native compare runtime
 
-- Drop legacy `Base.vi`/`Head.vi` name resolution from compare scripts and tests.
-- Confirm no automation depends on `tools/Warmup-LabVIEW.ps1` shim and remove the wrapper once all callers use
-  `Warmup-LabVIEWRuntime.ps1`.
-- Extend guard coverage across scripts and key docs with migration messaging in the release notes.
-- Guard test: `tests/Guard.LegacyArtifactNames.Tests.ps1`.
+- Added `compare-timeout-seconds` to the composite action contract.
+- Added bounded wait handling in `scripts/CompareVI.psm1` with deterministic
+  timeout exit code `124`.
+- Added focused timeout coverage in `tests/CompareVI.Timeout.Tests.ps1`.
 
-### ✅ Issue 4 – Documentation pruning and consolidation
+### ✅ Specialized LV32 wrapper budget tuning
 
-- Remove legacy references across README and runbook documentation.
-- Collapse duplicate guidance and ensure the migration note reflects the v0.5.0 breaking change.
+- Tuned `.github/workflows/labview-cli-compare.yml` to a `1200` second compare
+  budget after observing that successful native compares can legitimately take
+  about 10 minutes on the specialized runner.
+- Confirmed the tuned workflow still reaches `Runner Unblock Guard` on a live
+  successful run.
 
-### ✅ Issue 7 – HTML diff fragment hardening
+### ✅ Release packet refresh
 
-- Add regression coverage for deterministic HTML list ordering and encoding.
-- Fixture test: `tests/CompareLoop.HtmlDiffDeterminism.Tests.ps1` (five tests passing).
+- Updated changelog, stable-pin docs, active release helper docs, and archived
+  release notes to reflect `v0.6.5`.
+- Replaced the stale `v0.5.0` planning backlog in this tracker.
 
-### ✅ Issue 8 – Percentile strategy documentation deep dive
+## Deferred Follow-Ups
 
-- Expand streaming/hybrid quantile accuracy docs with examples and tuning guidance.
-- Published in `docs/QUANTILE_ACCURACY.md` (linked from the README).
+### ⏸️ Follow-Up 1 – Publish and repin certified consumers
 
-## Deferred Issues (Future Releases)
+- Publish `v0.6.5` and repin certified downstream consumers that should track
+  the new stable maintenance baseline.
+- Re-run downstream proving after those pins move.
 
-The remaining items live in `issues-drafts/` and can be implemented without blocking v0.5.0.
+### ⏸️ Follow-Up 2 – Extend timeout guard only where live evidence justifies it
 
-### ⏸️ Issue 2 – Outcome classification enhancements
+- Review other self-hosted compare workflows before copying the timeout guard.
+- Require a real stranded-runner symptom or repeated long-running evidence
+  rather than blanket timeouts across every lane.
 
-- Enrich the outcome block with discovery vs. execution vs. infrastructure breakdowns.
-- Evaluate severity rank refinements while keeping schema rules additive.
+### ⏸️ Follow-Up 3 – Timeout telemetry enrichment
 
-### ⏸️ Issue 3 – Coverage integration (optional)
+- If operators need richer postmortem evidence, project `timedOut` and
+  timeout-budget fields into downstream scorecards or release evidence packets.
+- Keep the action outputs additive if this lands.
 
-- Explore lightweight PowerShell-based coverage or alternative tooling for Integration-tagged tests.
-- Keep the feature opt-in to avoid unnecessary overhead.
+### ⏸️ Follow-Up 4 – Release archive/index hygiene
 
-### ⏸️ Issue 5 – Discovery strict mode re-evaluation
-
-- Reassess the default strictness once false positives trend toward zero in v0.4.x telemetry.
-- Maintain an escape hatch via environment configuration.
-
-### ⏸️ Issue 6 – Additional loop telemetry
-
-- Capture exit code distribution summaries and error pattern counts in the loop summary.
-- Preserve deterministic JSON ordering when aggregating telemetry.
-
-### ⏸️ Issue 9 – Runbook automation hooks
-
-- Auto-upload raw CLI artifacts in the runbook script when running under GitHub Actions.
-- Emit step-summary guidance to help operators share artifacts quickly.
-
-### ⏸️ Issue 10 – CI diagnostics synthesis
-
-- Consolidate discovery, outcome, and aggregation hints into a single diagnostics report artifact.
-- Compose structured JSON for external dashboards once Issue 6 data is available.
+- Revisit whether additional archived release notes should be surfaced through
+  `docs/documentation-manifest.json` beyond the recent release lines captured
+  today.
 
 ---
 
 ## Summary
 
-- **Completed**: Issues 01, 04, 07, 08 implemented in v0.5.0.
-- **Deferred**: Issues 02, 03, 05, 06, 09, 10 queued for future releases.
-- **Last updated**: 2025-10-03.
-- **Implementation tracking**: See `../archive/project-history/IMPLEMENTATION_STATUS_v0.5.0.md` for detailed status.
-
-### Recommended Implementation Order for Deferred Issues
-
-1. **Issue 06** – Additional loop telemetry (additive schema, high value).
-2. **Issue 10** – Diagnostics synthesis (builds on Issue 06).
-3. **Issue 02** – Outcome classification (independent, moderate complexity).
-4. **Issue 09** – Runbook automation (independent, low risk).
-5. **Issue 05** – Discovery strict mode (requires production data review).
-6. **Issue 03** – Coverage support (requires tool selection).
+- **Completed in v0.6.5**: compare timeout guard, tuned specialized workflow
+  budget, refreshed release packet.
+- **Deferred**: publish/repin, selective rollout to other workflows, telemetry
+  enrichment, archive/index hygiene.
+- **Last updated**: 2026-03-29.
