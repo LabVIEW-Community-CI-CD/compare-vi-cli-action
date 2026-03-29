@@ -290,7 +290,7 @@
     "chokidar": "^3.6.0",
     "entities": "^4.5.0",
     "fast-glob": "^3.3.3",
-    "fastq": "^1.19.1",
+    "fastq": "^1.20.1",
     "fill-range": "^7.1.1",
     "glob-parent": "^5.1.2",
     "globby": "^14.0.2",
