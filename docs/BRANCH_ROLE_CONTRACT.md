@@ -96,7 +96,9 @@ The contract is consumed directly by:
 - `priority:policy`, which applies the checked-in fork `develop` override so
   mirror rails keep `allow_force_pushes=true` and
   `allow_fork_syncing=false` instead of drifting back toward upstream
-  integration settings
+  integration settings; repo-graph-managed consumer mirrors now synchronize
+  through `priority:consumer-fork:sync` rather than GitHub's native fork-sync
+  toggle
 - `priority:merge-sync`, which classifies the target base branch before choosing queue-aware promotion behavior
 - `tools/priority/lib/branch-classification.mjs`, which now resolves both repository role and explicit repository plane
 

@@ -73,6 +73,7 @@
           "role": "canonical-development-mirror",
           "branch": "develop",
           "required": true,
+          "syncPolicy": "fast-forward-only",
           "tracksRoleId": "template-canonical-development"
         }
       ]
@@ -87,6 +88,7 @@
           "role": "canonical-development-mirror",
           "branch": "develop",
           "required": true,
+          "syncPolicy": "fast-forward-only",
           "tracksRoleId": "template-canonical-development"
         }
       ]
