@@ -191,6 +191,7 @@
     "priority:session-index-v2:promotion:project": "node tools/priority/project-session-index-v2-promotion-decision.mjs",
     "priority:workflow:replay:docker": "node tools/priority/docker-workflow-replay-lane.mjs",
     "priority:workflow:replay:windows": "node tools/priority/windows-workflow-replay-lane.mjs",
+    "priority:workflow:replay:windows:vi-history": "node tools/priority/windows-workflow-replay-lane.mjs --mode vi-history-scenarios-windows",
     "priority:safe-git:trend": "node tools/priority/summarize-safe-git-telemetry.mjs",
     "priority:codex:state:hygiene": "node --no-warnings tools/priority/codex-state-hygiene.mjs",
     "priority:codex:state:hygiene:apply": "node --no-warnings tools/priority/codex-state-hygiene.mjs --apply",
