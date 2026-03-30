@@ -129,10 +129,13 @@
 - `compare_fail_fast` (`true`/`false`): stop iterating after the first detected diff (still uploads results, does not fail the job).
 - `compare_fail_on_diff` (`true`/`false`): exit the job with failure status if any LVCompare run reports differences.
 - `compare_modes` (string): comma-separated compare modes. Recognised values:
-  - `default` - compare with no ignore flags (full detail).
-  - `attributes` - apply `-noattr` to suppress attribute-only differences when you want a quieter run.
-  - `front-panel` - apply `-nofp`/`-nofppos` to suppress front panel layout changes.
-  - `block-diagram` - apply `-nobdcosm` to suppress block diagram cosmetic tweaks.
+  - `default` - legacy suppressed bundle (`-nobd -noattr -nofp -nofppos -nobdcosm`).
+  - `attributes` - keep attribute diffs visible while suppressing front panel
+    and block diagram surfaces.
+  - `front-panel` - keep front panel diffs visible while suppressing
+    attributes and block diagram surfaces.
+  - `block-diagram` - keep block diagram diffs visible while suppressing
+    attributes and front panel surfaces.
 - `full` - run LVCompare with no ignore flags (`-nobd`, `-noattr`, `-nofp`, `-nofppos`,
   `-nobdcosm` all disabled). Use when you need every cosmetic and functional change.
 - `all` - alias for `full` (deprecated; the helper rewrites to `full` and emits a warning).

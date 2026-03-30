@@ -938,7 +938,7 @@ exit 0
     $manifest.comparisons.Count | Should -Be 1
   }
 
-  It 'drops block diagram cosmetic ignore when block-diagram mode is selected' {
+  It 'keeps block diagram diffs visible when block-diagram mode is selected' {
     if (-not $_pairs) { Set-ItResult -Skipped -Because 'Missing commit data'; return }
     $env:STUB_COMPARE_DIFF = '0'
     $pair = $_pairs[0]
@@ -959,8 +959,8 @@ exit 0
     $aggregate = Get-Content -LiteralPath $suitePath -Raw | ConvertFrom-Json
     $modeEntry = $aggregate.modes | Where-Object { $_.slug -eq 'block-diagram' }
     $modeEntry | Should -Not -BeNullOrEmpty
+    ($modeEntry.flags -contains '-nobd') | Should -BeFalse
     ($modeEntry.flags -contains '-nobdcosm') | Should -BeFalse
-    $modeEntry.flags | Should -Contain '-nobd'
     $modeEntry.flags | Should -Contain '-noattr'
     $modeEntry.flags | Should -Contain '-nofp'
     $modeEntry.flags | Should -Contain '-nofppos'
@@ -968,8 +968,8 @@ exit 0
     Test-Path -LiteralPath $modeEntry.manifestPath | Should -BeTrue
     $manifest = Get-Content -LiteralPath $modeEntry.manifestPath -Raw | ConvertFrom-Json
     $manifest.mode | Should -Be 'block-diagram'
+    ($manifest.flags -contains '-nobd') | Should -BeFalse
     ($manifest.flags -contains '-nobdcosm') | Should -BeFalse
-    $manifest.flags | Should -Contain '-nobd'
     $manifest.flags | Should -Contain '-noattr'
     $manifest.flags | Should -Contain '-nofp'
     $manifest.flags | Should -Contain '-nofppos'
