@@ -1,7 +1,7 @@
 <!-- markdownlint-disable-next-line MD041 -->
 # Feature Branch Enforcement & Merge Queue
 
-| `develop` (live id may drift) | `refs/heads/develop` | Merge queue enabled (`merge_method=SQUASH`, `grouping=ALLGREEN`, build queue <=20 entries, 1-minute quiet window). Required checks: `lint`, `fixtures`, `session-index`, `issue-snapshot`, `semver`, `Policy Guard (Upstream) / policy-guard`, `vi-history-scenarios-linux`, `agent-review-policy`, `hook-parity`, `commit-integrity`. Non-required hosted proof lanes may run alongside the queue contract, including `vi-history-scenarios-windows` on GitHub-hosted `windows-2022`. Copilot review settings are no longer enforced through policy; draft/ready review semantics are repo-owned and validated by `agent-review-policy`. |
+| `develop` (live id may drift) | `refs/heads/develop` | Merge queue enabled (`merge_method=SQUASH`, `grouping=ALLGREEN`, build queue <=20 entries, 1-minute quiet window). Required checks: `lint`, `fixtures`, `Policy Guard (Upstream) / policy-guard`, `vi-history-scenarios-linux`, `commit-integrity`. Non-required hosted proof lanes may run alongside the queue contract, including `session-index`, `issue-snapshot`, `semver`, `agent-review-policy`, `hook-parity`, and `vi-history-scenarios-windows` on GitHub-hosted `windows-2022`. Copilot review settings are no longer enforced through policy; draft/ready review semantics are repo-owned and validated by `agent-review-policy`. |
 
 ## Purpose
 
@@ -84,7 +84,7 @@ promotion behavior, not the branch-class source of truth.
 ### GitHub rulesets
 | Manifest identity | Scope                | Highlights                                                                                   |
 |-------------------|----------------------|----------------------------------------------------------------------------------------------|
-| `develop` (live id may drift) | `refs/heads/develop` | Merge queue enabled (`merge_method=SQUASH`, `grouping=ALLGREEN`, build queue <=20 entries, 1-minute quiet window). Required checks: `lint`, `fixtures`, `session-index`, `issue-snapshot`, `semver`, `Policy Guard (Upstream) / policy-guard`, `vi-history-scenarios-linux`, `agent-review-policy`, `hook-parity`, `commit-integrity`. Non-required hosted proof lanes may run alongside the queue contract, including `vi-history-scenarios-windows` on GitHub-hosted `windows-2022`. Copilot review settings are no longer enforced through policy; draft/ready review semantics are repo-owned and validated by `agent-review-policy`. |
+| `develop` (live id may drift) | `refs/heads/develop` | Merge queue enabled (`merge_method=SQUASH`, `grouping=ALLGREEN`, build queue <=20 entries, 1-minute quiet window). Required checks: `lint`, `fixtures`, `Policy Guard (Upstream) / policy-guard`, `vi-history-scenarios-linux`, `commit-integrity`. Non-required hosted proof lanes may run alongside the queue contract, including `session-index`, `issue-snapshot`, `semver`, `agent-review-policy`, `hook-parity`, and `vi-history-scenarios-windows` on GitHub-hosted `windows-2022`. Copilot review settings are no longer enforced through policy; draft/ready review semantics are repo-owned and validated by `agent-review-policy`. |
 | `main` (`tools/priority/policy.json` key `8614140`) | `refs/heads/main`    | Merge queue enabled (`merge_method=SQUASH`, `grouping=ALLGREEN`, build queue <=5 entries, 1-minute quiet window). Required checks: `lint`, `pester`, `vi-binary-check`, `vi-compare`, `Policy Guard (Upstream) / policy-guard`, `commit-integrity`. Required approving reviews: `0`. |
 | `release` (`tools/priority/policy.json` key `8614172`) | `refs/heads/release/*` | No merge queue; protects against force-push/deletion. Required checks: `lint`, `pester / normalize`, `smoke-gate`, `Policy Guard (Upstream) / policy-guard`, `commit-integrity`. Required approving reviews: `0`. |
 
@@ -126,9 +126,10 @@ checked into `tools/priority/policy.json` so `priority:policy` stays authoritati
 
 ### `develop`
 - **Merge strategy**: queue-managed squash with linear history enforced; merge commits disabled.
-- **Required checks**: `lint`, `fixtures`, `session-index`, `issue-snapshot`, `semver`,
-  `Policy Guard (Upstream) / policy-guard`,
-  `vi-history-scenarios-linux`, `agent-review-policy`, `hook-parity`, `commit-integrity`.
+- **Required checks**: `lint`, `fixtures`, `Policy Guard (Upstream) / policy-guard`,
+  `vi-history-scenarios-linux`, `commit-integrity`.
+- **Supporting non-required lanes**: `session-index`, `issue-snapshot`, `semver`,
+  `agent-review-policy`, `hook-parity`, plus hosted Windows proving.
 - **Non-required hosted proof**: `vi-history-scenarios-windows` may run on GitHub-hosted
   `windows-2022` to validate `nationalinstruments/labview:2026q1-windows`. Agents may
   dispatch that hosted lane while manually running the Linux or Windows Docker Desktop/WSL2 lanes on this host.

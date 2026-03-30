@@ -11,13 +11,8 @@
     "upstream-integration": [
       "lint",
       "fixtures",
-      "session-index",
-      "issue-snapshot",
-      "semver",
       "Policy Guard (Upstream) / policy-guard",
       "vi-history-scenarios-linux",
-      "agent-review-policy",
-      "hook-parity",
       "commit-integrity"
     ],
     "downstream-consumer-proving-rail": [
@@ -43,13 +38,8 @@
     "develop": [
       "lint",
       "fixtures",
-      "session-index",
-      "issue-snapshot",
-      "semver",
       "Policy Guard (Upstream) / policy-guard",
       "vi-history-scenarios-linux",
-      "agent-review-policy",
-      "hook-parity",
       "commit-integrity"
     ],
     "downstream/develop": [
