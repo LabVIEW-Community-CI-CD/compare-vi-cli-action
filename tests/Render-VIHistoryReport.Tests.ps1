@@ -115,14 +115,14 @@ Describe 'Render-VIHistoryReport.ps1' -Tag 'Unit' {
                         subject= 'Clean head commit'
                     }
                     lineage = [ordered]@{
-                        type        = 'mainline'
+                        type        = 'touch-history'
                         parentIndex = 1
                         parentCount = 1
                         mergeCommit = $null
                         branchHead  = $null
                         depth       = 0
                     }
-                    lineageLabel = 'Mainline'
+                    lineageLabel = 'Touch history'
                     result = [ordered]@{
                         diff                   = $false
                         duration_s             = 0.45
@@ -218,6 +218,7 @@ Describe 'Render-VIHistoryReport.ps1' -Tag 'Unit' {
         $markdown | Should -Match '\| Outcome Labels \| `clean`, `signal-diff` \|'
         $markdown | Should -Match '\| Mode \| Processed \| Diffs \| Signal \| Collapsed Noise \| Missing \| Categories \| Buckets \| Flags \|'
         $markdown | Should -Match '\| Mode \| Pair \| Lineage \| Base \| Head \| Diff \| Duration \(s\) \| Categories \| Buckets \| Report \| Highlights \|'
+        $markdown | Should -Match 'Touch history'
 
         $html = Get-Content -LiteralPath $htmlPath -Raw
         $html | Should -Match 'Source branch'
@@ -238,6 +239,7 @@ Describe 'Render-VIHistoryReport.ps1' -Tag 'Unit' {
         $html | Should -Match '<th>Lineage</th>'
         $html | Should -Match '<th>Categories</th>'
         $html | Should -Match '<th>Buckets</th>'
+        $html | Should -Match 'Touch history'
         $html | Should -Match 'data-buckets='
         $html | Should -Match 'Functional behavior \(1\)'
 

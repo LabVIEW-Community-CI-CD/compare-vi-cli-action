@@ -164,9 +164,10 @@ function Parse-DiffHeadings {
       $raw = $match.Groups['text'].Value
       if ([string]::IsNullOrWhiteSpace($raw)) { continue }
 
-      $decoded = [System.Net.WebUtility]::HtmlDecode($raw.Trim())
+      $decoded = Normalize-ComparisonReportText -Value $raw
       $decoded = ($decoded -replace '^\s*\d+[\.\)]\s*', '')
       if ([string]::IsNullOrWhiteSpace($decoded)) { continue }
+      if (Test-IsComparisonIdentityLabel -Value $decoded) { continue }
       if (-not $headings.Contains($decoded)) {
         $headings.Add($decoded) | Out-Null
       }
@@ -174,6 +175,25 @@ function Parse-DiffHeadings {
   }
 
   return @($headings.ToArray())
+}
+
+function Normalize-ComparisonReportText {
+  param([string]$Value)
+
+  if ([string]::IsNullOrWhiteSpace($Value)) { return '' }
+
+  $decoded = [System.Net.WebUtility]::HtmlDecode($Value)
+  $withoutTags = [regex]::Replace($decoded, '<[^>]+>', ' ')
+  return ([regex]::Replace($withoutTags, '\s+', ' ')).Trim()
+}
+
+function Test-IsComparisonIdentityLabel {
+  param([string]$Value)
+
+  $normalized = Normalize-ComparisonReportText -Value $Value
+  if ([string]::IsNullOrWhiteSpace($normalized)) { return $false }
+
+  return ($normalized -match '^\s*First\s+VI:\s*.+?\s+Second\s+VI:\s*.+?\s*$')
 }
 
 function Parse-DiffDetails {
@@ -186,7 +206,8 @@ function Parse-DiffDetails {
   foreach ($match in [System.Text.RegularExpressions.Regex]::Matches($Html, $pattern, 'IgnoreCase')) {
     $raw = $match.Groups['text'].Value
     if ([string]::IsNullOrWhiteSpace($raw)) { continue }
-    $decoded = [System.Net.WebUtility]::HtmlDecode($raw.Trim())
+    $decoded = Normalize-ComparisonReportText -Value $raw
+    if (Test-IsComparisonIdentityLabel -Value $decoded) { continue }
     if ($decoded) {
       $details.Add($decoded) | Out-Null
     }
