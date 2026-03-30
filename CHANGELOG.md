@@ -7,6 +7,27 @@ The format is based on Keep a Changelog, and this project adheres to Semantic Ve
 
 ## [Unreleased]
 
+## [v0.6.9] - 2026-03-30
+
+### Fixed
+
+- The published `CompareVI.Tools` bundle now includes the hosted NI Linux
+  runner helper `tools/Get-LabVIEWContainerShellContract.ps1`, restoring the
+  executable consumer contract for released VI-history downstreams that import
+  the bundle instead of a maintainer checkout.
+
+### Added
+
+- Release-time bundle certification now asserts the hosted NI Linux runner
+  contract files are present in the extracted `CompareVI.Tools` archive before
+  publication succeeds.
+
+### Documentation
+
+- Updated the release helper packet for the `v0.6.9` maintenance cut and
+  recorded the required coordination step to repin `comparevi-history` after
+  publication.
+
 ## [v0.6.7] - 2026-03-30
 
 ### Changed
