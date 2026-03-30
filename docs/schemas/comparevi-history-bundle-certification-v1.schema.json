@@ -145,7 +145,12 @@
         "bundleImportPath",
         "bundleImportPathExists",
         "releaseAssetPattern",
-        "contractPathResolutions"
+        "contractPathResolutions",
+        "hostedRunnerEntryScriptPath",
+        "hostedRunnerEntryScriptExists",
+        "hostedRunnerSupportScriptPaths",
+        "hostedRunnerSupportScriptsExist",
+        "hostedRunnerMissingSupportScripts"
       ],
       "properties": {
         "status": {
@@ -236,6 +241,24 @@
             },
             "additionalProperties": false
           }
+        },
+        "hostedRunnerEntryScriptPath": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "hostedRunnerEntryScriptExists": {
+          "type": "boolean"
+        },
+        "hostedRunnerSupportScriptPaths": {
+          "$ref": "#/$defs/stringArray"
+        },
+        "hostedRunnerSupportScriptsExist": {
+          "type": "boolean"
+        },
+        "hostedRunnerMissingSupportScripts": {
+          "$ref": "#/$defs/stringArray"
         }
       },
       "additionalProperties": false
@@ -276,6 +299,8 @@
         "bundleContractPinResolved",
         "bundleImportPathExists",
         "bundleContractPathsResolved",
+        "hostedRunnerEntryScriptExists",
+        "hostedRunnerSupportScriptsExist",
         "passed"
       ],
       "properties": {
@@ -340,6 +365,12 @@
           "type": "boolean"
         },
         "bundleContractPathsResolved": {
+          "type": "boolean"
+        },
+        "hostedRunnerEntryScriptExists": {
+          "type": "boolean"
+        },
+        "hostedRunnerSupportScriptsExist": {
           "type": "boolean"
         },
         "passed": {
