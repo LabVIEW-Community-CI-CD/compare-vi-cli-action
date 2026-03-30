@@ -12,12 +12,15 @@ Release `v0.6.9` focuses on three themes:
 - **Executable released bundle**: `CompareVI.Tools-v0.6.9.zip` now carries the
   hosted NI Linux helper `tools/Get-LabVIEWContainerShellContract.ps1` instead
   of shipping an incomplete runtime contract.
+- **Faster local replay**: maintainers can now mirror
+  `vi-history-scenarios-windows` through the checked-in Windows Docker replay
+  lane instead of waiting on the hosted proof for every iteration.
 - **Released-backend recovery**: downstream VI-history consumers can once again
   rely on the published bundle rather than a maintainer override or local
   source tree to execute the canonical proof path.
 - **Narrow maintenance scope**: this cut only repairs released bundle
-  executability. It does not expand the public VI-history surface or add new
-  product claims.
+  executability and local maintainer replay. It does not expand the public
+  VI-history surface or add new product claims.
 
 ## 2. Maintenance Highlights
 
@@ -27,6 +30,10 @@ Release `v0.6.9` focuses on three themes:
 - `tools/Test-CompareVIHistoryBundleCertification.ps1` now fails closed if the
   extracted bundle omits the hosted NI Linux support scripts required by the
   released consumer path.
+- `tools/priority/windows-workflow-replay-lane.mjs` now supports a local
+  `vi-history-scenarios-windows` replay mode so hosted Windows scenario fixes
+  can be iterated on this machine without changing the hosted certification
+  contract.
 - Stable release surfaces now pin `0.6.9`, isolating the bundle-contract repair
   in an immutable stable cut after the broken `v0.6.8` publication.
 

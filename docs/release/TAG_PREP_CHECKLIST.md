@@ -91,6 +91,9 @@ git push origin v0.6.9
 - [ ] Install the bundle via `@v0.6.9` in a sample workflow and confirm the
       released hosted NI Linux VI-history contract executes without a local
       source-tree override.
+- [ ] Optional maintainer fast loop: run the local Windows Docker replay lane
+      for `vi-history-scenarios-windows` and confirm it still mirrors the
+      hosted contract without replacing the hosted proof requirement.
 - [ ] Re-pin `comparevi-history` to `v0.6.9` and confirm the canonical
       `DrawIcon.vi` proof reaches real comparisons on the released backend.
 

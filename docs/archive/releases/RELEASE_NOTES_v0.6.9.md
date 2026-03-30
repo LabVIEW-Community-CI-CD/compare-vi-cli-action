@@ -11,12 +11,17 @@ hosted NI Linux contract without a maintainer checkout.
   hosted NI Linux consumer contract in the released bundle.
 - Release-time bundle certification now fails closed if the published archive
   omits the hosted NI Linux support scripts required by VI-history consumers.
-- This cut is intentionally narrow. It repairs the released bundle contract; it
-  does not broaden the public VI-history product surface.
+- Maintainers now have a checked-in local Windows Docker replay for
+  `vi-history-scenarios-windows`, keeping hosted-lane iteration faster without
+  changing the meaning of the hosted certification proof.
+- This cut is intentionally narrow. It repairs the released bundle contract and
+  local replay ergonomics; it does not broaden the public VI-history product
+  surface.
 
 ## Included maintenance slice
 
 - `#2051` fix: ship complete NI Linux bundle contract
+- `#2053` feat: replay vi-history Windows lane locally
 
 ## Validation highlights
 

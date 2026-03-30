@@ -21,6 +21,9 @@ The format is based on Keep a Changelog, and this project adheres to Semantic Ve
 - Release-time bundle certification now asserts the hosted NI Linux runner
   contract files are present in the extracted `CompareVI.Tools` archive before
   publication succeeds.
+- Maintainers now have a local Windows Docker replay lane for
+  `vi-history-scenarios-windows`, so VI-history runtime and mode-semantics
+  changes can be iterated locally before the hosted certification lane runs.
 
 ### Documentation
 
