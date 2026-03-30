@@ -7,6 +7,25 @@ The format is based on Keep a Changelog, and this project adheres to Semantic Ve
 
 ## [Unreleased]
 
+## [v0.6.8] - 2026-03-30
+
+### Changed
+
+- `tools/Compare-VIHistory.ps1` now keeps `block-diagram` mode semantically
+  truthful by leaving block-diagram diffs visible instead of passing `-nobd`
+  and `-nobdcosm` behind a mode name that implied the opposite behavior.
+
+### Added
+
+- Regression coverage in `tests/CompareVI.History.Tests.ps1` proving that
+  `block-diagram` mode leaves block-diagram surfaces visible in the emitted
+  compare flags and manifest receipts.
+
+### Documentation
+
+- Updated the release helper packet for the `v0.6.8` maintenance cut and
+  recorded the canonical `DrawIcon.vi` rerun as the gating post-release proof.
+
 ## [v0.6.7] - 2026-03-30
 
 ### Changed

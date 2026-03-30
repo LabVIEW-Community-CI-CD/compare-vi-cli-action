@@ -1,34 +1,32 @@
 <!-- markdownlint-disable-next-line MD041 -->
-# Release v0.6.7 - PR Notes Helper
+# Release v0.6.8 - PR Notes Helper
 
-Reference sheet for the `v0.6.7` maintenance release. This cut ships the
-merge-aware VI history start-ref repair from `develop` without bundling the
-separate mode-semantics correction work.
+Reference sheet for the `v0.6.8` maintenance release. This cut ships the
+mode-semantics correction that makes `block-diagram` history output truthful on
+top of the previously landed merge-aware start-ref repair.
 
 ## 1. Summary
 
-Release `v0.6.7` focuses on three themes:
+Release `v0.6.8` focuses on three themes:
 
-- **Merge-aware history anchors**: `tools/Compare-VIHistory.ps1` now preserves
-  a requested merge commit as the start of the history window when the target
-  VI changed through that merge.
-- **Canonical single-VI recovery**: this is the backend cut required for the
-  `comparevi-history` `DrawIcon.vi` proof to render real comparisons instead of
-  honestly failing closed with zero executed pairs.
-- **Narrow maintenance scope**: this cut does not claim to solve the separate
-  question of which public history modes are decision-useful; that remains the
-  next product-semantic slice.
+- **Truthful block-diagram mode**: `block-diagram` no longer hides the very
+  block-diagram diffs the mode name promises to show.
+- **Canonical single-VI readiness**: this is the first backend cut that
+  contains both the merge-aware `startRef` repair and the block-diagram mode
+  correction needed for the `comparevi-history` `DrawIcon.vi` proof.
+- **Still a narrow maintenance cut**: this release repairs mode correctness,
+  but it does not yet claim that every currently exposed public mode is
+  decision-useful for developers.
 
 ## 2. Maintenance Highlights
 
-- History start-ref resolution now uses merge-aware path detection
-  (`git diff-tree --root -m ...`) instead of merge-blind detection, so
-  merge-only VI touches stay inside the emitted history plan.
-- The shipped backend can now preserve `startRef=47ae...` for the canonical
-  `DrawIcon.vi` proof instead of collapsing that proof to
-  `startRef=endRef=fe98...` and zero comparisons.
-- Stable release surfaces now pin `0.6.7`, isolating the backend repair in an
-  immutable stable cut before the separate mode-semantics work begins.
+- `block-diagram` mode now removes the hidden `-nobd`/`-nobdcosm` suppression
+  flags that previously contradicted the public mode label.
+- The shipped backend now combines the merge-aware `startRef` repair with the
+  truthful block-diagram compare flags required for the canonical
+  `DrawIcon.vi` proof.
+- Stable release surfaces now pin `0.6.8`, isolating the product-semantic
+  correction in an immutable stable cut before any further surface reduction.
 
 ## 3. Validation Snapshot
 
@@ -43,12 +41,12 @@ Release `v0.6.7` focuses on three themes:
     comparison pairs across the requested modes
   - synthetic merge-history proof preserved a merge commit as `startRef` while
     the legacy probe reported no path touch
-- [ ] `node tools/npm/run-script.mjs release:finalize -- 0.6.7` completes from
-      a clean helper lane and writes fresh finalize metadata under
-      `tests/results/_agent/release/`
-- [ ] Published release `v0.6.7` includes the signed distribution assets,
+- [x] Block-diagram mode regression removes hidden block-diagram suppression:
+  - `tests/CompareVI.History.Tests.ps1` asserts `block-diagram` mode does not
+    emit `-nobd` or `-nobdcosm`
+- [ ] Published release `v0.6.8` includes the signed distribution assets,
       `SHA256SUMS.txt`, `sbom.spdx.json`, and `provenance.json`
-- [ ] `comparevi-history` repins `comparevi-backend-ref.txt` to `v0.6.7`
+- [ ] `comparevi-history` repins `comparevi-backend-ref.txt` to `v0.6.8`
       before the canonical `DrawIcon.vi` product proof is rerun
 
 ## 4. Reviewer Focus
@@ -57,21 +55,21 @@ Release `v0.6.7` focuses on three themes:
   - `package.json`
   - `Directory.Build.props`
   - `tools/CompareVI.Tools/CompareVI.Tools.psd1`
-- Review the start-ref repair for correctness:
+- Review the history correctness repairs:
   - `tools/Compare-VIHistory.ps1`
   - `tests/CompareVI.History.Tests.ps1`
 - Review the release helper packet for consistency:
   - `CHANGELOG.md`
   - `docs/release/TAG_PREP_CHECKLIST.md`
-  - `docs/archive/releases/RELEASE_NOTES_v0.6.7.md`
+  - `docs/archive/releases/RELEASE_NOTES_v0.6.8.md`
 
 ## 5. Follow-Up After Stable
 
-1. Re-pin `comparevi-history` from `v0.6.6` to `v0.6.7` and rerun the
+1. Re-pin `comparevi-history` from `v0.6.6` to `v0.6.8` and rerun the
    canonical `DrawIcon.vi` proof on the released backend.
-2. Take the separate mode-semantics correction before treating the emitted
-   public history modes as trustworthy decision surfaces.
-3. Reduce the public mode surface if the rerun product proof only justifies a
+2. Reduce the public mode surface if the rerun product proof only justifies a
    narrower mode set.
+3. Keep the release scope narrow until the product proof shows which current
+   surfaces actually help a developer decide what changed.
 
---- Updated: 2026-03-30 (prepared for the `v0.6.7` maintenance cut).
+--- Updated: 2026-03-30 (prepared for the `v0.6.8` maintenance cut).
