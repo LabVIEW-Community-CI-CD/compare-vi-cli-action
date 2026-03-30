@@ -116,6 +116,7 @@ $releasePublishedBundleObserverPath = Join-Path $releaseDir 'release-published-b
 $releaseSigningReadinessPath = Join-Path $releaseDir 'release-signing-readiness.json'
 $entrypointStatusPath = Join-Path $handoffDir 'entrypoint-status.json'
 $repoGraphTruthPath = Join-Path $handoffDir 'downstream-repo-graph-truth.json'
+$consumerForkSyncPath = Join-Path $handoffDir 'consumer-fork-sync.json'
 $monitoringModePath = Join-Path $handoffDir 'monitoring-mode.json'
 $treasuryLedgerPath = Join-Path $handoffDir 'treasury-ledger.json'
 $treasuryRuntimePath = Join-Path $resolvedResultsRoot '_agent/capital/treasury-ledger.json'
@@ -129,6 +130,13 @@ Invoke-HandoffControlPlaneNodeScript `
   -WorkingDirectoryPath $resolvedWorkingDirectory `
   -ScriptRelativePath 'tools/priority/downstream-repo-graph-truth.mjs' `
   -Arguments @('--repo-root', $resolvedRepoRoot, '--output', $repoGraphTruthPath)
+
+Invoke-HandoffControlPlaneNodeScript `
+  -RepoRootPath $resolvedRepoRoot `
+  -HelperRootPath $resolvedHelperRepoRoot `
+  -WorkingDirectoryPath $resolvedWorkingDirectory `
+  -ScriptRelativePath 'tools/priority/consumer-fork-sync.mjs' `
+  -Arguments @('--repo-root', $resolvedRepoRoot, '--output', $consumerForkSyncPath)
 
 Invoke-HandoffControlPlaneNodeScript `
   -RepoRootPath $resolvedRepoRoot `
