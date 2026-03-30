@@ -36,6 +36,9 @@ entrypoint and machine-generated live state.
 - It refreshes `tests/results/_agent/handoff/downstream-repo-graph-truth.json`,
   which is the machine-readable repo/branch-role map for producer lineage,
   canonical development, and consumer proving across the supervised repos.
+- It refreshes `tests/results/_agent/handoff/consumer-fork-sync.json`, which is
+  the machine-readable receipt for fast-forward-only consumer-fork mirror
+  maintenance driven from the checked-in repo graph.
 - It also refreshes the standing-priority summary, router copy, watcher
   telemetry, Docker/Desktop verification summary mirror, and session capsule
   surfaces under `tests/results/_agent/`.
@@ -51,6 +54,9 @@ entrypoint and machine-generated live state.
 - `node tools/npm/run-script.mjs priority:context:concentrate`
   rebuilds the compact context concentrator directly when you need the
   synthesized hot/warm memory view without the full handoff bundle.
+- `node tools/npm/run-script.mjs priority:consumer-fork:sync`
+  evaluates or applies repo-graph-managed consumer-fork mirror updates and
+  rewrites the current sync receipt.
 - `node tools/npm/run-script.mjs priority:handoff-tests`
   exercises the contract lane used to keep these handoff surfaces from drifting.
 
@@ -69,6 +75,7 @@ entrypoint and machine-generated live state.
 - `tests/results/_agent/handoff/sagan-context-concentrator.json`
 - `tests/results/_agent/handoff/autonomous-governor-portfolio-summary.json`
 - `tests/results/_agent/handoff/downstream-repo-graph-truth.json`
+- `tests/results/_agent/handoff/consumer-fork-sync.json`
 - `tests/results/_agent/release/release-signing-readiness.json`
 - `tests/results/_agent/handoff/docker-review-loop-summary.json`
 - `tests/results/_agent/handoff/*.json`

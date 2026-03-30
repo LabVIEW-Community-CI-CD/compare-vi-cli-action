@@ -154,6 +154,7 @@
     "priority:onboard:downstream": "node tools/priority/downstream-onboarding.mjs",
     "priority:onboard:feedback": "node tools/priority/downstream-onboarding-feedback.mjs",
     "priority:onboard:success": "node tools/priority/downstream-onboarding-success.mjs",
+    "priority:consumer-fork:sync": "node tools/priority/consumer-fork-sync.mjs",
     "priority:repo-graph:truth": "node tools/priority/downstream-repo-graph-truth.mjs",
     "priority:pivot:template": "node tools/priority/template-pivot-gate.mjs",
     "priority:template:agent:verify": "node tools/priority/template-agent-verification-report.mjs",

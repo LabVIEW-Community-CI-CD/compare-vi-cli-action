@@ -1,0 +1,119 @@
+name: Consumer Fork Sync
+
+on:
+  workflow_dispatch:
+    inputs:
+      apply_sync:
+        description: 'Apply fast-forward updates to configured consumer-fork mirrors'
+        required: false
+        default: true
+        type: boolean
+  schedule:
+    - cron: '0 20 * * 2'
+
+permissions:
+  contents: read
+
+jobs:
+  consumer-fork-sync:
+    runs-on: ubuntu-latest
+    env:
+      GITHUB_TOKEN: ${{ secrets.GH_TOKEN || github.token }}
+      GH_TOKEN: ${{ secrets.GH_TOKEN || github.token }}
+      SYNC_GH_TOKEN: ${{ secrets.GH_TOKEN }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run consumer fork sync
+        id: sync
+        shell: bash
+        run: |
+          set -euo pipefail
+          args=(--output tests/results/_agent/handoff/consumer-fork-sync.json)
+          apply_sync="true"
+          if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
+            apply_sync="${{ inputs.apply_sync && 'true' || 'false' }}"
+          fi
+          if [ "$apply_sync" = "true" ] && [ -n "${SYNC_GH_TOKEN:-}" ]; then
+            export GH_TOKEN="${SYNC_GH_TOKEN}"
+            export GITHUB_TOKEN="${SYNC_GH_TOKEN}"
+            args+=(--apply)
+          elif [ "$apply_sync" = "true" ]; then
+            echo "::warning::secrets.GH_TOKEN is unavailable; running consumer fork sync in dry-run mode."
+          fi
+          node tools/npm/run-script.mjs priority:consumer-fork:sync -- "${args[@]}"
+          node <<'NODE' >> "$GITHUB_OUTPUT"
+          const fs = require('fs');
+          const report = JSON.parse(fs.readFileSync('tests/results/_agent/handoff/consumer-fork-sync.json', 'utf8'));
+          console.log(`status=${report.summary.status}`);
+          console.log(`target_count=${report.summary.targetCount}`);
+          console.log(`synced_count=${report.summary.syncedCount}`);
+          console.log(`sync_ready_count=${report.summary.syncReadyCount}`);
+          console.log(`blocked_count=${report.summary.blockedCount}`);
+          NODE
+
+      - name: Append consumer fork sync summary
+        if: ${{ always() && hashFiles('tests/results/_agent/handoff/consumer-fork-sync.json') != '' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const fs = require('fs');
+          const report = JSON.parse(fs.readFileSync('tests/results/_agent/handoff/consumer-fork-sync.json', 'utf8'));
+          const lines = [
+            '## Consumer Fork Sync',
+            `- status: \`${report.summary.status}\``,
+            `- mode: \`${report.mode}\``,
+            `- targets: \`${report.summary.targetCount}\``,
+            `- synced: \`${report.summary.syncedCount}\``,
+            `- sync-ready: \`${report.summary.syncReadyCount}\``,
+            `- blocked: \`${report.summary.blockedCount}\``,
+            `- unknown: \`${report.summary.unknownCount}\``
+          ];
+          for (const target of report.targets ?? []) {
+            lines.push(
+              `- ${target.repository}@${target.branch}: \`${target.status}\` (${target.reason}, ${target.currentHeadSha ?? 'missing'} -> ${target.trackedHeadSha ?? 'missing'})`
+            );
+          }
+          fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, `${lines.join('\n')}\n`, 'utf8');
+          NODE
+
+      - name: Upload consumer fork sync artifacts
+        if: ${{ always() && hashFiles('tests/results/_agent/handoff/consumer-fork-sync.json') != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: consumer-fork-sync-${{ github.run_id }}
+          path: tests/results/_agent/handoff/consumer-fork-sync.json
+
+      - name: Enforce consumer fork sync health
+        if: ${{ always() && hashFiles('tests/results/_agent/handoff/consumer-fork-sync.json') != '' }}
+        shell: bash
+        env:
+          APPLY_SYNC: ${{ github.event_name != 'workflow_dispatch' || inputs.apply_sync }}
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const fs = require('fs');
+          const report = JSON.parse(fs.readFileSync('tests/results/_agent/handoff/consumer-fork-sync.json', 'utf8'));
+          const applySync = String(process.env.APPLY_SYNC || '').toLowerCase() === 'true';
+          if (report.summary.status === 'fail' || report.summary.status === 'unknown') {
+            console.error(`consumer fork sync status is ${report.summary.status}`);
+            process.exit(1);
+          }
+          if (applySync && report.summary.status !== 'pass') {
+            console.error(`consumer fork sync expected pass in apply mode, got ${report.summary.status}`);
+            process.exit(1);
+          }
+          NODE

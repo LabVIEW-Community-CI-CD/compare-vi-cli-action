@@ -106,6 +106,16 @@
             "string",
             "null"
           ]
+        },
+        "syncPolicy": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            "fast-forward-only",
+            null
+          ]
         }
       }
     }
