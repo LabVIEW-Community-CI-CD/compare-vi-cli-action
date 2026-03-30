@@ -176,17 +176,27 @@ Workflow-grade replay companion:
 
 ```powershell
 node tools/npm/run-script.mjs priority:workflow:replay:windows
+node tools/npm/run-script.mjs priority:workflow:replay:windows:vi-history
 ```
 
 Default replay artifacts:
 
 - `tests/results/docker-tools-parity/workflow-replay/windows-ni-2026q1-host-preflight-receipt.json`
 - `tests/results/docker-tools-parity/workflow-replay/windows-ni-2026q1-host-preflight/windows-ni-2026q1-host-preflight.json`
+- `tests/results/docker-tools-parity/workflow-replay/vi-history-scenarios-windows-receipt.json`
+- `tests/results/docker-tools-parity/workflow-replay/vi-history-scenarios-windows/windows-compare-report.html`
+- `tests/results/docker-tools-parity/workflow-replay/vi-history-scenarios-windows/windows-compare-artifact-summary.json`
 
 Notes:
 
 - This is the governed local Windows-parity proving surface for issue-class workflow defects.
-- Default surface is `desktop-local`; use `--execution-surface github-hosted-windows --allow-unavailable` when you need hosted-parity preflight evidence without mutating the local Docker engine.
+- Default surface is `desktop-local`; use
+  `--execution-surface github-hosted-windows --allow-unavailable` when you need
+  hosted-parity preflight evidence without mutating the local Docker engine.
+- `priority:workflow:replay:windows:vi-history` mirrors the hosted
+  `vi-history-scenarios-windows` lane locally: it runs the same NI Windows
+  host preflight, then the same fixed fixture compare invocation against the
+  canonical in-container LabVIEW path.
 
 Common remediation:
 

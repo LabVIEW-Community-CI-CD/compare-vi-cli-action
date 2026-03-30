@@ -156,6 +156,7 @@ container mode, the pinned NI Windows image, or the Windows shell boundary:
 
 ```powershell
 node tools/npm/run-script.mjs priority:workflow:replay:windows
+node tools/npm/run-script.mjs priority:workflow:replay:windows:vi-history
 ```
 
 Hosted-parity preflight without mutating the local Docker engine:
@@ -168,6 +169,9 @@ Primary artifacts:
 
 - `tests/results/docker-tools-parity/workflow-replay/windows-ni-2026q1-host-preflight-receipt.json`
 - `tests/results/docker-tools-parity/workflow-replay/windows-ni-2026q1-host-preflight/windows-ni-2026q1-host-preflight.json`
+- `tests/results/docker-tools-parity/workflow-replay/vi-history-scenarios-windows-receipt.json`
+- `tests/results/docker-tools-parity/workflow-replay/vi-history-scenarios-windows/windows-compare-report.html`
+- `tests/results/docker-tools-parity/workflow-replay/vi-history-scenarios-windows/windows-compare-artifact-summary.json`
 
 Policy notes:
 
@@ -175,6 +179,9 @@ Policy notes:
 - `github-hosted-windows` may emit `status = unavailable` when the hosted Windows
   Docker plane is not usable and `--allow-unavailable` was requested.
 - The Windows replay lane is proof-only. It is not a release path.
+- `priority:workflow:replay:windows:vi-history` is the local fast loop for the
+  hosted `vi-history-scenarios-windows` lane. It is still a replay lane, not a
+  certification substitute.
 
 ## Cleanup expectations
 
