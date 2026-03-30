@@ -82,6 +82,7 @@
       "additionalProperties": false,
       "required": [
         "image",
+        "labviewPath",
         "allowUnavailable",
         "command"
       ],
@@ -90,11 +91,39 @@
           "type": "string",
           "minLength": 1
         },
+        "labviewPath": {
+          "type": ["string", "null"]
+        },
         "allowUnavailable": {
           "type": "boolean"
         },
         "command": {
           "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "entry",
+            "args",
+            "sanitizedShellCommand"
+          ],
+          "properties": {
+            "entry": {
+              "type": "string",
+              "minLength": 1
+            },
+            "args": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "sanitizedShellCommand": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        "compareCommand": {
+          "type": ["object", "null"],
           "additionalProperties": false,
           "required": [
             "entry",
@@ -135,6 +164,24 @@
         "preflightReportPath": {
           "type": "string",
           "minLength": 1
+        },
+        "reportPath": {
+          "type": ["string", "null"]
+        },
+        "runtimeSnapshotPath": {
+          "type": ["string", "null"]
+        },
+        "artifactSummaryPath": {
+          "type": ["string", "null"]
+        },
+        "capturePath": {
+          "type": ["string", "null"]
+        },
+        "stdoutPath": {
+          "type": ["string", "null"]
+        },
+        "stderrPath": {
+          "type": ["string", "null"]
         }
       }
     },
@@ -146,7 +193,12 @@
         "exitCode",
         "preflightStatus",
         "failureClass",
-        "errorMessage"
+        "errorMessage",
+        "compareExitCode",
+        "compareGateOutcome",
+        "compareResultClass",
+        "reportExists",
+        "captureExists"
       ],
       "properties": {
         "status": {
@@ -163,6 +215,21 @@
         },
         "errorMessage": {
           "type": ["string", "null"]
+        },
+        "compareExitCode": {
+          "type": ["integer", "null"]
+        },
+        "compareGateOutcome": {
+          "type": ["string", "null"]
+        },
+        "compareResultClass": {
+          "type": ["string", "null"]
+        },
+        "reportExists": {
+          "type": ["boolean", "null"]
+        },
+        "captureExists": {
+          "type": ["boolean", "null"]
         }
       }
     }

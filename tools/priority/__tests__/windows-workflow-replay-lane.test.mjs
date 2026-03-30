@@ -108,6 +108,51 @@ test('buildReplayCommand forwards the deterministic Windows preflight locations'
   ]);
 });
 
+test('buildReplayCommand exposes the local vi-history-scenarios-windows compare replay', async () => {
+  const { buildReplayCommand } = await loadModule();
+  const command = buildReplayCommand({
+    mode: 'vi-history-scenarios-windows',
+    executionSurface: 'desktop-local',
+    image: 'nationalinstruments/labview:2026q1-windows',
+    labviewPath: 'C:\\Program Files\\National Instruments\\LabVIEW 2026\\LabVIEW.exe',
+    allowUnavailable: false,
+    preflightReportPath: 'tests/results/docker-tools-parity/workflow-replay/vi-history-scenarios-windows/windows-ni-2026q1-host-preflight.json',
+    reportPath: 'tests/results/docker-tools-parity/workflow-replay/vi-history-scenarios-windows/windows-compare-report.html',
+    runtimeSnapshotPath: 'tests/results/docker-tools-parity/workflow-replay/vi-history-scenarios-windows/runtime-manager-compare-windows.json',
+    artifactSummaryPath: 'tests/results/docker-tools-parity/workflow-replay/vi-history-scenarios-windows/windows-compare-artifact-summary.json',
+    capturePath: 'tests/results/docker-tools-parity/workflow-replay/vi-history-scenarios-windows/ni-windows-container-capture.json',
+    stdoutPath: 'tests/results/docker-tools-parity/workflow-replay/vi-history-scenarios-windows/ni-windows-container-stdout.txt',
+    stderrPath: 'tests/results/docker-tools-parity/workflow-replay/vi-history-scenarios-windows/ni-windows-container-stderr.txt',
+  });
+
+  assert.equal(command.kind, 'preflight-compare');
+  assert.equal(command.compareHelperPath.replace(/\\/g, '/'), 'tools/Run-NIWindowsContainerCompare.ps1');
+  assert.deepEqual(command.compareCommand, [
+    '-NoLogo',
+    '-NoProfile',
+    '-File',
+    path.join('tools', 'Run-NIWindowsContainerCompare.ps1'),
+    '-BaseVi',
+    path.join('fixtures', 'vi-stage', 'control-rename', 'Base.vi'),
+    '-HeadVi',
+    path.join('fixtures', 'vi-stage', 'control-rename', 'Head.vi'),
+    '-Image',
+    'nationalinstruments/labview:2026q1-windows',
+    '-LabVIEWPath',
+    'C:\\Program Files\\National Instruments\\LabVIEW 2026\\LabVIEW.exe',
+    '-ReportPath',
+    'tests/results/docker-tools-parity/workflow-replay/vi-history-scenarios-windows/windows-compare-report.html',
+    '-TimeoutSeconds',
+    '600',
+    '-RuntimeEngineReadyTimeoutSeconds',
+    '180',
+    '-RuntimeEngineReadyPollSeconds',
+    '5',
+    '-RuntimeSnapshotPath',
+    'tests/results/docker-tools-parity/workflow-replay/vi-history-scenarios-windows/runtime-manager-compare-windows.json',
+  ]);
+});
+
 test('runWindowsWorkflowReplayLane writes a passing receipt when the inner preflight is ready', async () => {
   const { parseArgs, runWindowsWorkflowReplayLane } = await loadModule();
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'windows-workflow-replay-pass-'));
@@ -263,6 +308,105 @@ test('runWindowsWorkflowReplayLane returns unavailable when the inner preflight 
 
   const preflightPath = path.join(tmpDir, options.preflightReportPath);
   runSchemaValidate(repoRoot, preflightSchemaPath, preflightPath);
+  runSchemaValidate(repoRoot, replaySchemaPath, path.join(tmpDir, options.receiptPath));
+});
+
+test('runWindowsWorkflowReplayLane replays vi-history-scenarios-windows and records compare artifacts', async () => {
+  const { parseArgs, runWindowsWorkflowReplayLane } = await loadModule();
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'windows-workflow-replay-compare-'));
+  const options = parseArgs(['node', modulePath, '--mode', 'vi-history-scenarios-windows'], tmpDir);
+
+  const result = await runWindowsWorkflowReplayLane(options, {
+    repoRoot: tmpDir,
+    resolveRepoGitStateFn: () => ({
+      headSha: 'abc123',
+      branch: 'issue/upstream-2052-windows-local-replay',
+      upstreamDevelopMergeBase: 'base123',
+      dirtyTracked: false,
+    }),
+    runProcessFn: (command, args) => {
+      if (command !== 'pwsh') {
+        throw new Error(`Unexpected command: ${command} ${args.join(' ')}`);
+      }
+      const helperPath = args[args.indexOf('-File') + 1].replace(/\\/g, '/');
+      if (helperPath.endsWith('Test-WindowsNI2026q1HostPreflight.ps1')) {
+        const outputPath = args[args.indexOf('-OutputJsonPath') + 1];
+        writeJson(path.join(tmpDir, outputPath), {
+          schema: 'comparevi/windows-host-preflight@v1',
+          generatedAtUtc: '2026-03-30T18:20:00.000Z',
+          executionSurface: 'desktop-local',
+          image: 'nationalinstruments/labview:2026q1-windows',
+          status: 'ready',
+          failureClass: 'none',
+          failureMessage: '',
+          runnerEnvironment: '',
+          contexts: {
+            start: 'desktop-windows',
+            startOsType: 'windows',
+            final: 'desktop-windows',
+            finalOsType: 'windows',
+          },
+          runtimeProvider: 'docker-desktop',
+          runtimeDeterminism: {
+            status: 'success',
+            reason: '',
+            snapshotPath: 'tests/results/local-parity/runtime.json',
+            failureClass: 'none',
+          },
+          bootstrap: {
+            attempted: true,
+            pulled: false,
+            imagePresent: true,
+            localImageId: 'sha256:test',
+            localRepoDigest: '',
+            localDigest: '',
+            pullDurationMs: 0,
+            pullError: '',
+          },
+          probe: {
+            attempted: true,
+            status: 'success',
+            exitCode: 0,
+            durationMs: 1,
+            output: 'ni-runtime-probe-ok',
+            command: 'docker run ...',
+            error: '',
+          },
+          hostedContract: {
+            hostEngineMutationAllowed: false,
+            expectedContext: 'desktop-windows',
+            expectedOs: 'windows',
+          },
+        });
+        return { status: 0, stdout: 'ok', stderr: '' };
+      }
+      if (helperPath.endsWith('Run-NIWindowsContainerCompare.ps1')) {
+        const reportPath = args[args.indexOf('-ReportPath') + 1];
+        const runtimeSnapshotPath = args[args.indexOf('-RuntimeSnapshotPath') + 1];
+        writeJson(path.join(tmpDir, options.capturePath), {
+          gateOutcome: 'pass',
+          resultClass: 'success-diff',
+          reportPath,
+        });
+        writeJson(path.join(tmpDir, runtimeSnapshotPath), {
+          result: { status: 'success', reason: '' },
+          observed: { dockerHost: 'npipe:////./pipe/docker_engine', context: 'desktop-windows', osType: 'windows' },
+        });
+        fs.mkdirSync(path.dirname(path.join(tmpDir, reportPath)), { recursive: true });
+        fs.writeFileSync(path.join(tmpDir, reportPath), '<html></html>', 'utf8');
+        return { status: 0, stdout: 'compare ok', stderr: '' };
+      }
+      throw new Error(`Unexpected helper path: ${helperPath}`);
+    },
+  });
+
+  assert.equal(result.status, 'passed');
+  assert.equal(result.receipt.result.status, 'passed');
+  assert.equal(result.receipt.result.compareExitCode, 0);
+  assert.equal(result.receipt.result.compareGateOutcome, 'pass');
+  assert.equal(result.receipt.result.compareResultClass, 'success-diff');
+  assert.equal(result.receipt.result.reportExists, true);
+  assert.equal(result.receipt.result.captureExists, true);
   runSchemaValidate(repoRoot, replaySchemaPath, path.join(tmpDir, options.receiptPath));
 });
 
