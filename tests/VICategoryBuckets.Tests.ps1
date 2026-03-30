@@ -14,6 +14,14 @@ Describe 'VICategoryBuckets module' -Tag 'Unit' {
         $meta.bucketClassification | Should -Be 'neutral'
     }
 
+    It 'preserves known slug inputs without degrading category specificity' {
+        $meta = Get-VICategoryMetadata -Name 'block-diagram-cosmetic'
+        $meta | Should -Not -BeNullOrEmpty
+        $meta.slug | Should -Be 'block-diagram-cosmetic'
+        $meta.label | Should -Be 'Block diagram (cosmetic)'
+        $meta.bucketSlug | Should -Be 'ui-visual'
+    }
+
     It 'collects bucket details for multiple categories' {
         $inputCategories = @(
             'Block Diagram Functional',

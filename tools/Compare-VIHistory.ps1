@@ -435,6 +435,12 @@ function Get-ComparisonCategoriesFromReport {
     }
   }
 
+  $normalizedCategories = @(Normalize-ComparisonCategoryList -Categories @($categories.ToArray()))
+  $categories = New-Object System.Collections.Generic.List[string]
+  foreach ($name in $normalizedCategories) {
+    $categories.Add([string]$name) | Out-Null
+  }
+
   $categoryDetails = @()
   $categoryBuckets = @()
   $categoryBucketDetails = @()
@@ -503,6 +509,81 @@ function Get-ComparisonCategoryDisplayName {
   } catch {}
 
   return $Name
+}
+
+function Get-CanonicalComparisonCategoryName {
+  param([string]$Name)
+
+  if ([string]::IsNullOrWhiteSpace($Name)) { return $null }
+
+  $meta = $null
+  try {
+    $meta = Get-VICategoryMetadata -Name $Name
+  } catch {
+    $meta = $null
+  }
+
+  if ($meta) {
+    switch ([string]$meta.slug) {
+      'block-diagram' { return 'Block Diagram' }
+      'block-diagram-functional' { return 'Block Diagram Functional' }
+      'block-diagram-cosmetic' { return 'Block Diagram Cosmetic' }
+      'connector-pane' { return 'Connector Pane' }
+      'front-panel' { return 'Front Panel' }
+      'front-panel-position-size' { return 'Front Panel Position/Size' }
+      'control-changes' { return 'Front Panel Controls' }
+      'window' { return 'Window Properties' }
+      'attributes' { return 'Attributes' }
+      'vi-attribute' { return 'VI Attribute' }
+      'documentation' { return 'Documentation' }
+      'execution' { return 'Execution Settings' }
+      'icon' { return 'Icon' }
+      'unspecified' { return 'Unspecified' }
+      'cosmetic' { return 'Cosmetic' }
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace([string]$meta.label)) {
+      return [string]$meta.label
+    }
+  }
+
+  return [string]$Name
+}
+
+function Normalize-ComparisonCategoryList {
+  param([System.Collections.IEnumerable]$Categories)
+
+  if (-not $Categories) { return @() }
+
+  $categoryInfo = $null
+  try {
+    $categoryInfo = Get-VICategoryBuckets -Names @($Categories)
+  } catch {
+    $categoryInfo = $null
+  }
+
+  if ($null -eq $categoryInfo -or -not $categoryInfo.Details) {
+    return @(
+      $Categories |
+        Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) } |
+        Select-Object -Unique
+    )
+  }
+
+  $details = @($categoryInfo.Details)
+  if ($details.Count -gt 1) {
+    $specificDetails = @($details | Where-Object { [string]$_.slug -ne 'cosmetic' })
+    if ($specificDetails.Count -gt 0) {
+      $details = $specificDetails
+    }
+  }
+
+  return @(
+    $details |
+      ForEach-Object { Get-CanonicalComparisonCategoryName -Name ([string]$_.slug) } |
+      Where-Object { -not [string]::IsNullOrWhiteSpace($_) } |
+      Select-Object -Unique
+  )
 }
 
 function Update-TallyFromDetails {
@@ -2102,6 +2183,7 @@ foreach ($modeSpec in $modeSpecs) {
       $outNode = $summaryJson.out
       if ((@($cliCategories).Count -eq 0 -or @($cliCategoryDetails).Count -eq 0) -and $outNode) {
         $reportCandidate = $null
+        $reportCategoryMetadata = $null
         if ($outNode.PSObject.Properties['reportHtml'] -and $outNode.reportHtml) {
           $reportCandidate = [string]$outNode.reportHtml
         } elseif ($outNode.PSObject.Properties['reportPath'] -and $outNode.reportPath) {
@@ -2145,29 +2227,30 @@ foreach ($modeSpec in $modeSpecs) {
             Select-Object -Unique
         )
       }
+      $categories = @(Normalize-ComparisonCategoryList -Categories $categories)
 
       $categoryInfo = $null
       if (@($categories).Count -gt 0) {
         $categoryInfo = Get-VICategoryBuckets -Names $categories
       }
-      $resolvedCategoryDetails = if (@($cliCategoryDetails).Count -gt 0) {
-        @($cliCategoryDetails)
-      } elseif ($categoryInfo -and $categoryInfo.Details) {
+      $resolvedCategoryDetails = if ($categoryInfo -and $categoryInfo.Details) {
         @($categoryInfo.Details)
+      } elseif (@($cliCategoryDetails).Count -gt 0) {
+        @($cliCategoryDetails)
       } else {
         @()
       }
-      $resolvedCategoryBuckets = if (@($cliCategoryBuckets).Count -gt 0) {
-        @($cliCategoryBuckets | Select-Object -Unique)
-      } elseif ($categoryInfo -and $categoryInfo.BucketSlugs) {
+      $resolvedCategoryBuckets = if ($categoryInfo -and $categoryInfo.BucketSlugs) {
         @($categoryInfo.BucketSlugs)
+      } elseif (@($cliCategoryBuckets).Count -gt 0) {
+        @($cliCategoryBuckets | Select-Object -Unique)
       } else {
         @()
       }
-      $resolvedCategoryBucketDetails = if (@($cliCategoryBucketDetails).Count -gt 0) {
-        @($cliCategoryBucketDetails)
-      } elseif ($categoryInfo -and $categoryInfo.BucketDetails) {
+      $resolvedCategoryBucketDetails = if ($categoryInfo -and $categoryInfo.BucketDetails) {
         @($categoryInfo.BucketDetails)
+      } elseif (@($cliCategoryBucketDetails).Count -gt 0) {
+        @($cliCategoryBucketDetails)
       } else {
         @()
       }

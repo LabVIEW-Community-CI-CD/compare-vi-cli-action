@@ -512,6 +512,7 @@ exit 0
       $aggregate.stats.signalDiffs | Should -Be 0
       $aggregate.stats.noiseCollapsed | Should -BeGreaterThan 0
       $aggregate.stats.categoryCounts.PSObject.Properties.Name | Should -Contain 'VI Attribute'
+      $aggregate.stats.categoryCounts.PSObject.Properties.Name | Should -Not -Contain 'Cosmetic'
       $aggregate.stats.categoryCounts.PSObject.Properties.Name | Should -Not -Contain 'unspecified'
       [int]$aggregate.stats.bucketCounts.metadata | Should -BeGreaterThan 0
       $outputText | Should -Match 'LVCompare detected differences'
@@ -766,6 +767,7 @@ exit 0
     $manifest.flags | Should -Contain '-nobdcosm'
     $manifest.stats.stopReason | Should -Be 'max-pairs'
     $manifest.comparisons.Count | Should -Be 0
+    $manifest.stats.categoryCounts.PSObject.Properties.Name | Should -Not -Contain 'Cosmetic'
   }
 
   It 'captures xml report when alternate format requested' {
@@ -1513,11 +1515,12 @@ exit 0
         FixtureRel    = Join-Path 'fixtures' 'vi-report' 'block-diagram'
         ExpectPattern = 'Block Diagram Cosmetic'
         ExpectedCategories = @('cosmetic')
+        ExpectedDetailSlug = 'block-diagram-cosmetic'
       }
     )
 
     It "surfaces highlights when <Param> suppression is removed (<Name>)" -TestCases $fixtureCases {
-      param($Name, $Param, $FixtureRel, $ExpectPattern, $ExpectedCategories)
+      param($Name, $Param, $FixtureRel, $ExpectPattern, $ExpectedCategories, $ExpectedDetailSlug)
       if (-not $_pairs) { Set-ItResult -Skipped -Because 'Missing commit data'; return }
 
       $pair = $_pairs[0]
@@ -1580,6 +1583,14 @@ exit 0
         $variantManifest = Get-Content -LiteralPath $variantManifestPath -Raw | ConvertFrom-Json
         if ($targetFlag) {
           ($variantManifest.flags -contains $targetFlag) | Should -BeFalse
+        }
+        if (-not [string]::IsNullOrWhiteSpace($ExpectedDetailSlug)) {
+          $variantComparison = @($variantManifest.comparisons)[0]
+          $variantComparison | Should -Not -BeNullOrEmpty
+          $variantComparison.result.categories | Should -Contain $ExpectPattern
+          $detailSlugs = @($variantComparison.result.categoryDetails | ForEach-Object { [string]$_.slug })
+          $detailSlugs | Should -Contain $ExpectedDetailSlug
+          $detailSlugs | Should -Not -Contain 'cosmetic'
         }
 
         $historyReport = Get-Content -LiteralPath (Join-Path $variantDir 'history-report.md') -Raw
