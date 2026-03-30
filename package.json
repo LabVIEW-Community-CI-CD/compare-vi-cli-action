@@ -1,7 +1,7 @@
 {
   "name": "compare-vi-cli-action",
   "private": true,
-  "version": "0.6.7",
+  "version": "0.6.9",
   "license": "BSD-3-Clause",
   "type": "module",
   "scripts": {
