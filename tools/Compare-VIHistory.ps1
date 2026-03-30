@@ -734,7 +734,7 @@ function Test-CommitTouchesPath {
     [Parameter(Mandatory = $true)][string]$Commit,
     [Parameter(Mandatory = $true)][string]$Path
   )
-  $result = Invoke-Git -Arguments @('diff-tree','--no-commit-id','--name-only','-r',$Commit,'--',$Path) -Quiet
+  $result = Invoke-Git -Arguments @('diff-tree','--root','-m','--no-commit-id','--name-only','-r',$Commit,'--',$Path) -Quiet
   return -not [string]::IsNullOrWhiteSpace($result)
 }
 
