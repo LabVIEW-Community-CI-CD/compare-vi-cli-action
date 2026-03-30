@@ -36,6 +36,7 @@ const DEFAULT_MIN_INFLIGHT = 2;
 const DEFAULT_HEALTH_SAMPLE = 10;
 const DEFAULT_HEALTH_MIN_SUCCESS_RATE = 0.8;
 const DEFAULT_HEALTH_MAX_RED_MINUTES = 30;
+const DEFAULT_HEALTH_LOOKBACK_DAYS = 30;
 const DEFAULT_MAX_QUEUED_RUNS = 6;
 const DEFAULT_MAX_IN_PROGRESS_RUNS = 8;
 const DEFAULT_STALL_THRESHOLD_MINUTES = 45;
@@ -820,7 +821,8 @@ export function evaluateHealthGate({
   workflowRunsByName,
   now = new Date(),
   minSuccessRate = DEFAULT_HEALTH_MIN_SUCCESS_RATE,
-  maxRedMinutes = DEFAULT_HEALTH_MAX_RED_MINUTES
+  maxRedMinutes = DEFAULT_HEALTH_MAX_RED_MINUTES,
+  lookbackDays = DEFAULT_HEALTH_LOOKBACK_DAYS
 }) {
   const runs = [];
   for (const [workflow, workflowRuns] of Object.entries(workflowRunsByName ?? {})) {
@@ -836,12 +838,24 @@ export function evaluateHealthGate({
     }
   }
 
-  runs.sort((a, b) => Date.parse(b.createdAt || 0) - Date.parse(a.createdAt || 0));
-  const sampleSize = runs.length;
-  const successful = runs.filter((run) => run.conclusion === 'success').length;
+  runs.sort((a, b) => runTimestampMs(b) - runTimestampMs(a));
+  const lookbackMs =
+    Number.isFinite(lookbackDays) && lookbackDays > 0
+      ? lookbackDays * 24 * 60 * 60 * 1000
+      : null;
+  const filteredRuns =
+    lookbackMs == null
+      ? runs
+      : runs.filter((run) => {
+          const stamp = runTimestampMs(run);
+          return Number.isFinite(stamp) && now.valueOf() - stamp <= lookbackMs;
+        });
+
+  const sampleSize = filteredRuns.length;
+  const successful = filteredRuns.filter((run) => run.conclusion === 'success').length;
   const successRate = sampleSize === 0 ? 0 : successful / sampleSize;
-  const latest = runs[0] ?? null;
-  const lastSuccess = runs.find((run) => run.conclusion === 'success') ?? null;
+  const latest = filteredRuns[0] ?? null;
+  const lastSuccess = filteredRuns.find((run) => run.conclusion === 'success') ?? null;
 
   let redMinutes = 0;
   if (latest && latest.conclusion !== 'success') {
@@ -1208,6 +1222,20 @@ function applyControllerHysteresis({
   };
 }
 
+function readPreviousControllerUpgradeStreak(previousControllerState) {
+  const direct = Number(previousControllerState?.upgradeStreak);
+  if (Number.isFinite(direct) && direct >= 0) {
+    return Math.trunc(direct);
+  }
+
+  const nested = Number(previousControllerState?.hysteresis?.upgradeStreak);
+  if (Number.isFinite(nested) && nested >= 0) {
+    return Math.trunc(nested);
+  }
+
+  return 0;
+}
+
 export function evaluateAdaptiveInflight({
   maxInflight,
   minInflight = DEFAULT_MIN_INFLIGHT,
@@ -1277,7 +1305,7 @@ export function evaluateAdaptiveInflight({
   const hysteresis = applyControllerHysteresis({
     desiredMode: desired.desiredMode,
     previousMode: previousControllerState?.mode,
-    previousUpgradeStreak: previousControllerState?.upgradeStreak,
+    previousUpgradeStreak: readPreviousControllerUpgradeStreak(previousControllerState),
     requiredUpgradeStreak: CONTROLLER_REQUIRED_UPGRADE_STREAK
   });
   const effectiveMaxInflight = caps[hysteresis.mode] ?? configuredMin;
@@ -1786,6 +1814,7 @@ export async function runQueueSupervisor(options = {}) {
     reasons: adaptiveInflight.reasons,
     metrics: adaptiveInflight.metrics,
     thresholds: adaptiveInflight.thresholds,
+    upgradeStreak: adaptiveInflight.hysteresis?.upgradeStreak ?? 0,
     hysteresis: adaptiveInflight.hysteresis,
     retryPressure,
     paused: uniquePausedReasons.length > 0,
