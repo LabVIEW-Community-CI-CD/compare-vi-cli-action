@@ -823,7 +823,19 @@ function Build-FallbackHistoryContext {
       continue
     }
 
-    foreach ($comparison in @($modeManifest.comparisons)) {
+    $modeComparisons = New-Object System.Collections.Generic.List[object]
+    foreach ($comparisonEntry in @($modeManifest.comparisons)) {
+      if ($comparisonEntry) {
+        $modeComparisons.Add($comparisonEntry) | Out-Null
+      }
+    }
+    foreach ($comparisonEntry in @($modeManifest.collapsedComparisons)) {
+      if ($comparisonEntry) {
+        $modeComparisons.Add($comparisonEntry) | Out-Null
+      }
+    }
+
+    foreach ($comparison in @($modeComparisons | Sort-Object { [int](Coalesce $_.index 0) })) {
       if (-not $comparison) { continue }
       $baseNode = $comparison.base
       $headNode = $comparison.head
@@ -863,6 +875,9 @@ function Build-FallbackHistoryContext {
         }
         if ($resultNode.PSObject.Properties['classification'] -and $resultNode.classification) {
           $resultPayload.classification = $resultNode.classification
+        }
+        if ($resultNode.PSObject.Properties['collapsed']) {
+          $resultPayload.collapsed = [bool]$resultNode.collapsed
         }
         if ($resultNode.PSObject.Properties['artifactDir'] -and $resultNode.artifactDir) {
           $resultPayload.artifactDir = $resultNode.artifactDir
@@ -1217,7 +1232,13 @@ if ($comparisons.Count -gt 0) {
     $diffValue = $hasDiffValue -and ($resultNode.diff -eq $true)
     $statusValue = if ($resultNode -and $resultNode.PSObject.Properties['status']) { [string]$resultNode.status } else { $null }
     $diffCell = if ($hasDiffValue) {
-      if ($diffValue) { '**diff**' } else { 'clean' }
+      if ($diffValue) {
+        if ($resultNode -and $resultNode.PSObject.Properties['collapsed'] -and [bool]$resultNode.collapsed) {
+          '_collapsed noise_'
+        } else {
+          '**diff**'
+        }
+      } else { 'clean' }
     } elseif ($statusValue) {
       ('_{0}_' -f $statusValue)
     } else {
@@ -1310,6 +1331,7 @@ if ($comparisons.Count -gt 0) {
       LineageLabel = $lineageLabel
       LineageType  = if ($lineageNode -and $lineageNode.PSObject.Properties['type']) { [string]$lineageNode.type } else { 'mainline' }
       Diff       = [bool]$diffValue
+      Collapsed  = if ($resultNode -and $resultNode.PSObject.Properties['collapsed']) { [bool]$resultNode.collapsed } else { $false }
       HasDiff    = $hasDiffValue
       Status     = $statusValue
       Duration   = $durationValue
@@ -1336,7 +1358,7 @@ if ($comparisons.Count -gt 0) {
 }
 
 $summaryLines.Add('')
-$summaryLines.Add('## Attribute coverage')
+$summaryLines.Add('## Mode filter coverage')
 $summaryLines.Add('')
 if ($modeEntries.Count -gt 0) {
   foreach ($mode in $modeEntries) {
@@ -1518,8 +1540,12 @@ if ($emitHtml -and $HtmlPath) {
     [void]$htmlBuilder.AppendLine('    <thead><tr><th>Mode</th><th>Pair</th><th>Lineage</th><th>Base</th><th>Head</th><th>Diff</th><th>Duration (s)</th><th>Categories</th><th>Buckets</th><th>Report</th><th>Highlights</th></tr></thead>')
     [void]$htmlBuilder.AppendLine('    <tbody>')
     foreach ($row in $comparisonHtmlRows) {
-      $diffClass = if ($row.Diff) { 'diff-yes' } elseif ($row.Status) { 'diff-status' } else { 'diff-no' }
-      $diffLabel = if ($row.Diff) { 'Diff' } elseif ($row.Status) { ConvertTo-HtmlSafe $row.Status } else { 'No' }
+      $diffClass = if ($row.Diff) {
+        if ($row.Collapsed) { 'diff-collapsed' } else { 'diff-yes' }
+      } elseif ($row.Status) { 'diff-status' } else { 'diff-no' }
+      $diffLabel = if ($row.Diff) {
+        if ($row.Collapsed) { 'Collapsed noise' } else { 'Diff' }
+      } elseif ($row.Status) { ConvertTo-HtmlSafe $row.Status } else { 'No' }
       $durationDisplay = '<span class="muted">n/a</span>'
       if ($row.DurationDisplay -and $row.DurationDisplay -ne 'n/a') {
         $durationDisplay = ConvertTo-HtmlSafe $row.DurationDisplay
@@ -1688,7 +1714,7 @@ if ($emitHtml -and $HtmlPath) {
     [void]$htmlBuilder.AppendLine('  <p class="muted">No commit pairs were captured for the requested history window.</p>')
   }
 
-  [void]$htmlBuilder.AppendLine('  <h2>Attribute coverage</h2>')
+  [void]$htmlBuilder.AppendLine('  <h2>Mode filter coverage</h2>')
   if ($modeEntries.Count -gt 0) {
     [void]$htmlBuilder.AppendLine('  <ul>')
     foreach ($mode in $modeEntries) {

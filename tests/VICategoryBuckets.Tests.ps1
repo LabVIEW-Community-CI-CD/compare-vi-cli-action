@@ -14,6 +14,14 @@ Describe 'VICategoryBuckets module' -Tag 'Unit' {
         $meta.bucketClassification | Should -Be 'neutral'
     }
 
+    It 'treats generic Attributes as an alias of VI Attribute' {
+        $meta = Get-VICategoryMetadata -Name 'Attributes'
+        $meta | Should -Not -BeNullOrEmpty
+        $meta.slug | Should -Be 'vi-attribute'
+        $meta.label | Should -Be 'VI attribute'
+        $meta.bucketSlug | Should -Be 'metadata'
+    }
+
     It 'preserves known slug inputs without degrading category specificity' {
         $meta = Get-VICategoryMetadata -Name 'block-diagram-cosmetic'
         $meta | Should -Not -BeNullOrEmpty

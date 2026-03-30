@@ -324,7 +324,7 @@ function Normalize-ReportCategories {
           'front-panel-position-size' { 'Front Panel Position/Size' }
           'control-changes' { 'Front Panel Controls' }
           'window' { 'Window Properties' }
-          'attributes' { 'Attributes' }
+          'attributes' { 'VI Attribute' }
           'vi-attribute' { 'VI Attribute' }
           'documentation' { 'Documentation' }
           'execution' { 'Execution Settings' }
