@@ -405,6 +405,25 @@ test('evaluateAdaptiveInflight applies hysteresis before upgrading from stabiliz
   assert.equal(secondRecovery.hysteresis.transition, 'upgrade-applied');
 });
 
+test('evaluateAdaptiveInflight restores upgrade streak from persisted hysteresis state', () => {
+  const recovered = evaluateAdaptiveInflight({
+    maxInflight: 5,
+    minInflight: 2,
+    adaptiveCap: true,
+    health: { successRate: 0.95, minSuccessRate: 0.8 },
+    runtimeFleet: { totals: { queued: 0, inProgress: 0, stalled: 0 }, thresholds: { maxQueuedRuns: 6, maxInProgressRuns: 8 } },
+    retryPressure: { retryRatio: 0, quarantineRatio: 0 },
+    previousControllerState: {
+      mode: 'stabilize',
+      hysteresis: {
+        upgradeStreak: 1
+      }
+    }
+  });
+  assert.equal(recovered.tier, 'guarded');
+  assert.equal(recovered.hysteresis.transition, 'upgrade-applied');
+});
+
 test('evaluateBurstWindow activates on release triggers and carries refill cycles', () => {
   const initial = evaluateBurstWindow({
     burstMode: 'auto',
@@ -614,6 +633,36 @@ test('evaluateHealthGate pauses when success rate drops or red window exceeds th
   });
   assert.equal(redWindow.paused, true);
   assert.ok(redWindow.reasons.includes('trunk-red-window-exceeded'));
+});
+
+test('evaluateHealthGate ignores stale workflow failures outside the health lookback window', () => {
+  const now = new Date('2026-03-30T22:00:00.000Z');
+  const result = evaluateHealthGate({
+    workflowRunsByName: {
+      Validate: [
+        { conclusion: 'success', status: 'completed', created_at: '2026-03-30T18:57:23Z', updated_at: '2026-03-30T19:13:12Z' },
+        { conclusion: 'success', status: 'completed', created_at: '2026-03-29T22:01:19Z', updated_at: '2026-03-29T22:17:18Z' }
+      ],
+      'Policy Guard (Upstream)': [
+        { conclusion: 'success', status: 'completed', created_at: '2026-03-30T18:57:23Z', updated_at: '2026-03-30T18:58:03Z' }
+      ],
+      'Fixture Drift Validation': [
+        { conclusion: 'failure', status: 'completed', created_at: '2026-03-29T22:13:26Z', updated_at: '2026-03-29T22:15:13Z' },
+        { conclusion: 'failure', status: 'completed', created_at: '2025-10-07T08:32:27Z', updated_at: '2025-10-07T08:35:06Z' },
+        { conclusion: 'failure', status: 'completed', created_at: '2025-10-07T08:12:14Z', updated_at: '2025-10-07T08:14:27Z' },
+        { conclusion: 'failure', status: 'completed', created_at: '2025-10-07T07:58:25Z', updated_at: '2025-10-07T08:00:46Z' }
+      ],
+      'commit-integrity': [
+        { conclusion: 'success', status: 'completed', created_at: '2026-03-29T22:24:27Z', updated_at: '2026-03-29T22:24:44Z' }
+      ]
+    },
+    now
+  });
+
+  assert.equal(result.paused, false);
+  assert.equal(result.sampleSize, 5);
+  assert.equal(result.successful, 4);
+  assert.equal(result.successRate, 0.8);
 });
 
 test('evaluateRuntimeFleetHealth pauses on saturation and stalled runs', () => {
