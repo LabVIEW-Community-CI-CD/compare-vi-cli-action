@@ -7,6 +7,27 @@ The format is based on Keep a Changelog, and this project adheres to Semantic Ve
 
 ## [Unreleased]
 
+## [v0.6.7] - 2026-03-30
+
+### Changed
+
+- `tools/Compare-VIHistory.ps1` now resolves history start refs with
+  merge-aware path detection, so VI history runs keep a requested merge commit
+  when the target VI changed through that merge instead of collapsing the
+  start of the history window to the same commit as `endRef`.
+
+### Added
+
+- Regression coverage in `tests/CompareVI.History.Tests.ps1` proving that
+  merge commits touching the target VI remain valid `startRef` anchors for
+  history generation.
+
+### Documentation
+
+- Updated the release helper packet for the `v0.6.7` maintenance cut and
+  recorded the required coordination step to repin `comparevi-history` after
+  publication.
+
 ## [v0.6.6] - 2026-03-29
 
 ### Changed

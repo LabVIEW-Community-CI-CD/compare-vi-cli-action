@@ -1,14 +1,14 @@
-# v0.6.6 Tag Preparation Checklist
+# v0.6.7 Tag Preparation Checklist
 <!-- markdownlint-disable-next-line MD041 -->
 
-Helper reference for cutting or replaying the `v0.6.6` maintenance release.
+Helper reference for cutting or replaying the `v0.6.7` maintenance release.
 Aligns with the archived release notes
-(`../archive/releases/RELEASE_NOTES_v0.6.6.md`) and the checked-in stable
+(`../archive/releases/RELEASE_NOTES_v0.6.7.md`) and the checked-in stable
 release surfaces.
 
 ## 1. Pre-flight Verification
 
-- [ ] Work from `release/v0.6.6` and ensure it contains the final maintenance
+- [ ] Work from `release/v0.6.7` and ensure it contains the final maintenance
       changes.
 - [ ] CI is green on the release branch (`lint`, `pester / normalize`,
       `smoke-gate`, `Policy Guard (Upstream) / policy-guard`,
@@ -22,40 +22,39 @@ release surfaces.
 ## 2. Version & Metadata Consistency
 
 - [ ] `CHANGELOG.md` contains a finalized
-      `## [v0.6.6] - 2026-03-29` section.
-- [ ] Stable docs reference `v0.6.6` consistently.
+      `## [v0.6.7] - 2026-03-30` section.
+- [ ] Stable docs reference `v0.6.6` consistently until `v0.6.7` publication
+      completes, and the release helper packet references `v0.6.7`
+      consistently.
 - [ ] `package.json`, `Directory.Build.props`, and
-      `tools/CompareVI.Tools/CompareVI.Tools.psd1` all report `0.6.6`.
+      `tools/CompareVI.Tools/CompareVI.Tools.psd1` all report `0.6.7`.
 - [ ] `docs/action-outputs.md` still matches `action.yml`.
 - [ ] Update `docs/documentation-manifest.json` if release-doc coverage changed.
 
-## 3. Downstream Hardening Validation
+## 3. Start-Ref Regression Validation
 
-- [ ] Focused downstream onboarding tests pass locally:
-
-```bash
-node --test tools/priority/__tests__/downstream-onboarding.test.mjs tools/priority/__tests__/downstream-onboarding-success.test.mjs
-```
-
-- [ ] Workflow contract assertions pass:
+- [ ] Focused history regression tests pass locally:
 
 ```bash
-node --test tools/priority/__tests__/downstream-promotion-contract.test.mjs tools/priority/__tests__/downstream-onboarding-contract.test.mjs
+pwsh -NoLogo -NoProfile -Command "Invoke-Pester -Path 'tests/CompareVI.History.Tests.ps1' -Output Detailed -CI"
 ```
 
-- [ ] Confirm the post-merge proving replay stays green on `develop` while
-      routing direct `downstream/develop` updates through the documented
-      `blocked-by-repository-rules` handoff.
-- [ ] Confirm `required-checks-visible` can resolve from the consumer's
-      checked-in `docs/policy/develop-branch-protection.json` contract when the
-      live branch-protection API is not observable.
+- [ ] Confirm the direct backend proofs preserve the requested history start:
+
+- [ ] Real-history stub proof preserves `startRef=47ae...` for
+      `DrawIcon.vi` and processes four comparison pairs.
+- [ ] Synthetic merge-history proof preserves the merge commit as `startRef`
+      while the legacy non-merge-aware probe reports no touch.
+- [ ] `comparevi-history` pin-bump coordination is queued immediately after
+      publication so the canonical product proof uses the released backend
+      instead of a maintainer override.
 
 ## 4. Release Materials Review
 
 - [ ] `PR_NOTES.md`, this checklist, and
-      `../archive/releases/RELEASE_NOTES_v0.6.6.md` are consistent.
-- [ ] `README.md` and `docs/USAGE_GUIDE.md` still treat `v0.6.5` as the
-      previously released stable pin until `v0.6.6` publication completes.
+      `../archive/releases/RELEASE_NOTES_v0.6.7.md` are consistent.
+- [ ] `README.md` and `docs/USAGE_GUIDE.md` still treat `v0.6.6` as the
+      previously released stable pin until `v0.6.7` publication completes.
 
 ## 5. Tag Creation
 
@@ -63,7 +62,7 @@ node --test tools/priority/__tests__/downstream-promotion-contract.test.mjs tool
 
 ```pwsh
 node tools/npm/run-script.mjs priority:release:signing:readiness
-node tools/npm/run-script.mjs priority:release:conductor -- --apply --channel stable --version 0.6.6
+node tools/npm/run-script.mjs priority:release:conductor -- --apply --channel stable --version 0.6.7
 ```
 
 - [ ] Confirm `tests/results/_agent/release/release-signing-readiness.json`
@@ -74,33 +73,31 @@ node tools/npm/run-script.mjs priority:release:conductor -- --apply --channel st
 - [ ] Create an annotated stable tag:
 
 ```pwsh
-git tag -a v0.6.6 -m "v0.6.6: publish downstream proving maintenance release"
+git tag -a v0.6.7 -m "v0.6.7: publish merge-aware VI history start-ref repair"
 ```
 
 - [ ] Push the tag:
 
 ```pwsh
-git push origin v0.6.6
+git push origin v0.6.7
 ```
 
 ## 6. Validation After Publish
 
-- [ ] Run `node tools/npm/run-script.mjs release:finalize -- 0.6.6` from a
+- [ ] Run `node tools/npm/run-script.mjs release:finalize -- 0.6.7` from a
       clean helper lane to fast-forward `main` and `develop`, then record the
       finalize metadata.
-- [ ] Install the action via `@v0.6.6` in a sample workflow and confirm a
-      compare using the canonical fixtures succeeds.
-- [ ] Re-run downstream proving and confirm:
-  - the scorecard still reports `status=pass` and `blockers=0`
-  - the workflow reports `blocked-by-repository-rules` instead of failing when
-    `GH013` blocks a direct `downstream/develop` push
-  - the downstream onboarding success report stays `pass` with `totalWarnings=0`
+- [ ] Install the action via `@v0.6.7` in a sample workflow and confirm a
+      merge-aware VI history run preserves the requested start ref.
+- [ ] Re-pin `comparevi-history` to `v0.6.7` and confirm the canonical
+      `DrawIcon.vi` proof reaches real comparisons instead of failing closed on
+      zero executed pairs.
 
 ## 7. Communication
 
-- [ ] Announce the maintenance cut, calling out the rule-aware downstream
-      promotion handoff and checked-in branch-protection fallback.
-- [ ] Notify consumers that `v0.6.6` supersedes `v0.6.5` as the supported
+- [ ] Announce the maintenance cut, calling out the merge-aware history
+      start-ref repair and the required `comparevi-history` repin.
+- [ ] Notify consumers that `v0.6.7` supersedes `v0.6.6` as the supported
       stable pin.
 
---- Updated: 2026-03-29 (prepared for the `v0.6.6` maintenance cut).
+--- Updated: 2026-03-30 (prepared for the `v0.6.7` maintenance cut).
