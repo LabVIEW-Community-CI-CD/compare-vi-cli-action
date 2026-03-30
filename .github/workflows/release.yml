@@ -683,6 +683,8 @@ jobs:
             'tools/CompareVI.Tools/CompareVI.Tools.psd1',
             'tools/Compare-VIHistory.ps1',
             'tools/Compare-RefsToTemp.ps1',
+            'tools/Get-LabVIEWContainerShellContract.ps1',
+            'tools/Run-NILinuxContainerCompare.ps1',
             'scripts/CompareVI.psm1'
           )) {
             $candidate = Join-Path $bundleDir.FullName $relativePath

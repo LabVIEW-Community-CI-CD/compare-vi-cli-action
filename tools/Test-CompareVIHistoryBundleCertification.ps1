@@ -495,6 +495,11 @@ $bundleDistributionModel = $null
 $bundleImportPath = $null
 $bundleReleaseAssetPattern = $null
 $bundleContractPathResolutions = @()
+$hostedRunnerEntryScriptPath = $null
+$hostedRunnerEntryScriptExists = $false
+$hostedRunnerSupportScriptPaths = @()
+$hostedRunnerSupportScriptsExist = $false
+$hostedRunnerMissingSupportScripts = @()
 
 if ($bundleMetadataPresent) {
     $bundleMetadata = Get-Content -LiteralPath $bundleMetadataPath -Raw | ConvertFrom-Json -Depth 12
@@ -540,13 +545,34 @@ if ($bundleMetadataPresent) {
         $bundleContractPathResolutions = @($pathResolutions.ToArray())
     }
 
+    $hostedRunnerContract = $bundleMetadata.consumerContract.hostedNiLinuxRunner
+    if ($null -ne $hostedRunnerContract) {
+        $hostedRunnerEntryScriptPath = [string]$hostedRunnerContract.entryScriptPath
+        if (-not [string]::IsNullOrWhiteSpace($hostedRunnerEntryScriptPath)) {
+            $hostedRunnerEntryScriptExists = Test-Path -LiteralPath (Join-Path $executionRoot $hostedRunnerEntryScriptPath) -PathType Leaf
+        }
+
+        $hostedRunnerSupportScriptPaths = @(
+            $hostedRunnerContract.supportScriptPaths |
+                ForEach-Object { [string]$_ } |
+                Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+        )
+        $hostedRunnerMissingSupportScripts = @(
+            $hostedRunnerSupportScriptPaths |
+                Where-Object { -not (Test-Path -LiteralPath (Join-Path $executionRoot $_) -PathType Leaf) }
+        )
+        $hostedRunnerSupportScriptsExist = ($hostedRunnerMissingSupportScripts.Count -eq 0)
+    }
+
     if ($bundleContractRequired) {
         $bundleContractStatus = if ($bundleMetadataSchemaMatches -and `
             $viHistoryCapabilityPresent -and `
             $viHistoryCapabilityProducerNative -and `
             $bundleContractPinResolved -and `
             $bundleImportPathExists -and `
-            $bundleContractPathsResolved) {
+            $bundleContractPathsResolved -and `
+            $hostedRunnerEntryScriptExists -and `
+            $hostedRunnerSupportScriptsExist) {
             'producer-native-ready'
         } else {
             'producer-native-incomplete'
@@ -561,7 +587,9 @@ $bundleContractPassed = if ($bundleContractRequired) {
         $viHistoryCapabilityProducerNative -and `
         $bundleContractPinResolved -and `
         $bundleImportPathExists -and `
-        $bundleContractPathsResolved
+        $bundleContractPathsResolved -and `
+        $hostedRunnerEntryScriptExists -and `
+        $hostedRunnerSupportScriptsExist
 } else {
     $true
 }
@@ -632,6 +660,12 @@ if (-not $passed) {
         $unresolvedPaths = @($bundleContractPathResolutions | Where-Object { -not $_.resolved } | ForEach-Object { $_.path })
         $failureReasons.Add(("vi-history contract paths did not resolve: {0}" -f ($unresolvedPaths -join ', '))) | Out-Null
     }
+    if ($bundleContractRequired -and -not $hostedRunnerEntryScriptExists) {
+        $failureReasons.Add(("hosted NI Linux runner entry script missing from extracted archive: {0}" -f $hostedRunnerEntryScriptPath)) | Out-Null
+    }
+    if ($bundleContractRequired -and -not $hostedRunnerSupportScriptsExist) {
+        $failureReasons.Add(("hosted NI Linux runner support scripts missing from extracted archive: {0}" -f ($hostedRunnerMissingSupportScripts -join ', '))) | Out-Null
+    }
     throw ("Multi-mode history bundle certification failed: {0}" -f ($failureReasons -join '; '))
 }
 
@@ -684,6 +718,11 @@ $summaryObject = [ordered]@{
         bundleImportPathExists = $bundleImportPathExists
         releaseAssetPattern = $bundleReleaseAssetPattern
         contractPathResolutions = $bundleContractPathResolutions
+        hostedRunnerEntryScriptPath = $hostedRunnerEntryScriptPath
+        hostedRunnerEntryScriptExists = $hostedRunnerEntryScriptExists
+        hostedRunnerSupportScriptPaths = @($hostedRunnerSupportScriptPaths)
+        hostedRunnerSupportScriptsExist = $hostedRunnerSupportScriptsExist
+        hostedRunnerMissingSupportScripts = @($hostedRunnerMissingSupportScripts)
     }
     historyFacade = [ordered]@{
         schema = [string]$historySummary.schema
@@ -717,6 +756,8 @@ $summaryObject = [ordered]@{
         bundleContractPinResolved = $bundleContractPinResolved
         bundleImportPathExists = $bundleImportPathExists
         bundleContractPathsResolved = $bundleContractPathsResolved
+        hostedRunnerEntryScriptExists = $hostedRunnerEntryScriptExists
+        hostedRunnerSupportScriptsExist = $hostedRunnerSupportScriptsExist
         passed = $true
     }
 }
@@ -740,6 +781,8 @@ $summaryLines += ('- Producer-native vi-history capability: `{0}`' -f $bundleCon
 if ($bundleMetadataPresent) {
     $summaryLines += ('- Authoritative consumer pin: `{0}` ({1})' -f $bundleAuthoritativeConsumerPin, $bundleAuthoritativeConsumerPinKind)
     $summaryLines += ('- Distribution role/model: `{0}` / `{1}`' -f $bundleDistributionRole, $bundleDistributionModel)
+    $summaryLines += ('- Hosted NI Linux runner entry present: `{0}`' -f $hostedRunnerEntryScriptExists.ToString().ToLowerInvariant())
+    $summaryLines += ('- Hosted NI Linux support scripts present: `{0}`' -f $hostedRunnerSupportScriptsExist.ToString().ToLowerInvariant())
 }
 $summaryLines += ''
 $summaryLines += '| Mode | Processed | Diffs | Signal | Collapsed Noise | Stop Reason |'
