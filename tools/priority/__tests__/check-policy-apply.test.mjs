@@ -25,14 +25,13 @@ function createResponse(data, status = 200, statusText = 'OK') {
 const EXPECTED_DEVELOP_CHECKS = [
   'lint',
   'fixtures',
-  'session-index',
-  'issue-snapshot',
-  'semver',
   'Policy Guard (Upstream) / policy-guard',
   'vi-history-scenarios-linux',
-  'agent-review-policy',
-  'hook-parity',
   'commit-integrity'
+];
+
+const EXPECTED_DOWNSTREAM_DEVELOP_CHECKS = [
+  'Downstream Promotion / downstream-promotion'
 ];
 
 const EXPECTED_MAIN_CHECKS = [
@@ -186,7 +185,7 @@ function createRuleset({
   };
 }
 
-function createAlignedRulesets(ids = { develop: 8811898, main: 8614140, release: 8614172 }) {
+function createAlignedRulesets(ids = { develop: 8811898, main: 8614140, release: 8614172, downstream: 8811901 }) {
   return {
     develop: createRuleset({
       id: ids.develop,
@@ -213,6 +212,16 @@ function createAlignedRulesets(ids = { develop: 8811898, main: 8614140, release:
       requiredStatusChecks: EXPECTED_RELEASE_CHECKS,
       pullRequestRule: createPullRequestRule({
         dismissStaleReviewsOnPush: true,
+        allowedMergeMethods: ['rebase']
+      })
+    }),
+    downstreamDevelop: createRuleset({
+      id: ids.downstream,
+      name: 'downstream-develop',
+      includes: ['refs/heads/downstream/develop'],
+      requiredStatusChecks: EXPECTED_DOWNSTREAM_DEVELOP_CHECKS,
+      requiredLinearHistory: true,
+      pullRequestRule: createPullRequestRule({
         allowedMergeMethods: ['rebase']
       })
     })
@@ -263,6 +272,7 @@ test('priority:policy --apply updates rulesets for develop/main/release', async 
   const rulesetDevelopUrl = `${repoUrl}/rulesets/8811898`;
   const rulesetMainUrl = `${repoUrl}/rulesets/8614140`;
   const rulesetReleaseUrl = `${repoUrl}/rulesets/8614172`;
+  const rulesetDownstreamDevelopUrl = `${repoUrl}/rulesets/8811901`;
 
   const repoState = {
     allow_squash_merge: true,
@@ -409,7 +419,19 @@ test('priority:policy --apply updates rulesets for develop/main/release', async 
     ]
   };
 
+  const rulesetDownstreamDevelop = createRuleset({
+    id: 8811901,
+    name: 'downstream-develop',
+    includes: ['refs/heads/downstream/develop'],
+    requiredStatusChecks: EXPECTED_DOWNSTREAM_DEVELOP_CHECKS,
+    requiredLinearHistory: true,
+    pullRequestRule: createPullRequestRule({
+      allowedMergeMethods: ['rebase']
+    })
+  });
+
   const branchDevelopUrl = `${repoUrl}/branches/develop/protection`;
+  const branchDownstreamDevelopUrl = `${repoUrl}/branches/downstream%2Fdevelop/protection`;
   const branchMainUrl = `${repoUrl}/branches/main/protection`;
 
   let branchDevelopProtection = {
@@ -457,6 +479,8 @@ test('priority:policy --apply updates rulesets for develop/main/release', async 
     lock_branch: { enabled: false },
     allow_fork_syncing: { enabled: false }
   };
+
+  const branchDownstreamDevelopProtection = createAlignedBranchProtection(EXPECTED_DOWNSTREAM_DEVELOP_CHECKS);
 
   const wrapEnabled = (value) => ({ enabled: Boolean(value) });
   const requests = [];
@@ -524,11 +548,16 @@ test('priority:policy --apply updates rulesets for develop/main/release', async 
       }
     }
 
+    if (method === 'GET' && url === branchDownstreamDevelopUrl) {
+      return createResponse(branchDownstreamDevelopProtection);
+    }
+
     if (method === 'GET' && url === listUrl) {
       return createResponse([
         toRulesetSummary(rulesetDevelop),
         toRulesetSummary(rulesetMain),
-        toRulesetSummary(rulesetRelease)
+        toRulesetSummary(rulesetRelease),
+        toRulesetSummary(rulesetDownstreamDevelop)
       ]);
     }
 
@@ -565,6 +594,10 @@ test('priority:policy --apply updates rulesets for develop/main/release', async 
         rulesetRelease.rules = structuredClone(payload.rules);
         return createResponse(rulesetRelease);
       }
+    }
+
+    if (method === 'GET' && url === rulesetDownstreamDevelopUrl) {
+      return createResponse(rulesetDownstreamDevelop);
     }
 
     throw new Error(`Unexpected request ${method} ${url}`);
@@ -707,6 +740,7 @@ test('priority:policy verifies fork-local rulesets by stable identity when manif
   const repoUrl = 'https://api.github.com/repos/test-org/test-repo';
   const listUrl = `${repoUrl}/rulesets`;
   const branchDevelopUrl = `${repoUrl}/branches/develop/protection`;
+  const branchDownstreamDevelopUrl = `${repoUrl}/branches/downstream%2Fdevelop/protection`;
   const branchMainUrl = `${repoUrl}/branches/main/protection`;
   const expectedRulesetUrls = {
     main: `${repoUrl}/rulesets/8614140`,
@@ -715,7 +749,8 @@ test('priority:policy verifies fork-local rulesets by stable identity when manif
   const rulesets = createAlignedRulesets({
     develop: 99001,
     main: 99002,
-    release: 99003
+    release: 99003,
+    downstream: 99004
   });
 
   const fetchMock = async (url, options = {}) => {
@@ -729,6 +764,9 @@ test('priority:policy verifies fork-local rulesets by stable identity when manif
     if (url === branchDevelopUrl) {
       return createResponse(createAlignedBranchProtection(EXPECTED_DEVELOP_CHECKS));
     }
+    if (url === branchDownstreamDevelopUrl) {
+      return createResponse(createAlignedBranchProtection(EXPECTED_DOWNSTREAM_DEVELOP_CHECKS));
+    }
     if (url === branchMainUrl) {
       return createResponse(createAlignedBranchProtection(EXPECTED_MAIN_CHECKS));
     }
@@ -739,7 +777,8 @@ test('priority:policy verifies fork-local rulesets by stable identity when manif
       return createResponse([
         toRulesetSummary(rulesets.develop),
         toRulesetSummary(rulesets.main),
-        toRulesetSummary(rulesets.release)
+        toRulesetSummary(rulesets.release),
+        toRulesetSummary(rulesets.downstreamDevelop)
       ]);
     }
     if (url === `${repoUrl}/rulesets/${rulesets.develop.id}`) {
@@ -750,6 +789,9 @@ test('priority:policy verifies fork-local rulesets by stable identity when manif
     }
     if (url === `${repoUrl}/rulesets/${rulesets.release.id}`) {
       return createResponse(rulesets.release);
+    }
+    if (url === `${repoUrl}/rulesets/${rulesets.downstreamDevelop.id}`) {
+      return createResponse(rulesets.downstreamDevelop);
     }
     throw new Error(`Unexpected request ${method} ${url}`);
   };
@@ -787,6 +829,7 @@ test('priority:policy --apply updates fork-local rulesets resolved by stable ide
   const repoUrl = 'https://api.github.com/repos/test-org/test-repo';
   const listUrl = `${repoUrl}/rulesets`;
   const branchDevelopUrl = `${repoUrl}/branches/develop/protection`;
+  const branchDownstreamDevelopUrl = `${repoUrl}/branches/downstream%2Fdevelop/protection`;
   const branchMainUrl = `${repoUrl}/branches/main/protection`;
   const expectedRulesetUrls = {
     main: `${repoUrl}/rulesets/8614140`,
@@ -795,7 +838,8 @@ test('priority:policy --apply updates fork-local rulesets resolved by stable ide
   const rulesets = createAlignedRulesets({
     develop: 99101,
     main: 99102,
-    release: 99103
+    release: 99103,
+    downstream: 99104
   });
   rulesets.develop.conditions.ref_name.include = ['refs/heads/develop-drifted'];
   rulesets.develop.rules = rulesets.develop.rules.filter(
@@ -838,6 +882,9 @@ test('priority:policy --apply updates fork-local rulesets resolved by stable ide
     if (method === 'GET' && url === branchDevelopUrl) {
       return createResponse(createAlignedBranchProtection(EXPECTED_DEVELOP_CHECKS, FORK_MIRROR_BRANCH_PROTECTION));
     }
+    if (method === 'GET' && url === branchDownstreamDevelopUrl) {
+      return createResponse(createAlignedBranchProtection(EXPECTED_DOWNSTREAM_DEVELOP_CHECKS));
+    }
     if (method === 'GET' && url === branchMainUrl) {
       return createResponse(createAlignedBranchProtection(EXPECTED_MAIN_CHECKS));
     }
@@ -848,7 +895,8 @@ test('priority:policy --apply updates fork-local rulesets resolved by stable ide
       return createResponse([
         toRulesetSummary(rulesets.develop),
         toRulesetSummary(rulesets.main),
-        toRulesetSummary(rulesets.release)
+        toRulesetSummary(rulesets.release),
+        toRulesetSummary(rulesets.downstreamDevelop)
       ]);
     }
     if (url === `${repoUrl}/rulesets/${rulesets.develop.id}`) {
@@ -876,6 +924,15 @@ test('priority:policy --apply updates fork-local rulesets resolved by stable ide
       if (method === 'PUT') {
         rulesets.release = updateRuleset(rulesets.release, JSON.parse(options.body));
         return createResponse(rulesets.release);
+      }
+    }
+    if (url === `${repoUrl}/rulesets/${rulesets.downstreamDevelop.id}`) {
+      if (method === 'GET') {
+        return createResponse(rulesets.downstreamDevelop);
+      }
+      if (method === 'PUT') {
+        rulesets.downstreamDevelop = updateRuleset(rulesets.downstreamDevelop, JSON.parse(options.body));
+        return createResponse(rulesets.downstreamDevelop);
       }
     }
     throw new Error(`Unexpected request ${method} ${url}`);
@@ -1021,6 +1078,7 @@ test('priority:policy --apply creates missing fork-local rulesets when no identi
   const repoUrl = 'https://api.github.com/repos/test-org/test-repo';
   const listUrl = `${repoUrl}/rulesets`;
   const branchDevelopUrl = `${repoUrl}/branches/develop/protection`;
+  const branchDownstreamDevelopUrl = `${repoUrl}/branches/downstream%2Fdevelop/protection`;
   const branchMainUrl = `${repoUrl}/branches/main/protection`;
   const createdRulesets = [];
   let nextRulesetId = 99200;
@@ -1037,6 +1095,9 @@ test('priority:policy --apply creates missing fork-local rulesets when no identi
     }
     if (method === 'GET' && url === branchDevelopUrl) {
       return createResponse(createAlignedBranchProtection(EXPECTED_DEVELOP_CHECKS, FORK_MIRROR_BRANCH_PROTECTION));
+    }
+    if (method === 'GET' && url === branchDownstreamDevelopUrl) {
+      return createResponse(createAlignedBranchProtection(EXPECTED_DOWNSTREAM_DEVELOP_CHECKS));
     }
     if (method === 'GET' && url === branchMainUrl) {
       return createResponse(createAlignedBranchProtection(EXPECTED_MAIN_CHECKS));
@@ -1089,8 +1150,8 @@ test('priority:policy --apply creates missing fork-local rulesets when no identi
   assert.equal(createdRulesets.length, 3, 'three fork-local rulesets should be created');
   assert.deepEqual(
     createdRulesets.map((ruleset) => ruleset.name).sort(),
-    ['develop', 'main', 'release'],
-    'created rulesets should cover develop/main/release identities'
+    ['develop', 'downstream-develop', 'main'],
+    'created rulesets should cover develop/main/downstream identities'
   );
   const createdDevelopRuleset = createdRulesets.find((ruleset) => ruleset.name === 'develop');
   assert.ok(
@@ -1103,6 +1164,7 @@ test('priority:policy verify passes on user-owned throughput forks while still e
   const repoUrl = 'https://api.github.com/repos/test-user/test-repo';
   const listUrl = `${repoUrl}/rulesets`;
   const branchDevelopUrl = `${repoUrl}/branches/develop/protection`;
+  const branchDownstreamDevelopUrl = `${repoUrl}/branches/downstream%2Fdevelop/protection`;
   const branchMainUrl = `${repoUrl}/branches/main/protection`;
   const rulesetReleaseUrl = `${repoUrl}/rulesets/8614172`;
   const reportDir = await mkdtemp(path.join(os.tmpdir(), 'priority-policy-throughput-verify-'));
@@ -1130,6 +1192,9 @@ test('priority:policy verify passes on user-owned throughput forks while still e
     if (method === 'GET' && url === branchDevelopUrl) {
       return createResponse(createAlignedBranchProtection(EXPECTED_DEVELOP_CHECKS, FORK_MIRROR_BRANCH_PROTECTION));
     }
+    if (method === 'GET' && url === branchDownstreamDevelopUrl) {
+      return createResponse(createAlignedBranchProtection(EXPECTED_DOWNSTREAM_DEVELOP_CHECKS));
+    }
     if (method === 'GET' && url === branchMainUrl) {
       return createResponse(createAlignedBranchProtection(EXPECTED_MAIN_CHECKS));
     }
@@ -1140,10 +1205,13 @@ test('priority:policy verify passes on user-owned throughput forks while still e
       return createResponse({ message: 'Not Found', status: '404' }, 404, 'Not Found');
     }
     if (method === 'GET' && url === rulesetReleaseUrl) {
-      return createResponse(alignedRulesets.release);
+      return createResponse({ message: 'Not Found', status: '404' }, 404, 'Not Found');
     }
     if (method === 'GET' && url === listUrl) {
-      return createResponse([]);
+      return createResponse([toRulesetSummary(alignedRulesets.downstreamDevelop)]);
+    }
+    if (method === 'GET' && url === `${repoUrl}/rulesets/${alignedRulesets.downstreamDevelop.id}`) {
+      return createResponse(alignedRulesets.downstreamDevelop);
     }
     throw new Error(`Unexpected request ${method} ${url}`);
   };
@@ -1185,6 +1253,7 @@ test('priority:policy verify honors repo portability overrides for forks that ca
   const repoUrl = 'https://api.github.com/repos/test-org/test-fork';
   const listUrl = `${repoUrl}/rulesets`;
   const branchDevelopUrl = `${repoUrl}/branches/develop/protection`;
+  const branchDownstreamDevelopUrl = `${repoUrl}/branches/downstream%2Fdevelop/protection`;
   const branchMainUrl = `${repoUrl}/branches/main/protection`;
   const rulesetReleaseUrl = `${repoUrl}/rulesets/8614172`;
   const reportDir = await mkdtemp(path.join(os.tmpdir(), 'priority-policy-throughput-override-'));
@@ -1212,6 +1281,9 @@ test('priority:policy verify honors repo portability overrides for forks that ca
     if (method === 'GET' && url === branchDevelopUrl) {
       return createResponse(createAlignedBranchProtection(EXPECTED_DEVELOP_CHECKS, FORK_MIRROR_BRANCH_PROTECTION));
     }
+    if (method === 'GET' && url === branchDownstreamDevelopUrl) {
+      return createResponse(createAlignedBranchProtection(EXPECTED_DOWNSTREAM_DEVELOP_CHECKS));
+    }
     if (method === 'GET' && url === branchMainUrl) {
       return createResponse(createAlignedBranchProtection(EXPECTED_MAIN_CHECKS));
     }
@@ -1222,10 +1294,13 @@ test('priority:policy verify honors repo portability overrides for forks that ca
       return createResponse({ message: 'Not Found', status: '404' }, 404, 'Not Found');
     }
     if (method === 'GET' && url === rulesetReleaseUrl) {
-      return createResponse(alignedRulesets.release);
+      return createResponse({ message: 'Not Found', status: '404' }, 404, 'Not Found');
     }
     if (method === 'GET' && url === listUrl) {
-      return createResponse([]);
+      return createResponse([toRulesetSummary(alignedRulesets.downstreamDevelop)]);
+    }
+    if (method === 'GET' && url === `${repoUrl}/rulesets/${alignedRulesets.downstreamDevelop.id}`) {
+      return createResponse(alignedRulesets.downstreamDevelop);
     }
     throw new Error(`Unexpected request ${method} ${url}`);
   };
@@ -1401,10 +1476,11 @@ test('priority:policy --apply skips queue-managed rulesets on user-owned through
   const repoUrl = 'https://api.github.com/repos/test-user/test-repo';
   const listUrl = `${repoUrl}/rulesets`;
   const branchDevelopUrl = `${repoUrl}/branches/develop/protection`;
+  const branchDownstreamDevelopUrl = `${repoUrl}/branches/downstream%2Fdevelop/protection`;
   const branchMainUrl = `${repoUrl}/branches/main/protection`;
   const rulesetReleaseUrl = `${repoUrl}/rulesets/8614172`;
   const requests = [];
-  let createdReleaseRuleset = null;
+  let createdDownstreamRuleset = null;
   const manifestOverride = JSON.parse(await readFile(new URL('../policy.json', import.meta.url), 'utf8'));
   manifestOverride.repoProfiles = {
     ...(manifestOverride.repoProfiles ?? {}),
@@ -1428,6 +1504,9 @@ test('priority:policy --apply skips queue-managed rulesets on user-owned through
     if (method === 'GET' && url === branchDevelopUrl) {
       return createResponse(createAlignedBranchProtection(EXPECTED_DEVELOP_CHECKS, FORK_MIRROR_BRANCH_PROTECTION));
     }
+    if (method === 'GET' && url === branchDownstreamDevelopUrl) {
+      return createResponse(createAlignedBranchProtection(EXPECTED_DOWNSTREAM_DEVELOP_CHECKS));
+    }
     if (method === 'GET' && url === branchMainUrl) {
       return createResponse(createAlignedBranchProtection(EXPECTED_MAIN_CHECKS));
     }
@@ -1438,24 +1517,27 @@ test('priority:policy --apply skips queue-managed rulesets on user-owned through
       return createResponse({ message: 'Not Found', status: '404' }, 404, 'Not Found');
     }
     if (method === 'GET' && url === rulesetReleaseUrl) {
-      if (createdReleaseRuleset) {
-        return createResponse(createdReleaseRuleset);
-      }
       return createResponse({ message: 'Not Found', status: '404' }, 404, 'Not Found');
     }
     if (method === 'GET' && url === listUrl) {
-      return createResponse([]);
+      return createResponse(createdDownstreamRuleset ? [toRulesetSummary(createdDownstreamRuleset)] : []);
+    }
+    if (method === 'GET' && url === `${repoUrl}/rulesets/99201`) {
+      if (createdDownstreamRuleset) {
+        return createResponse(createdDownstreamRuleset);
+      }
+      return createResponse({ message: 'Not Found', status: '404' }, 404, 'Not Found');
     }
     if (method === 'POST' && url === listUrl) {
       const payload = JSON.parse(options.body);
-      createdReleaseRuleset = {
+      createdDownstreamRuleset = {
         ...payload,
-        id: 8614172,
+        id: 99201,
         enforcement: payload.enforcement ?? 'active',
         target: payload.target ?? 'branch',
         bypass_actors: payload.bypass_actors ?? []
       };
-      return createResponse(createdReleaseRuleset, 201, 'Created');
+      return createResponse(createdDownstreamRuleset, 201, 'Created');
     }
     throw new Error(`Unexpected request ${method} ${url}`);
   };
@@ -1478,8 +1560,9 @@ test('priority:policy --apply skips queue-managed rulesets on user-owned through
 
   assert.equal(code, 0, 'apply mode should succeed on user-owned throughput forks');
   const createRequests = requests.filter((entry) => entry.method === 'POST' && entry.url === listUrl);
-  assert.equal(createRequests.length, 1, 'apply mode should only create the non-queue release ruleset');
+  assert.equal(createRequests.length, 1, 'apply mode should only create the non-queue downstream-develop ruleset');
   const createdPayload = JSON.parse(createRequests[0].body);
+  assert.equal(createdPayload.name, 'downstream-develop');
   assert.equal(
     createdPayload.rules.some((rule) => rule?.type === 'merge_queue'),
     false,
@@ -1491,12 +1574,13 @@ test('priority:policy --apply downgrades queue-managed rulesets when a fork reje
   const repoUrl = 'https://api.github.com/repos/test-org/test-fork';
   const listUrl = `${repoUrl}/rulesets`;
   const branchDevelopUrl = `${repoUrl}/branches/develop/protection`;
+  const branchDownstreamDevelopUrl = `${repoUrl}/branches/downstream%2Fdevelop/protection`;
   const branchMainUrl = `${repoUrl}/branches/main/protection`;
   const rulesetReleaseUrl = `${repoUrl}/rulesets/8614172`;
   const reportDir = await mkdtemp(path.join(os.tmpdir(), 'priority-policy-throughput-apply-'));
   const reportPath = path.join(reportDir, 'policy-report.json');
   const requests = [];
-  let createdReleaseRuleset = null;
+  const createdRulesets = [];
 
   const fetchMock = async (url, options = {}) => {
     const method = options.method ?? 'GET';
@@ -1512,6 +1596,9 @@ test('priority:policy --apply downgrades queue-managed rulesets when a fork reje
     if (method === 'GET' && url === branchDevelopUrl) {
       return createResponse(createAlignedBranchProtection(EXPECTED_DEVELOP_CHECKS, FORK_MIRROR_BRANCH_PROTECTION));
     }
+    if (method === 'GET' && url === branchDownstreamDevelopUrl) {
+      return createResponse(createAlignedBranchProtection(EXPECTED_DOWNSTREAM_DEVELOP_CHECKS));
+    }
     if (method === 'GET' && url === branchMainUrl) {
       return createResponse(createAlignedBranchProtection(EXPECTED_MAIN_CHECKS));
     }
@@ -1522,13 +1609,18 @@ test('priority:policy --apply downgrades queue-managed rulesets when a fork reje
       return createResponse({ message: 'Not Found', status: '404' }, 404, 'Not Found');
     }
     if (method === 'GET' && url === rulesetReleaseUrl) {
-      if (createdReleaseRuleset) {
-        return createResponse(createdReleaseRuleset);
-      }
       return createResponse({ message: 'Not Found', status: '404' }, 404, 'Not Found');
     }
     if (method === 'GET' && url === listUrl) {
-      return createResponse([]);
+      return createResponse(createdRulesets.map((ruleset) => toRulesetSummary(ruleset)));
+    }
+    if (method === 'GET' && url.startsWith(`${repoUrl}/rulesets/`)) {
+      const id = Number(url.split('/').at(-1));
+      const match = createdRulesets.find((ruleset) => ruleset.id === id);
+      if (match) {
+        return createResponse(match);
+      }
+      return createResponse({ message: 'Not Found', status: '404' }, 404, 'Not Found');
     }
     if (method === 'POST' && url === listUrl) {
       const payload = JSON.parse(options.body);
@@ -1542,14 +1634,15 @@ test('priority:policy --apply downgrades queue-managed rulesets when a fork reje
           'Unprocessable Entity'
         );
       }
-      createdReleaseRuleset = {
+      const created = {
         ...payload,
-        id: 8614172,
+        id: 99210 + createdRulesets.length,
         enforcement: payload.enforcement ?? 'active',
         target: payload.target ?? 'branch',
         bypass_actors: payload.bypass_actors ?? []
       };
-      return createResponse(createdReleaseRuleset, 201, 'Created');
+      createdRulesets.push(created);
+      return createResponse(created, 201, 'Created');
     }
     throw new Error(`Unexpected request ${method} ${url}`);
   };
@@ -1595,6 +1688,7 @@ test('priority:policy --apply keeps fork develop on the mirror-rail override for
   const repoUrl = 'https://api.github.com/repos/LabVIEW-Community-CI-CD/compare-vi-cli-action-fork';
   const listUrl = `${repoUrl}/rulesets`;
   const branchDevelopUrl = `${repoUrl}/branches/develop/protection`;
+  const branchDownstreamDevelopUrl = `${repoUrl}/branches/downstream%2Fdevelop/protection`;
   const branchMainUrl = `${repoUrl}/branches/main/protection`;
   const alignedRulesets = createAlignedRulesets();
   let developProtection = createAlignedBranchProtection(EXPECTED_DEVELOP_CHECKS);
@@ -1612,6 +1706,9 @@ test('priority:policy --apply keeps fork develop on the mirror-rail override for
     }
     if (method === 'GET' && url === branchDevelopUrl) {
       return createResponse(developProtection);
+    }
+    if (method === 'GET' && url === branchDownstreamDevelopUrl) {
+      return createResponse(createAlignedBranchProtection(EXPECTED_DOWNSTREAM_DEVELOP_CHECKS));
     }
     if (method === 'GET' && url === branchMainUrl) {
       return createResponse(createAlignedBranchProtection(EXPECTED_MAIN_CHECKS));
@@ -1636,10 +1733,17 @@ test('priority:policy --apply keeps fork develop on the mirror-rail override for
       return createResponse(alignedRulesets.main);
     }
     if (method === 'GET' && url === `${repoUrl}/rulesets/8614172`) {
-      return createResponse(alignedRulesets.release);
+      return createResponse({ message: 'Not Found', status: '404' }, 404, 'Not Found');
+    }
+    if (method === 'GET' && url === `${repoUrl}/rulesets/${alignedRulesets.downstreamDevelop.id}`) {
+      return createResponse(alignedRulesets.downstreamDevelop);
     }
     if (method === 'GET' && url === listUrl) {
-      return createResponse(Object.values(alignedRulesets).map(toRulesetSummary));
+      return createResponse([
+        toRulesetSummary(alignedRulesets.develop),
+        toRulesetSummary(alignedRulesets.main),
+        toRulesetSummary(alignedRulesets.downstreamDevelop)
+      ]);
     }
     throw new Error(`Unexpected request ${method} ${url}`);
   };
@@ -1675,11 +1779,13 @@ test('priority:policy --apply enforces required checks after merge_queue portabi
   const repoUrl = 'https://api.github.com/repos/test-org/test-fork';
   const listUrl = `${repoUrl}/rulesets`;
   const branchDevelopUrl = `${repoUrl}/branches/develop/protection`;
+  const branchDownstreamDevelopUrl = `${repoUrl}/branches/downstream%2Fdevelop/protection`;
   const branchMainUrl = `${repoUrl}/branches/main/protection`;
   const rulesetReleaseUrl = `${repoUrl}/rulesets/8614172`;
   const requests = [];
-  let createdReleaseRuleset = null;
+  const createdRulesets = [];
   let developProtection = createAlignedBranchProtection([], FORK_MIRROR_BRANCH_PROTECTION);
+  let downstreamDevelopProtection = createAlignedBranchProtection(EXPECTED_DOWNSTREAM_DEVELOP_CHECKS);
   let mainProtection = createAlignedBranchProtection([]);
 
   const fetchMock = async (url, options = {}) => {
@@ -1695,6 +1801,9 @@ test('priority:policy --apply enforces required checks after merge_queue portabi
     }
     if (method === 'GET' && url === branchDevelopUrl) {
       return createResponse(developProtection);
+    }
+    if (method === 'GET' && url === branchDownstreamDevelopUrl) {
+      return createResponse(downstreamDevelopProtection);
     }
     if (method === 'GET' && url === branchMainUrl) {
       return createResponse(mainProtection);
@@ -1728,13 +1837,18 @@ test('priority:policy --apply enforces required checks after merge_queue portabi
       return createResponse({ message: 'Not Found', status: '404' }, 404, 'Not Found');
     }
     if (method === 'GET' && url === rulesetReleaseUrl) {
-      if (createdReleaseRuleset) {
-        return createResponse(createdReleaseRuleset);
-      }
       return createResponse({ message: 'Not Found', status: '404' }, 404, 'Not Found');
     }
     if (method === 'GET' && url === listUrl) {
-      return createResponse([]);
+      return createResponse(createdRulesets.map((ruleset) => toRulesetSummary(ruleset)));
+    }
+    if (method === 'GET' && url.startsWith(`${repoUrl}/rulesets/`)) {
+      const id = Number(url.split('/').at(-1));
+      const match = createdRulesets.find((ruleset) => ruleset.id === id);
+      if (match) {
+        return createResponse(match);
+      }
+      return createResponse({ message: 'Not Found', status: '404' }, 404, 'Not Found');
     }
     if (method === 'POST' && url === listUrl) {
       const payload = JSON.parse(options.body);
@@ -1748,14 +1862,15 @@ test('priority:policy --apply enforces required checks after merge_queue portabi
           'Unprocessable Entity'
         );
       }
-      createdReleaseRuleset = {
+      const created = {
         ...payload,
-        id: 8614172,
+        id: 99310 + createdRulesets.length,
         enforcement: payload.enforcement ?? 'active',
         target: payload.target ?? 'branch',
         bypass_actors: payload.bypass_actors ?? []
       };
-      return createResponse(createdReleaseRuleset, 201, 'Created');
+      createdRulesets.push(created);
+      return createResponse(created, 201, 'Created');
     }
     throw new Error(`Unexpected request ${method} ${url}`);
   };
@@ -2410,6 +2525,7 @@ test('priority:policy verify uses queue-managed rulesets as required-check sourc
   const rulesetMainUrl = `${repoUrl}/rulesets/8614140`;
   const rulesetReleaseUrl = `${repoUrl}/rulesets/8614172`;
   const branchDevelopUrl = `${repoUrl}/branches/develop/protection`;
+  const branchDownstreamDevelopUrl = `${repoUrl}/branches/downstream%2Fdevelop/protection`;
   const branchMainUrl = `${repoUrl}/branches/main/protection`;
 
   const repoState = {
@@ -2432,15 +2548,7 @@ test('priority:policy verify uses queue-managed rulesets as required-check sourc
     'Policy Guard (Upstream) / policy-guard',
     'commit-integrity'
   ];
-  const releaseChecksExpected = [
-    'lint',
-    'pester',
-    'publish',
-    'vi-binary-check',
-    'vi-compare',
-    'mock-cli',
-    'Policy Guard (Upstream) / policy-guard'
-  ];
+  const releaseChecksExpected = [...EXPECTED_RELEASE_CHECKS];
 
   const branchDevelopProtection = {
     required_status_checks: {
@@ -2479,6 +2587,8 @@ test('priority:policy verify uses queue-managed rulesets as required-check sourc
     lock_branch: { enabled: false },
     allow_fork_syncing: { enabled: false }
   };
+
+  const branchDownstreamDevelopProtection = createAlignedBranchProtection(EXPECTED_DOWNSTREAM_DEVELOP_CHECKS);
 
   const developMergeQueueParams = {
     merge_method: 'SQUASH',
@@ -2586,6 +2696,33 @@ test('priority:policy verify uses queue-managed rulesets as required-check sourc
     ]
   };
 
+  const rulesetDownstreamDevelop = {
+    id: 99004,
+    name: 'downstream-develop',
+    target: 'branch',
+    conditions: { ref_name: { include: ['refs/heads/downstream/develop'], exclude: [] } },
+    rules: [
+      { type: 'required_linear_history' },
+      {
+        type: 'required_status_checks',
+        parameters: {
+          required_status_checks: EXPECTED_DOWNSTREAM_DEVELOP_CHECKS.map((context) => ({ context }))
+        }
+      },
+      {
+        type: 'pull_request',
+        parameters: {
+          required_approving_review_count: 0,
+          dismiss_stale_reviews_on_push: false,
+          require_code_owner_review: false,
+          require_last_push_approval: false,
+          required_review_thread_resolution: false,
+          allowed_merge_methods: ['rebase']
+        }
+      }
+    ]
+  };
+
   const fetchMock = async (url, options = {}) => {
     const method = options.method ?? 'GET';
     if (method !== 'GET') {
@@ -2597,6 +2734,9 @@ test('priority:policy verify uses queue-managed rulesets as required-check sourc
     if (url === branchDevelopUrl) {
       return createResponse(branchDevelopProtection);
     }
+    if (url === branchDownstreamDevelopUrl) {
+      return createResponse(branchDownstreamDevelopProtection);
+    }
     if (url === branchMainUrl) {
       return createResponse(branchMainProtection);
     }
@@ -2604,11 +2744,15 @@ test('priority:policy verify uses queue-managed rulesets as required-check sourc
       return createResponse([
         toRulesetSummary(rulesetDevelop),
         toRulesetSummary(rulesetMain),
-        toRulesetSummary(rulesetRelease)
+        toRulesetSummary(rulesetRelease),
+        toRulesetSummary(rulesetDownstreamDevelop)
       ]);
     }
     if (url === `${repoUrl}/rulesets/${rulesetDevelop.id}`) {
       return createResponse(rulesetDevelop);
+    }
+    if (url === `${repoUrl}/rulesets/${rulesetDownstreamDevelop.id}`) {
+      return createResponse(rulesetDownstreamDevelop);
     }
     if (url === rulesetMainUrl) {
       return createResponse(rulesetMain);
@@ -2652,6 +2796,7 @@ test('priority:policy --apply preserves branch required checks when queue-manage
   const repoUrl = 'https://api.github.com/repos/test-org/test-repo';
   const listUrl = `${repoUrl}/rulesets`;
   const branchDevelopUrl = `${repoUrl}/branches/develop/protection`;
+  const branchDownstreamDevelopUrl = `${repoUrl}/branches/downstream%2Fdevelop/protection`;
   const branchMainUrl = `${repoUrl}/branches/main/protection`;
   const rulesets = createAlignedRulesets();
   let developProtection = {
@@ -2671,6 +2816,9 @@ test('priority:policy --apply preserves branch required checks when queue-manage
     }
     if (method === 'GET' && url === branchDevelopUrl) {
       return createResponse(developProtection);
+    }
+    if (method === 'GET' && url === branchDownstreamDevelopUrl) {
+      return createResponse(createAlignedBranchProtection(EXPECTED_DOWNSTREAM_DEVELOP_CHECKS));
     }
     if (method === 'GET' && url === branchMainUrl) {
       return createResponse(mainProtection);
@@ -2695,6 +2843,9 @@ test('priority:policy --apply preserves branch required checks when queue-manage
     }
     if (method === 'GET' && url === `${repoUrl}/rulesets/8614172`) {
       return createResponse(rulesets.release);
+    }
+    if (method === 'GET' && url === `${repoUrl}/rulesets/${rulesets.downstreamDevelop.id}`) {
+      return createResponse(rulesets.downstreamDevelop);
     }
     if (method === 'GET' && url === listUrl) {
       return createResponse(Object.values(rulesets).map(toRulesetSummary));
@@ -3114,14 +3265,17 @@ test('priority:policy build branch-protection payload honors explicit disabled s
 test('priority:policy --apply projects required checks from the branch-class contract when the manifest omits copied lists', async () => {
   const manifestOverride = JSON.parse(await readFile(new URL('../policy.json', import.meta.url), 'utf8'));
   delete manifestOverride.branches.develop.required_status_checks;
+  delete manifestOverride.branches['downstream/develop'].required_status_checks;
   delete manifestOverride.branches.main.required_status_checks;
   delete manifestOverride.branches['release/*'].required_status_checks;
   delete manifestOverride.rulesets.develop.required_status_checks;
+  delete manifestOverride.rulesets['downstream-develop'].required_status_checks;
   delete manifestOverride.rulesets['8614140'].required_status_checks;
   delete manifestOverride.rulesets['8614172'].required_status_checks;
 
   const repoUrl = 'https://api.github.com/repos/test-org/test-repo';
   const branchDevelopUrl = `${repoUrl}/branches/develop/protection`;
+  const branchDownstreamDevelopUrl = `${repoUrl}/branches/downstream%2Fdevelop/protection`;
   const branchMainUrl = `${repoUrl}/branches/main/protection`;
   const listUrl = `${repoUrl}/rulesets`;
   const rulesets = createAlignedRulesets();
@@ -3141,6 +3295,9 @@ test('priority:policy --apply projects required checks from the branch-class con
     }
     if (method === 'GET' && url === branchDevelopUrl) {
       return createResponse(createAlignedBranchProtection([]));
+    }
+    if (method === 'GET' && url === branchDownstreamDevelopUrl) {
+      return createResponse(createAlignedBranchProtection(EXPECTED_DOWNSTREAM_DEVELOP_CHECKS));
     }
     if (method === 'GET' && url === branchMainUrl) {
       return createResponse(createAlignedBranchProtection(EXPECTED_MAIN_CHECKS));
@@ -3165,6 +3322,9 @@ test('priority:policy --apply projects required checks from the branch-class con
     }
     if (method === 'GET' && url === `${repoUrl}/rulesets/8614172`) {
       return createResponse(rulesets.release);
+    }
+    if (method === 'GET' && url === `${repoUrl}/rulesets/${rulesets.downstreamDevelop.id}`) {
+      return createResponse(rulesets.downstreamDevelop);
     }
     if (method === 'GET' && url === listUrl) {
       return createResponse(Object.values(rulesets).map(toRulesetSummary));

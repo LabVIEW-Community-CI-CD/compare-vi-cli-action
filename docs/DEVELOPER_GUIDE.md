@@ -463,7 +463,8 @@ For each cut:
 - Branch protection requires a linear history: use the **Squash and merge** button (or rebase-and-merge) so no merge
   commits land on `develop`/`main`.
 - Keep PRs focused and include the standing issue reference (`#<number>`) in the commit subject and PR description.
-- Ensure required checks (`validate`, `fixtures`, `session-index`) are green before merging; rerun as needed.
+- Ensure required checks (`lint`, `fixtures`, `Policy Guard (Upstream) / policy-guard`,
+  `vi-history-scenarios-linux`, `commit-integrity`) are green before merging; rerun as needed.
 - `Validate` now computes a `validate-scope-plan` artifact before the heavy lanes fan out.
   Standard `pull_request` and `merge_group` runs classify changed paths with an allow-list into:
   `docs-metadata-only`, `tests-only`, `tools-policy-only`, `ci-control-plane`, `mixed-lightweight`, `compare-engine-history`,
@@ -495,6 +496,9 @@ For each cut:
   the local CLI/orchestrator path, and `ready_for_review` is reserved for final hosted validation on the current head.
 - `agent-review-policy` is the hosted concentrator for local review evidence and promotion validation. It should not be
   used to acquire a second GitHub-side Copilot review after `ready_for_review`.
+- `session-index`, `issue-snapshot`, `semver`, `agent-review-policy`, and `hook-parity`
+  remain valuable supporting lanes, but they are not part of the minimal merge-queue
+  required-check surface for `develop`.
 - Run `node tools/npm/run-script.mjs priority:policy` (or `node tools/npm/run-script.mjs priority:policy:sync`) if you
   need to audit merge settings locally; the command also runs during `priority:handoff-tests` and fails when
   repo/branch policy drifts.
