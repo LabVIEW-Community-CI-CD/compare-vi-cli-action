@@ -356,7 +356,7 @@ exit 0
     $commits = @($firstParent | Where-Object { $_ })
     $touchMap = @{}
     foreach ($commit in $commits) {
-      $changed = & git -C $repoRoot diff-tree --no-commit-id --name-only -r $commit -- $target
+      $changed = & git -C $repoRoot diff-tree --root -m --no-commit-id --name-only -r $commit -- $target
       $touchMap[$commit] = -not [string]::IsNullOrWhiteSpace($changed)
     }
 
@@ -796,6 +796,66 @@ exit 0
     $manifest.startRef | Should -Be $candidate.expected
     $manifest.comparisons.Count | Should -BeGreaterThan 0
     $manifest.comparisons[0].head.ref | Should -Be $candidate.expected
+  }
+
+  It 'preserves a merge commit start ref when the target changed through the merge' {
+    $repo = Join-Path $TestDrive 'history-merge-start-ref'
+    New-Item -ItemType Directory -Path $repo -Force | Out-Null
+    & git -C $repo init -b main | Out-Null
+    & git -C $repo config user.name 'CompareVI Test' | Out-Null
+    & git -C $repo config user.email 'comparevi@example.test' | Out-Null
+
+    'base' | Set-Content -LiteralPath (Join-Path $repo 'VI1.vi') -Encoding utf8
+    & git -C $repo add VI1.vi | Out-Null
+    & git -C $repo commit -m 'base' | Out-Null
+
+    & git -C $repo checkout -b feature/history-touch | Out-Null
+    'feature change' | Set-Content -LiteralPath (Join-Path $repo 'VI1.vi') -Encoding utf8
+    & git -C $repo commit -am 'feature touch' | Out-Null
+
+    & git -C $repo checkout main | Out-Null
+    'mainline context' | Set-Content -LiteralPath (Join-Path $repo 'README.md') -Encoding utf8
+    & git -C $repo add README.md | Out-Null
+    & git -C $repo commit -m 'mainline context' | Out-Null
+    & git -C $repo merge --no-ff feature/history-touch -m 'merge feature touch' | Out-Null
+
+    $mergeCommit = (& git -C $repo rev-parse HEAD).Trim()
+    $legacyTouch = (& git -C $repo diff-tree --no-commit-id --name-only -r $mergeCommit -- VI1.vi) -join "`n"
+    $mergeAwareTouch = (& git -C $repo diff-tree --root -m --no-commit-id --name-only -r $mergeCommit -- VI1.vi) -join "`n"
+    [string]$legacyTouch | Should -BeNullOrEmpty
+    [string]$mergeAwareTouch | Should -Match 'VI1\.vi'
+
+    $rd = Join-Path $TestDrive 'history-merge-start-ref-results'
+    Push-Location $repo
+    try {
+      $previousScriptsRoot = [System.Environment]::GetEnvironmentVariable('COMPAREVI_SCRIPTS_ROOT', 'Process')
+      [System.Environment]::SetEnvironmentVariable('COMPAREVI_SCRIPTS_ROOT', (Join-Path $_repoRoot 'tools'), 'Process')
+      & pwsh -NoLogo -NoProfile -File (Join-Path $_repoRoot 'tools/Compare-VIHistory.ps1') `
+        -TargetPath 'VI1.vi' `
+        -StartRef $mergeCommit `
+        -MaxPairs 1 `
+        -InvokeScriptPath $_stubPath `
+        -ResultsDir $rd `
+        -Detailed `
+        -RenderReport `
+        -FailOnDiff:$false | Out-Null
+    } finally {
+      [System.Environment]::SetEnvironmentVariable('COMPAREVI_SCRIPTS_ROOT', $previousScriptsRoot, 'Process')
+      Pop-Location
+    }
+
+    $suitePath = Join-Path $rd 'manifest.json'
+    Test-Path -LiteralPath $suitePath | Should -BeTrue
+    $aggregate = Get-Content -LiteralPath $suitePath -Raw | ConvertFrom-Json
+    $modeEntry = $aggregate.modes | Where-Object { $_.slug -eq 'default' }
+    $modeEntry | Should -Not -BeNullOrEmpty
+    Test-Path -LiteralPath $modeEntry.manifestPath | Should -BeTrue
+    $manifest = Get-Content -LiteralPath $modeEntry.manifestPath -Raw | ConvertFrom-Json
+    $manifest.requestedStartRef | Should -Be $mergeCommit
+    $manifest.startRef | Should -Be $mergeCommit
+    $manifest.stats.processed | Should -Be 1
+    $manifest.comparisons.Count | Should -Be 1
+    $manifest.comparisons[0].head.ref | Should -Be $mergeCommit
   }
 
   It 'exposes attribute-focused mode when requested' {
