@@ -165,6 +165,7 @@ $requiredRelativePaths = @(
   'tools/HostRamBudget.psm1',
   'tools/Compare-VIHistory.ps1',
   'tools/Compare-RefsToTemp.ps1',
+  'tools/Get-LabVIEWContainerShellContract.ps1',
   'tools/Invoke-LVCompare.ps1',
   'tools/Invoke-NILinuxReviewSuite.ps1',
   'tools/Invoke-VIHistoryLocalRefinement.ps1',
@@ -498,7 +499,8 @@ try {
       entryScriptPath = 'tools/Run-NILinuxContainerCompare.ps1'
       supportScriptPaths = @(
         'tools/Assert-DockerRuntimeDeterminism.ps1',
-        'tools/Compare-ExitCodeClassifier.ps1'
+        'tools/Compare-ExitCodeClassifier.ps1',
+        'tools/Get-LabVIEWContainerShellContract.ps1'
       )
       captureFileName = 'ni-linux-container-capture.json'
       defaultImage = $hostedNiLinuxDefaultImage
