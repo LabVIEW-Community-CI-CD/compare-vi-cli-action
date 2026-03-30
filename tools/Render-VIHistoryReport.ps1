@@ -126,6 +126,9 @@ function Get-LineageLabel {
   $rootMerge = if ($Lineage.PSObject.Properties['rootMerge']) { [string]$Lineage.rootMerge } else { $mergeCommit }
 
   switch ($type.ToLowerInvariant()) {
+    'touch-history' {
+      return 'Touch history'
+    }
     'merge-parent' {
       $label = if ($parentIndex -and $parentIndex -gt 0) { "Merge parent #$parentIndex" } else { 'Merge parent' }
       if ($depth -and $depth -gt 0) {

@@ -237,6 +237,29 @@ function Get-ComparisonCategories {
   return @($categories.ToArray())
 }
 
+function Normalize-ComparisonReportText {
+  param([string]$Value)
+
+  if ([string]::IsNullOrWhiteSpace($Value)) {
+    return ''
+  }
+
+  $decoded = [System.Net.WebUtility]::HtmlDecode($Value)
+  $withoutTags = [regex]::Replace($decoded, '<[^>]+>', ' ')
+  return ([regex]::Replace($withoutTags, '\s+', ' ')).Trim()
+}
+
+function Test-IsComparisonIdentityLabel {
+  param([string]$Value)
+
+  $normalized = Normalize-ComparisonReportText -Value $Value
+  if ([string]::IsNullOrWhiteSpace($normalized)) {
+    return $false
+  }
+
+  return ($normalized -match '^\s*First\s+VI:\s*.+?\s+Second\s+VI:\s*.+?\s*$')
+}
+
 function Parse-ReportDiffHeadings {
   param([string]$Html)
 
@@ -258,9 +281,10 @@ function Parse-ReportDiffHeadings {
     foreach ($match in [System.Text.RegularExpressions.Regex]::Matches($Html, $pattern, $regexOptions)) {
       $raw = $match.Groups['text'].Value
       if ([string]::IsNullOrWhiteSpace($raw)) { continue }
-      $decoded = [System.Net.WebUtility]::HtmlDecode($raw.Trim())
+      $decoded = Normalize-ComparisonReportText -Value $raw
       $decoded = ($decoded -replace '^\s*\d+[\.\)]\s*', '')
       if ([string]::IsNullOrWhiteSpace($decoded)) { continue }
+      if (Test-IsComparisonIdentityLabel -Value $decoded) { continue }
       if (-not $headings.Contains($decoded)) {
         $headings.Add($decoded) | Out-Null
       }
@@ -280,7 +304,8 @@ function Parse-ReportDiffDetails {
   foreach ($match in [System.Text.RegularExpressions.Regex]::Matches($Html, $pattern, 'IgnoreCase')) {
     $raw = $match.Groups['text'].Value
     if ([string]::IsNullOrWhiteSpace($raw)) { continue }
-    $decoded = [System.Net.WebUtility]::HtmlDecode($raw.Trim())
+    $decoded = Normalize-ComparisonReportText -Value $raw
+    if (Test-IsComparisonIdentityLabel -Value $decoded) { continue }
     if ($decoded) {
       $details.Add($decoded) | Out-Null
     }
@@ -739,6 +764,30 @@ function Test-CommitTouchesPath {
   return -not [string]::IsNullOrWhiteSpace($result)
 }
 
+function Get-TouchHistoryCommits {
+  param(
+    [Parameter(Mandatory = $true)][string]$Ref,
+    [Parameter(Mandatory = $true)][string]$Path
+  )
+
+  if ([string]::IsNullOrWhiteSpace($Ref) -or [string]::IsNullOrWhiteSpace($Path)) {
+    return @()
+  }
+
+  $raw = Invoke-Git -Arguments @('log','--format=%H','--follow','--find-renames=90%',$Ref,'--',$Path) -Quiet
+  $commits = New-Object System.Collections.Generic.List[string]
+  $seen = New-Object 'System.Collections.Generic.HashSet[string]' ([System.StringComparer]::OrdinalIgnoreCase)
+  foreach ($line in ($raw -split "`n")) {
+    $commit = $line.Trim()
+    if ([string]::IsNullOrWhiteSpace($commit)) { continue }
+    if ($seen.Add($commit)) {
+      $commits.Add($commit) | Out-Null
+    }
+  }
+
+  return $commits.ToArray()
+}
+
 function Get-CommitParents {
   param(
     [Parameter(Mandatory = $true)][string]$Commit
@@ -930,34 +979,20 @@ function Get-MergeParentPlan {
 
 function Build-ComparisonPlan {
   param(
-    [Parameter(Mandatory = $true)][string[]]$MainlineCommits,
+    [Parameter(Mandatory = $true)][string[]]$TouchCommits,
     [Parameter(Mandatory = $true)][string]$TargetRel,
     [string]$EndRef,
     [switch]$IncludeMergeParents
   )
 
-  $mainlineSet = New-Object 'System.Collections.Generic.HashSet[string]' ([System.StringComparer]::OrdinalIgnoreCase)
-  $mainlineList = New-Object System.Collections.Generic.List[string]
-  foreach ($entry in $MainlineCommits) {
+  $touchSet = New-Object 'System.Collections.Generic.HashSet[string]' ([System.StringComparer]::OrdinalIgnoreCase)
+  $touchList = New-Object System.Collections.Generic.List[string]
+  foreach ($entry in $TouchCommits) {
     if ([string]::IsNullOrWhiteSpace($entry)) { continue }
     $trimmed = $entry.Trim()
     if ([string]::IsNullOrWhiteSpace($trimmed)) { continue }
-    if ($mainlineSet.Add($trimmed)) {
-      $mainlineList.Add($trimmed)
-    }
-  }
-
-  for ($index = 0; $index -lt $mainlineList.Count; $index++) {
-    $currentCommit = $mainlineList[$index]
-    $parentsForCurrent = @(Get-CommitParents -Commit $currentCommit)
-    if (-not $parentsForCurrent -or $parentsForCurrent.Count -eq 0) { continue }
-    $firstParentForCurrent = $parentsForCurrent[0]
-    if ([string]::IsNullOrWhiteSpace($firstParentForCurrent)) { continue }
-    if ($mainlineSet.Add($firstParentForCurrent)) {
-      $mainlineList.Add($firstParentForCurrent)
-    }
-    if ($EndRef -and [string]::Equals($firstParentForCurrent, $EndRef, [System.StringComparison]::OrdinalIgnoreCase)) {
-      break
+    if ($touchSet.Add($trimmed)) {
+      $touchList.Add($trimmed)
     }
   }
 
@@ -970,18 +1005,33 @@ function Build-ComparisonPlan {
   function Add-Spec {
     param([object]$Spec, [System.Collections.Generic.HashSet[string]]$KeySet, [System.Collections.Generic.List[object]]$PlanList)
     if (-not $Spec) { return }
-    if ([string]::IsNullOrWhiteSpace($Spec.Head) -or [string]::IsNullOrWhiteSpace($Spec.Base)) { return }
+    $headValue = if ($Spec -is [System.Collections.IDictionary]) { [string]$Spec['Head'] } else { [string]$Spec.Head }
+    $baseValue = if ($Spec -is [System.Collections.IDictionary]) { [string]$Spec['Base'] } else { [string]$Spec.Base }
+    if ([string]::IsNullOrWhiteSpace($headValue) -or [string]::IsNullOrWhiteSpace($baseValue)) { return }
 
-    $lineage = $Spec.Lineage
-    $parentIndexKey = if ($lineage -and $lineage.PSObject.Properties['parentIndex']) { [int]$lineage.parentIndex } else { 0 }
-    $mergeCommitKey = if ($lineage -and $lineage.PSObject.Properties['mergeCommit']) { [string]$lineage.mergeCommit } else { '' }
-    $depthKey = if ($lineage -and $lineage.PSObject.Properties['depth']) { [int]$lineage.depth } else { 0 }
-    $key = "{0}|{1}|{2}|{3}|{4}" -f $Spec.Head, $Spec.Base, $parentIndexKey, $mergeCommitKey, $depthKey
+    $lineage = if ($Spec -is [System.Collections.IDictionary]) { $Spec['Lineage'] } else { $Spec.Lineage }
+    $parentIndexKey = if ($lineage -is [System.Collections.IDictionary]) {
+      if ($lineage.Contains('parentIndex')) { [int]$lineage['parentIndex'] } else { 0 }
+    } elseif ($lineage -and $lineage.PSObject.Properties['parentIndex']) {
+      [int]$lineage.parentIndex
+    } else { 0 }
+    $mergeCommitKey = if ($lineage -is [System.Collections.IDictionary]) {
+      if ($lineage.Contains('mergeCommit')) { [string]$lineage['mergeCommit'] } else { '' }
+    } elseif ($lineage -and $lineage.PSObject.Properties['mergeCommit']) {
+      [string]$lineage.mergeCommit
+    } else { '' }
+    $depthKey = if ($lineage -is [System.Collections.IDictionary]) {
+      if ($lineage.Contains('depth')) { [int]$lineage['depth'] } else { 0 }
+    } elseif ($lineage -and $lineage.PSObject.Properties['depth']) {
+      [int]$lineage.depth
+    } else { 0 }
+    $key = "{0}|{1}|{2}|{3}|{4}" -f $headValue, $baseValue, $parentIndexKey, $mergeCommitKey, $depthKey
     if (-not $KeySet.Add($key)) { return }
     $PlanList.Add([pscustomobject]$Spec) | Out-Null
   }
 
-  foreach ($rawHead in $mainlineList) {
+  for ($index = 0; $index -lt $touchList.Count; $index++) {
+    $rawHead = $touchList[$index]
     $head = $rawHead.Trim()
     if (-not $head) { continue }
 
@@ -998,13 +1048,49 @@ function Build-ComparisonPlan {
 
     $parentCount = $parents.Count
     $firstParent = $parents[0]
+    $nextTouch = $null
+    if (($index + 1) -lt $touchList.Count) {
+      $nextTouch = $touchList[$index + 1]
+    }
 
-    $stopAfter = $EndRef -and [string]::Equals($firstParent, $EndRef, [System.StringComparison]::OrdinalIgnoreCase)
+    $baseCommit = $null
+    $stopAfter = $false
+    $lineageType = 'touch-history'
+
+    if ($EndRef -and $nextTouch -and [string]::Equals($nextTouch, $EndRef, [System.StringComparison]::OrdinalIgnoreCase)) {
+      $baseCommit = $nextTouch
+      $stopAfter = $true
+    } elseif ($EndRef -and (Test-IsAncestorSafe -Ancestor $EndRef -Descendant $head)) {
+      if ($nextTouch) {
+        if (Test-IsAncestorSafe -Ancestor $nextTouch -Descendant $EndRef) {
+          $baseCommit = $EndRef
+          $stopAfter = $true
+        }
+      } else {
+        $baseCommit = $EndRef
+        $stopAfter = $true
+      }
+    }
+
+    if (-not $baseCommit) {
+      if ($nextTouch) {
+        $baseCommit = $nextTouch
+      } else {
+        $baseCommit = $firstParent
+        $lineageType = 'mainline'
+      }
+    }
+
+    if ([string]::IsNullOrWhiteSpace($baseCommit)) {
+      $terminalHint = 'reached-root'
+      break
+    }
+
     $spec = [ordered]@{
       Head            = $head
-      Base            = $firstParent
+      Base            = $baseCommit
       Lineage         = [ordered]@{
-        type        = 'mainline'
+        type        = $lineageType
         parentIndex = 1
         parentCount = $parentCount
         mergeCommit = $head
@@ -1030,7 +1116,7 @@ function Build-ComparisonPlan {
     if ($stopAfter) { break }
   }
 
-  return [ordered]@{
+  return [pscustomobject]@{
     Plan         = $plan.ToArray()
     TerminalHint = $terminalHint
   }
@@ -1054,6 +1140,45 @@ function Test-IsAncestor {
   throw ("git merge-base --is-ancestor failed: {0}" -f $result.StdErr)
 }
 
+function Test-IsAncestorSafe {
+  param(
+    [Parameter(Mandatory = $true)][string]$Ancestor,
+    [Parameter(Mandatory = $true)][string]$Descendant
+  )
+
+  try {
+    return Test-IsAncestor -Ancestor $Ancestor -Descendant $Descendant
+  } catch {
+    return $false
+  }
+}
+
+function Select-TouchHistoryWindow {
+  param(
+    [Parameter(Mandatory = $true)][string[]]$TouchCommits,
+    [Parameter(Mandatory = $true)][string]$StartCommit
+  )
+
+  $selected = New-Object System.Collections.Generic.List[string]
+  $startFound = $false
+  foreach ($rawCommit in $TouchCommits) {
+    $commit = $rawCommit.Trim()
+    if ([string]::IsNullOrWhiteSpace($commit)) { continue }
+    if (-not $startFound) {
+      if (-not [string]::Equals($commit, $StartCommit, [System.StringComparison]::OrdinalIgnoreCase)) {
+        continue
+      }
+      $startFound = $true
+    }
+    $selected.Add($commit) | Out-Null
+  }
+
+  return [pscustomobject]@{
+    Commits    = $selected.ToArray()
+    StartFound = $startFound
+  }
+}
+
 function Resolve-CommitWithChange {
   param(
     [Parameter(Mandatory = $true)][string]$StartRef,
@@ -1065,25 +1190,28 @@ function Resolve-CommitWithChange {
     return $StartRef
   }
 
-  $upRaw = Invoke-Git -Arguments @('rev-list','--first-parent',"$StartRef..$HeadRef",'--',$Path) -Quiet
-  $upList = @($upRaw -split "`n" | Where-Object { $_ })
-  if ($upList.Count -gt 0) {
-    for ($i = $upList.Count - 1; $i -ge 0; $i--) {
-      $commit = $upList[$i]
-      if (Test-IsAncestor -Ancestor $StartRef -Descendant $commit) {
+  $headTouchHistory = @(Get-TouchHistoryCommits -Ref $HeadRef -Path $Path)
+  if ($headTouchHistory.Count -gt 0) {
+    $nearestNewer = $null
+    foreach ($commit in $headTouchHistory) {
+      if (Test-IsAncestorSafe -Ancestor $StartRef -Descendant $commit) {
+        $nearestNewer = $commit
+      }
+    }
+    if ($nearestNewer) {
+      return $nearestNewer
+    }
+
+    foreach ($commit in $headTouchHistory) {
+      if (Test-IsAncestorSafe -Ancestor $commit -Descendant $StartRef) {
         return $commit
       }
     }
   }
 
-  $downRaw = Invoke-Git -Arguments @('rev-list','--first-parent',$StartRef,'--',$Path) -Quiet
-  $downList = @($downRaw -split "`n" | Where-Object { $_ })
+  $downList = @(Get-TouchHistoryCommits -Ref $StartRef -Path $Path)
   if ($downList.Count -gt 0) {
-    foreach ($commit in $downList) {
-      if (Test-CommitTouchesPath -Commit $commit -Path $Path) {
-        return $commit
-      }
-    }
+    return $downList[0]
   }
 
   return $null
@@ -1348,16 +1476,30 @@ Write-Verbose ("StartRef before ensure: {0}; Target: {1}" -f $startRef, $targetR
 Ensure-FileExistsAtRef -Ref $startRef -Path $targetRel
 if ($endRef) { Ensure-FileExistsAtRef -Ref $endRef -Path $targetRel }
 
-$revArgs = @('rev-list','--first-parent',$startRef)
-if ($maxPairsRequested) {
-  $revArgs += ("--max-count={0}" -f ([int]($MaxPairs + 5)))
+$allTouchCommits = @(Get-TouchHistoryCommits -Ref 'HEAD' -Path $targetRel)
+$touchWindow = Select-TouchHistoryWindow -TouchCommits $allTouchCommits -StartCommit $startRef
+$commitList = @()
+if ($touchWindow.StartFound) {
+  $commitList = @($touchWindow.Commits)
+} elseif (Test-CommitTouchesPath -Commit $startRef -Path $targetRel) {
+  $olderTouches = New-Object System.Collections.Generic.List[string]
+  foreach ($commit in $allTouchCommits) {
+    if (Test-IsAncestorSafe -Ancestor $commit -Descendant $startRef) {
+      $olderTouches.Add($commit) | Out-Null
+    }
+  }
+  $commitList = @($startRef)
+  if ($olderTouches.Count -gt 0) {
+    $commitList += @($olderTouches.ToArray())
+  }
+} else {
+  $commitList = @(Get-TouchHistoryCommits -Ref $startRef -Path $targetRel)
 }
-$revArgs += '--'
-$revArgs += $targetRel
-$revListRaw = Invoke-Git -Arguments $revArgs -Quiet
-$commitList = @($revListRaw -split "`n" | Where-Object { $_ })
+if ($maxPairsRequested -and $commitList.Count -gt ($MaxPairs + 5)) {
+  $commitList = @($commitList | Select-Object -First ([int]($MaxPairs + 5)))
+}
 Write-Verbose ("Commit list count: {0}" -f $commitList.Count)
-$planResult = Build-ComparisonPlan -MainlineCommits $commitList -TargetRel $targetRel -EndRef $endRef -IncludeMergeParents:$IncludeMergeParents.IsPresent
+$planResult = Build-ComparisonPlan -TouchCommits $commitList -TargetRel $targetRel -EndRef $endRef -IncludeMergeParents:$IncludeMergeParents.IsPresent
 $comparisonPlan = @()
 $planTerminalHint = $null
 if ($planResult) {
@@ -1916,10 +2058,18 @@ foreach ($modeSpec in $modeSpecs) {
       $cliCategoryBuckets = @()
       $cliCategoryBucketDetails = @()
       if ($summaryJson.cli -and $summaryJson.cli.PSObject.Properties['highlights'] -and $summaryJson.cli.highlights) {
-        $highlights += @($summaryJson.cli.highlights | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+        $highlights += @(
+          $summaryJson.cli.highlights |
+            Where-Object { -not [string]::IsNullOrWhiteSpace($_) } |
+            Where-Object { -not (Test-IsComparisonIdentityLabel -Value ([string]$_)) }
+        )
       }
       if ($summaryJson.cli -and $summaryJson.cli.PSObject.Properties['categories'] -and $summaryJson.cli.categories) {
-        $cliCategories += @($summaryJson.cli.categories | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+        $cliCategories += @(
+          $summaryJson.cli.categories |
+            Where-Object { -not [string]::IsNullOrWhiteSpace($_) } |
+            Where-Object { -not (Test-IsComparisonIdentityLabel -Value ([string]$_)) }
+        )
       }
       if ($summaryJson.cli -and $summaryJson.cli.PSObject.Properties['categoryDetails'] -and $summaryJson.cli.categoryDetails) {
         $cliCategoryDetails += @($summaryJson.cli.categoryDetails)

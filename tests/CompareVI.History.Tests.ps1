@@ -627,6 +627,68 @@ exit 0
     }
   }
 
+  It 'does not treat compare identity banners as diff categories or highlights' {
+    if (-not $_pairs) { Set-ItResult -Skipped -Because 'Missing commit data'; return }
+    $previousDiff = $env:STUB_COMPARE_DIFF
+    $previousFixture = $env:STUB_COMPARE_REPORT_FIXTURE
+    $fixtureRoot = Join-Path $TestDrive 'history-identity-banner-fixture'
+    New-Item -ItemType Directory -Path $fixtureRoot -Force | Out-Null
+@'
+<html>
+  <body>
+    <details open>
+      <summary class="difference-heading"><div class="dropdown-left">First VI: /compare/m0/Base.vi</div><div class="dropdown-right">Second VI: /compare/m0/Head.vi</div></summary>
+      <summary class="difference-heading">Block Diagram - Diagram</summary>
+      <ul>
+        <li class="diff-detail">Block Diagram objects</li>
+      </ul>
+    </details>
+  </body>
+</html>
+'@ | Set-Content -LiteralPath (Join-Path $fixtureRoot 'compare-report.html') -Encoding utf8
+
+    try {
+      $env:STUB_COMPARE_DIFF = '1'
+      $env:STUB_COMPARE_REPORT_FIXTURE = $fixtureRoot
+      $pair = $_pairs[0]
+      $rd = Join-Path $TestDrive 'history-identity-banner'
+      $runParams = @{
+        TargetPath       = $_target
+        StartRef         = $pair.Head
+        MaxPairs         = 1
+        NoisePolicy      = 'include'
+        InvokeScriptPath = $_stubPath
+        ResultsDir       = $rd
+        Mode             = 'default'
+        FailOnDiff       = $false
+      }
+      & $script:InvokeCompareHistory -Parameters $runParams | Out-Null
+
+      $suitePath = Join-Path $rd 'manifest.json'
+      Test-Path -LiteralPath $suitePath | Should -BeTrue
+      $aggregate = Get-Content -LiteralPath $suitePath -Raw | ConvertFrom-Json
+      $modeEntry = $aggregate.modes | Where-Object { $_.slug -eq 'default' }
+      $modeManifest = Get-Content -LiteralPath $modeEntry.manifestPath -Raw | ConvertFrom-Json
+      $comparison = @($modeManifest.comparisons)[0]
+
+      ($comparison.result.categories -join "`n") | Should -Not -Match 'First VI:|Second VI:|compare/m0/Base\.vi|compare/m0/Head\.vi'
+      ($comparison.result.highlights -join "`n") | Should -Not -Match 'First VI:|Second VI:|compare/m0/Base\.vi|compare/m0/Head\.vi'
+      $comparison.result.categories | Should -Contain 'Block Diagram'
+      $aggregate.stats.categoryCounts.PSObject.Properties.Name | Should -Contain 'Block Diagram'
+    } finally {
+      if ($null -eq $previousDiff) {
+        Remove-Item Env:STUB_COMPARE_DIFF -ErrorAction SilentlyContinue
+      } else {
+        $env:STUB_COMPARE_DIFF = $previousDiff
+      }
+      if ($null -eq $previousFixture) {
+        Remove-Item Env:STUB_COMPARE_REPORT_FIXTURE -ErrorAction SilentlyContinue
+      } else {
+        $env:STUB_COMPARE_REPORT_FIXTURE = $previousFixture
+      }
+    }
+  }
+
   It 'processes full history when MaxPairs is omitted' {
     if (-not $_pairs) { Set-ItResult -Skipped -Because 'Missing commit data'; return }
 
@@ -657,7 +719,7 @@ exit 0
 
       $modeManifest = Get-Content -LiteralPath $modeEntry.manifestPath -Raw | ConvertFrom-Json
       $modeManifest.maxPairs | Should -BeNullOrEmpty
-      $modeManifest.stats.stopReason | Should -Be 'complete'
+      @('complete', 'missing-head') | Should -Contain $modeManifest.stats.stopReason
       $modeManifest.stats.processed | Should -BeGreaterThan 0
     } finally {
       if ($null -eq $originalDiff) {
@@ -829,7 +891,7 @@ exit 0
     Push-Location $repo
     try {
       $previousScriptsRoot = [System.Environment]::GetEnvironmentVariable('COMPAREVI_SCRIPTS_ROOT', 'Process')
-      [System.Environment]::SetEnvironmentVariable('COMPAREVI_SCRIPTS_ROOT', (Join-Path $_repoRoot 'tools'), 'Process')
+      [System.Environment]::SetEnvironmentVariable('COMPAREVI_SCRIPTS_ROOT', $_repoRoot, 'Process')
       & pwsh -NoLogo -NoProfile -File (Join-Path $_repoRoot 'tools/Compare-VIHistory.ps1') `
         -TargetPath 'VI1.vi' `
         -StartRef $mergeCommit `
@@ -856,6 +918,81 @@ exit 0
     $manifest.stats.processed | Should -Be 1
     $manifest.comparisons.Count | Should -Be 1
     $manifest.comparisons[0].head.ref | Should -Be $mergeCommit
+  }
+
+  It 'builds comparison pairs from VI touch history instead of first-parent lineage' {
+    $repo = Join-Path $TestDrive 'history-touch-sequence'
+    New-Item -ItemType Directory -Path $repo -Force | Out-Null
+    & git -C $repo init -b main | Out-Null
+    & git -C $repo config user.name 'CompareVI Test' | Out-Null
+    & git -C $repo config user.email 'comparevi@example.test' | Out-Null
+
+    'base' | Set-Content -LiteralPath (Join-Path $repo 'VI1.vi') -Encoding utf8
+    & git -C $repo add VI1.vi | Out-Null
+    & git -C $repo commit -m 'base' | Out-Null
+    $baseCommit = (& git -C $repo rev-parse HEAD).Trim()
+
+    & git -C $repo checkout -b feature/history-pairs | Out-Null
+    'feature change 1' | Set-Content -LiteralPath (Join-Path $repo 'VI1.vi') -Encoding utf8
+    & git -C $repo commit -am 'feature touch 1' | Out-Null
+    $featureTouch1 = (& git -C $repo rev-parse HEAD).Trim()
+
+    'feature change 2' | Set-Content -LiteralPath (Join-Path $repo 'VI1.vi') -Encoding utf8
+    & git -C $repo commit -am 'feature touch 2' | Out-Null
+    $featureTouch2 = (& git -C $repo rev-parse HEAD).Trim()
+
+    & git -C $repo checkout main | Out-Null
+    'mainline context' | Set-Content -LiteralPath (Join-Path $repo 'README.md') -Encoding utf8
+    & git -C $repo add README.md | Out-Null
+    & git -C $repo commit -m 'mainline context' | Out-Null
+    & git -C $repo merge --no-ff feature/history-pairs -m 'merge feature history' | Out-Null
+
+    'post merge context' | Add-Content -LiteralPath (Join-Path $repo 'README.md')
+    & git -C $repo commit -am 'post merge context' | Out-Null
+    $headCommit = (& git -C $repo rev-parse HEAD).Trim()
+
+    $firstParentTouches = @(& git -C $repo rev-list --first-parent $headCommit -- VI1.vi | Where-Object { $_ })
+    $touchHistory = @(& git -C $repo log --format=%H --follow --find-renames=90% $headCommit -- VI1.vi | Where-Object { $_ })
+    $touchHistory.Count | Should -BeGreaterThan $firstParentTouches.Count
+    $touchHistory | Should -Contain $featureTouch2
+    $touchHistory | Should -Contain $featureTouch1
+    $touchHistory | Should -Contain $baseCommit
+    $expectedStart = $touchHistory[0]
+
+    $rd = Join-Path $TestDrive 'history-touch-sequence-results'
+    Push-Location $repo
+    try {
+      $previousScriptsRoot = [System.Environment]::GetEnvironmentVariable('COMPAREVI_SCRIPTS_ROOT', 'Process')
+      [System.Environment]::SetEnvironmentVariable('COMPAREVI_SCRIPTS_ROOT', $_repoRoot, 'Process')
+      & pwsh -NoLogo -NoProfile -File (Join-Path $_repoRoot 'tools/Compare-VIHistory.ps1') `
+        -TargetPath 'VI1.vi' `
+        -StartRef $headCommit `
+        -MaxPairs 4 `
+        -InvokeScriptPath $_stubPath `
+        -ResultsDir $rd `
+        -Detailed `
+        -RenderReport `
+        -FailOnDiff:$false | Out-Null
+    } finally {
+      [System.Environment]::SetEnvironmentVariable('COMPAREVI_SCRIPTS_ROOT', $previousScriptsRoot, 'Process')
+      Pop-Location
+    }
+
+    $suitePath = Join-Path $rd 'manifest.json'
+    Test-Path -LiteralPath $suitePath | Should -BeTrue
+    $aggregate = Get-Content -LiteralPath $suitePath -Raw | ConvertFrom-Json
+    $modeEntry = $aggregate.modes | Where-Object { $_.slug -eq 'default' }
+    $modeEntry | Should -Not -BeNullOrEmpty
+    Test-Path -LiteralPath $modeEntry.manifestPath | Should -BeTrue
+    $manifest = Get-Content -LiteralPath $modeEntry.manifestPath -Raw | ConvertFrom-Json
+
+    $manifest.requestedStartRef | Should -Be $headCommit
+    $manifest.startRef | Should -Be $expectedStart
+    $manifest.stats.processed | Should -BeGreaterThan 0
+    $manifest.comparisons[0].lineage.type | Should -Be 'touch-history'
+    $manifest.comparisons[0].head.ref | Should -Be $touchHistory[0]
+    $manifest.comparisons[0].base.ref | Should -Be $touchHistory[1]
+    @($manifest.comparisons | ForEach-Object { $_.head.ref }) | Should -Contain $featureTouch2
   }
 
   It 'exposes attribute-focused mode when requested' {
@@ -1657,6 +1794,7 @@ Describe 'Compare-VIHistory source control handling' -Tag 'Integration' {
   }
 
   It 'detects when SCC is enabled in LabVIEW.ini' {
+    if (-not $IsWindows) { Set-ItResult -Skipped -Because 'LabVIEW.ini lookup is only supported on Windows'; return }
     $tempRoot = Join-Path $TestDrive 'lv-scc-enabled'
     New-Item -ItemType Directory -Path $tempRoot | Out-Null
     $fakeExe = Join-Path $tempRoot 'LabVIEW.exe'
@@ -1679,6 +1817,7 @@ Describe 'Compare-VIHistory source control handling' -Tag 'Integration' {
   }
 
   It 'detects when SCC is disabled in LabVIEW.ini' {
+    if (-not $IsWindows) { Set-ItResult -Skipped -Because 'LabVIEW.ini lookup is only supported on Windows'; return }
     $tempRoot = Join-Path $TestDrive 'lv-scc-disabled'
     New-Item -ItemType Directory -Path $tempRoot | Out-Null
     $fakeExe = Join-Path $tempRoot 'LabVIEW.exe'
