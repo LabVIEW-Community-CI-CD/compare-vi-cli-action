@@ -118,6 +118,7 @@ $modeDefinitions = @{
     slug         = 'block-diagram'
     presetFlags  = $null
     adjustments  = @{
+      ForceNoBd    = $false
       FlagNoBdCosm = $false
     }
   }

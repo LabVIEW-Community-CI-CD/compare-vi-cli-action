@@ -8,10 +8,16 @@ This document tracks the atomic test requirements for `tools/Compare-VIHistory.p
 1. Manifest shall record `mode` equal to the requested value.
 1. Each comparison entry shall record `mode` equal to the requested value.
 1. `manifest.flags` shall contain the expected flag bundle per mode:
-   - `default`: no ignore flags present.
-   - `attributes`: includes `-noattr` only.
-   - `front-panel`: includes `-nofp`, `-nofppos` only.
-   - `block-diagram`: includes `-nobdcosm` only.
+   - `default`: includes the legacy suppression bundle
+     (`-nobd`, `-noattr`, `-nofp`, `-nofppos`, `-nobdcosm`).
+   - `attributes`: keeps attribute diffs visible while still suppressing
+     block-diagram and front-panel surfaces
+     (`-nobd`, `-nofp`, `-nofppos`, `-nobdcosm`).
+   - `front-panel`: keeps front-panel diffs visible while still suppressing
+     attributes and block-diagram surfaces (`-nobd`, `-noattr`,
+     `-nobdcosm`).
+   - `block-diagram`: keeps block-diagram diffs visible while still suppressing
+     attributes and front-panel surfaces (`-noattr`, `-nofp`, `-nofppos`).
    - `full`: no ignore flags present (all ignore flags disabled).
    - `all`: legacy alias for `full` (the tooling rewrites it and warns).
    - `custom`: flag list matches explicit inputs.

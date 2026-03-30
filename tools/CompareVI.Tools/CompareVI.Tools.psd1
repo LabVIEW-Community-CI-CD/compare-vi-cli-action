@@ -1,6 +1,6 @@
 @{
   RootModule        = 'CompareVI.Tools.psm1'
-  ModuleVersion     = '0.6.7'
+  ModuleVersion     = '0.6.8'
   GUID              = '1f9b5f7f-1ab6-4db9-8e36-6b7a6d5e9c8f'
   Author            = 'LabVIEW Community CI'
   CompanyName       = 'LabVIEW Community'
