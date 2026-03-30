@@ -14,6 +14,7 @@ import {
 
 async function seedRepo(repoDir, {
   packageVersion = '0.1.0',
+  packageLockVersion = packageVersion,
   propsVersion = '0.1.0',
   moduleVersion = '0.1.0',
   modulePrerelease = null
@@ -21,6 +22,23 @@ async function seedRepo(repoDir, {
   await writeFile(
     path.join(repoDir, 'package.json'),
     JSON.stringify({ name: 'test', version: packageVersion }, null, 2) + '\n',
+    'utf8'
+  );
+
+  await writeFile(
+    path.join(repoDir, 'package-lock.json'),
+    JSON.stringify({
+      name: 'test',
+      version: packageLockVersion,
+      lockfileVersion: 3,
+      requires: true,
+      packages: {
+        '': {
+          name: 'test',
+          version: packageLockVersion
+        }
+      }
+    }, null, 2) + '\n',
     'utf8'
   );
 
@@ -89,6 +107,8 @@ test('syncReleaseSurfaceVersions updates package, props, and module manifest tog
   const update = await syncReleaseSurfaceVersions(repoDir, '0.6.3');
   assert.equal(update.previous.packageVersion, '0.1.0');
   assert.equal(update.next.packageVersion, '0.6.3');
+  assert.equal(update.next.packageLockVersion, '0.6.3');
+  assert.equal(update.next.packageLockRootPackageVersion, '0.6.3');
   assert.equal(update.next.propsVersion, '0.6.3');
   assert.equal(update.next.sharedPackageVersion, '0.6.3');
   assert.equal(update.next.moduleVersion, '0.6.3');
@@ -105,6 +125,7 @@ test('evaluateReleaseSurfaceVersionExpectations reports mismatched surfaces', as
 
   await seedRepo(repoDir, {
     packageVersion: '0.6.3',
+    packageLockVersion: '0.1.0',
     propsVersion: '0.1.0',
     moduleVersion: '0.1.0'
   });
@@ -112,6 +133,7 @@ test('evaluateReleaseSurfaceVersionExpectations reports mismatched surfaces', as
   const actual = await readReleaseSurfaceVersions(repoDir);
   const evaluation = evaluateReleaseSurfaceVersionExpectations('0.6.3', actual);
   assert.equal(evaluation.valid, false);
+  assert.match(evaluation.issues.join(' '), /package-lock\.json version/);
   assert.match(evaluation.issues.join(' '), /Directory\.Build\.props Version/);
   assert.match(evaluation.issues.join(' '), /CompareVI\.Tools ModuleVersion/);
 });

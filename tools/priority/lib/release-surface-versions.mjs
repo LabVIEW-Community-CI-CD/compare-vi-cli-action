@@ -6,6 +6,7 @@ import path from 'node:path';
 
 export const RELEASE_SURFACE_VERSION_FILES = [
   'package.json',
+  'package-lock.json',
   'Directory.Build.props',
   'tools/CompareVI.Tools/CompareVI.Tools.psd1'
 ];
@@ -94,16 +95,19 @@ export function deriveReleaseSurfaceVersions(semver) {
 
 export async function readReleaseSurfaceVersions(repoRoot) {
   const pkgPath = path.join(repoRoot, 'package.json');
+  const packageLockPath = path.join(repoRoot, 'package-lock.json');
   const propsPath = path.join(repoRoot, 'Directory.Build.props');
   const moduleManifestPath = path.join(repoRoot, 'tools', 'CompareVI.Tools', 'CompareVI.Tools.psd1');
 
-  const [pkgRaw, propsRaw, manifestRaw] = await Promise.all([
+  const [pkgRaw, packageLockRaw, propsRaw, manifestRaw] = await Promise.all([
     readFile(pkgPath, 'utf8'),
+    readFile(packageLockPath, 'utf8'),
     readFile(propsPath, 'utf8'),
     readFile(moduleManifestPath, 'utf8')
   ]);
 
   const pkg = JSON.parse(pkgRaw);
+  const packageLock = JSON.parse(packageLockRaw);
   const propsVersion = readTextTag(propsRaw, 'Version');
   const sharedPackageVersionRaw = readTextTag(propsRaw, 'CompareViSharedPackageVersion');
   const moduleVersion = readModuleManifestProperty(manifestRaw, 'ModuleVersion');
@@ -112,6 +116,10 @@ export async function readReleaseSurfaceVersions(repoRoot) {
 
   return {
     packageVersion: pkg.version ? String(pkg.version) : null,
+    packageLockVersion: packageLock.version ? String(packageLock.version) : null,
+    packageLockRootPackageVersion: packageLock?.packages?.['']?.version
+      ? String(packageLock.packages[''].version)
+      : null,
     propsVersion,
     cliVersion: propsVersion,
     sharedPackageVersion: sharedPackageVersionRaw === '$(Version)' ? propsVersion : sharedPackageVersionRaw,
@@ -126,14 +134,17 @@ export async function readReleaseSurfaceVersions(repoRoot) {
 
 export function readReleaseSurfaceVersionsSync(repoRoot) {
   const pkgPath = path.join(repoRoot, 'package.json');
+  const packageLockPath = path.join(repoRoot, 'package-lock.json');
   const propsPath = path.join(repoRoot, 'Directory.Build.props');
   const moduleManifestPath = path.join(repoRoot, 'tools', 'CompareVI.Tools', 'CompareVI.Tools.psd1');
 
   const pkgRaw = readFileSync(pkgPath, 'utf8');
+  const packageLockRaw = readFileSync(packageLockPath, 'utf8');
   const propsRaw = readFileSync(propsPath, 'utf8');
   const manifestRaw = readFileSync(moduleManifestPath, 'utf8');
 
   const pkg = JSON.parse(pkgRaw);
+  const packageLock = JSON.parse(packageLockRaw);
   const propsVersion = readTextTag(propsRaw, 'Version');
   const sharedPackageVersionRaw = readTextTag(propsRaw, 'CompareViSharedPackageVersion');
   const moduleVersion = readModuleManifestProperty(manifestRaw, 'ModuleVersion');
@@ -142,6 +153,10 @@ export function readReleaseSurfaceVersionsSync(repoRoot) {
 
   return {
     packageVersion: pkg.version ? String(pkg.version) : null,
+    packageLockVersion: packageLock.version ? String(packageLock.version) : null,
+    packageLockRootPackageVersion: packageLock?.packages?.['']?.version
+      ? String(packageLock.packages[''].version)
+      : null,
     propsVersion,
     cliVersion: propsVersion,
     sharedPackageVersion: sharedPackageVersionRaw === '$(Version)' ? propsVersion : sharedPackageVersionRaw,
@@ -160,6 +175,8 @@ export function evaluateReleaseSurfaceVersionExpectations(expectedSemver, actual
 
   const comparisons = [
     ['package.json version', actualVersions.packageVersion, expected.packageVersion],
+    ['package-lock.json version', actualVersions.packageLockVersion, expected.packageVersion],
+    ['package-lock.json packages[\"\"] version', actualVersions.packageLockRootPackageVersion, expected.packageVersion],
     ['Directory.Build.props Version', actualVersions.propsVersion, expected.propsVersion],
     ['comparevi-cli version', actualVersions.cliVersion, expected.cliVersion],
     ['CompareVi.Shared package version', actualVersions.sharedPackageVersion, expected.sharedPackageVersion],
@@ -188,12 +205,20 @@ export async function syncReleaseSurfaceVersions(repoRoot, semver) {
   const previous = await readReleaseSurfaceVersions(repoRoot);
 
   const pkgPath = path.join(repoRoot, 'package.json');
+  const packageLockPath = path.join(repoRoot, 'package-lock.json');
   const propsPath = path.join(repoRoot, 'Directory.Build.props');
   const moduleManifestPath = path.join(repoRoot, 'tools', 'CompareVI.Tools', 'CompareVI.Tools.psd1');
 
   const pkg = JSON.parse(await readFile(pkgPath, 'utf8'));
   pkg.version = semver;
   await writeFile(pkgPath, `${JSON.stringify(pkg, null, 2)}\n`, 'utf8');
+
+  const packageLock = JSON.parse(await readFile(packageLockPath, 'utf8'));
+  packageLock.version = semver;
+  if (packageLock?.packages?.['']) {
+    packageLock.packages[''].version = semver;
+  }
+  await writeFile(packageLockPath, `${JSON.stringify(packageLock, null, 2)}\n`, 'utf8');
 
   let propsRaw = await readFile(propsPath, 'utf8');
   propsRaw = replaceTextTag(propsRaw, 'Version', expected.propsVersion);
