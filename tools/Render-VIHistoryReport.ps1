@@ -664,11 +664,15 @@ function Get-BucketLabelEntries {
   foreach ($item in $items) {
     if ($null -eq $item) { continue }
     $slug = $null
+    $classification = $null
     if ($item -is [pscustomobject]) {
       if ($item.PSObject.Properties['bucketSlug']) {
         $slug = [string]$item.bucketSlug
       } elseif ($item.PSObject.Properties['slug']) {
         $slug = [string]$item.slug
+      }
+      if ($item.PSObject.Properties['classification']) {
+        $classification = [string]$item.classification
       }
     } else {
       $slug = [string]$item
@@ -680,7 +684,7 @@ function Get-BucketLabelEntries {
         $entries.Add([pscustomobject]@{
           slug           = $meta.slug
           label          = $meta.label
-          classification = $meta.classification
+          classification = if ([string]::IsNullOrWhiteSpace($classification)) { $meta.classification } else { $classification }
         }) | Out-Null
       }
     }
@@ -1252,22 +1256,26 @@ foreach ($decisionEntry in $signalComparisonEntries) {
     $bucketLabel = [string]$decisionBucketEntry.label
     if ([string]::IsNullOrWhiteSpace($bucketLabel)) { continue }
     $bucketDisplayLabel = $bucketLabel
+    $isContextBucket = $false
     switch ([string]$decisionBucketEntry.classification) {
       'noise' {
         $bucketDisplayLabel = '{0} (noise)' -f $bucketLabel
         if ($decisionContextBucketSet.Add($bucketDisplayLabel)) {
           $decisionContextBuckets.Add($bucketDisplayLabel) | Out-Null
         }
-        continue
+        $isContextBucket = $true
+        break
       }
       'neutral' {
         $bucketDisplayLabel = '{0} (neutral)' -f $bucketLabel
         if ($decisionContextBucketSet.Add($bucketDisplayLabel)) {
           $decisionContextBuckets.Add($bucketDisplayLabel) | Out-Null
         }
-        continue
+        $isContextBucket = $true
+        break
       }
     }
+    if ($isContextBucket) { continue }
     if ($decisionFocusBucketSet.Add($bucketDisplayLabel)) {
       $decisionFocusBuckets.Add($bucketDisplayLabel) | Out-Null
     }
