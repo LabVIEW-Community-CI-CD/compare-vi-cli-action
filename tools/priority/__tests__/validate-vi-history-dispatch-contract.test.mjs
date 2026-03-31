@@ -66,12 +66,13 @@ test('validate workflow Windows VI-history lane is gated by shared dispatch plan
   assert.match(planSection, /permissions:\s*\r?\n\s+contents: read/);
   assert.match(planSection, /Resolve self-hosted Windows Docker lane/);
   assert.match(planSection, /tools\/Resolve-SelfHostedWindowsLanePlan\.ps1/);
-  assert.match(planSection, /\$args = @\(/);
-  assert.match(planSection, /'-RequiredLabels'/);
-  assert.match(planSection, /\) \+ \$requiredLabels \+ @\(/);
+  assert.match(planSection, /\$plannerArgs = @\{/);
+  assert.match(planSection, /RequiredLabels = \$requiredLabels/);
+  assert.match(planSection, /Notes = @\(/);
   assert.match(planSection, /if \(\$requiredHealthReceipts\.Count -gt 0\)/);
-  assert.match(planSection, /\$args \+= '-RequiredHealthReceipts'/);
-  assert.match(planSection, /& pwsh @args/);
+  assert.match(planSection, /\$plannerArgs\.RequiredHealthReceipts = \$requiredHealthReceipts/);
+  assert.match(planSection, /& tools\/Resolve-SelfHostedWindowsLanePlan\.ps1 @plannerArgs/);
+  assert.doesNotMatch(planSection, /& pwsh @args/);
   assert.match(planSection, /docker-lane/);
   assert.match(planSection, /outputs:\s*\r?\n\s+available:\s+\$\{\{\s*steps\.plan\.outputs\.available\s*\}\}/);
 
