@@ -98,7 +98,7 @@ on:
         type: string
 
 concurrency:
-  group: ${{ github.workflow }}-pester-run-${{ github.event.inputs.sample_id || inputs.sample_id || github.ref }}
+  group: pester-run-${{ github.event.inputs.sample_id || inputs.sample_id || github.ref }}
   cancel-in-progress: true
 
 jobs:

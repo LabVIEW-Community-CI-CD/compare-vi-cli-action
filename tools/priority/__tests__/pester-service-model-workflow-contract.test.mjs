@@ -47,6 +47,7 @@ test('pester context owns repo/control-plane receipts before host readiness begi
 
   assert.match(workflow, /name:\s+Pester context/);
   assert.match(workflow, /workflow_call:/);
+  assert.match(workflow, /group:\s+pester-context-\$\{\{\s*github\.event\.inputs\.sample_id \|\| inputs\.sample_id \|\| github\.ref\s*\}\}/);
   assert.match(workflow, /receipt_status:/);
   assert.match(workflow, /standing_priority_issue:/);
   assert.match(workflow, /standing_priority_reason:/);
@@ -62,6 +63,7 @@ test('selfhosted readiness owns host-plane certification and emits a receipt art
 
   assert.match(workflow, /name:\s+Self-hosted readiness/);
   assert.match(workflow, /workflow_call:/);
+  assert.match(workflow, /group:\s+selfhosted-readiness-\$\{\{\s*github\.event\.inputs\.sample_id \|\| inputs\.sample_id \|\| github\.ref\s*\}\}/);
   assert.match(workflow, /receipt_status:/);
   assert.match(workflow, /runs-on:\s*\[self-hosted, Windows, X64, comparevi, capability-ingress\]/);
   assert.match(workflow, /repository:\s+\$\{\{\s*inputs\.checkout_repository \|\| github\.repository\s*\}\}/);
@@ -81,6 +83,7 @@ test('pester selection owns pack shaping and dispatcher profile resolution befor
 
   assert.match(workflow, /name:\s+Pester selection/);
   assert.match(workflow, /workflow_call:/);
+  assert.match(workflow, /group:\s+pester-selection-\$\{\{\s*github\.event\.inputs\.sample_id \|\| inputs\.sample_id \|\| github\.ref\s*\}\}/);
   assert.match(workflow, /receipt_status:/);
   assert.match(workflow, /receipt_artifact_name:/);
   assert.match(workflow, /Normalize include_integration/);
@@ -97,6 +100,7 @@ test('pester run is execution-only and validates context, readiness, and selecti
 
   assert.match(workflow, /name:\s+Pester run/);
   assert.match(workflow, /name:\s+Pester \(execution only\)/);
+  assert.match(workflow, /group:\s+pester-run-\$\{\{\s*github\.event\.inputs\.sample_id \|\| inputs\.sample_id \|\| github\.ref\s*\}\}/);
   assert.match(workflow, /if:\s+\$\{\{\s*inputs\.context_status == 'ready' && inputs\.readiness_status == 'ready' && inputs\.selection_status == 'ready'\s*\}\}/);
   assert.match(workflow, /execution_status:/);
   assert.match(workflow, /execution_receipt_artifact_name:/);
