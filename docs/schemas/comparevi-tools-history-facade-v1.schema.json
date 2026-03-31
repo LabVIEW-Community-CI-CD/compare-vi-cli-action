@@ -10,6 +10,7 @@
     "execution",
     "observedInterpretation",
     "summary",
+    "decisionGuidance",
     "reports",
     "modes"
   ],
@@ -141,6 +142,66 @@
           "type": "string"
         },
         "outcomeLabels": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "decisionGuidance": {
+      "type": "object",
+      "required": [
+        "reviewPriority",
+        "latestPair",
+        "signalPairs",
+        "collapsedPairs",
+        "focusBuckets",
+        "contextBuckets"
+      ],
+      "properties": {
+        "reviewPriority": {
+          "type": "string"
+        },
+        "latestPair": {
+          "type": "object",
+          "required": [
+            "index",
+            "status"
+          ],
+          "properties": {
+            "index": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "status": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false
+        },
+        "signalPairs": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "collapsedPairs": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "focusBuckets": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "contextBuckets": {
           "type": "array",
           "items": {
             "type": "string"

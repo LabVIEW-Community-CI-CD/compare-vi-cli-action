@@ -1445,6 +1445,12 @@ exit 0
       $historySummary.observedInterpretation.coverageClass | Should -Be 'catalog-aligned'
       @($historySummary.execution.requestedModes) | Should -Be @('default')
       @($historySummary.execution.executedModes) | Should -Be @('default')
+      $historySummary.decisionGuidance.reviewPriority | Should -Be 'metadata-only-history'
+      @($historySummary.decisionGuidance.signalPairs) | Should -Be @()
+      @($historySummary.decisionGuidance.collapsedPairs) | Should -Be @(1)
+      $historySummary.decisionGuidance.latestPair.index | Should -Be 1
+      $historySummary.decisionGuidance.latestPair.status | Should -Be 'collapsed-noise'
+      @($historySummary.decisionGuidance.PSObject.Properties.Name) | Should -Contain 'contextBuckets'
 
       $historyMd = Get-Content -LiteralPath (Join-Path $rd 'history-report.md') -Raw
       $historyMd | Should -Match 'Requested Modes: `default`'

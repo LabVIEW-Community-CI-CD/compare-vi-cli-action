@@ -1236,6 +1236,8 @@ $signalComparisonEntries = @(
 )
 $decisionFocusBuckets = New-Object System.Collections.Generic.List[string]
 $decisionFocusBucketSet = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+$decisionContextBuckets = New-Object System.Collections.Generic.List[string]
+$decisionContextBucketSet = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
 foreach ($decisionEntry in $signalComparisonEntries) {
   $decisionResultNode = $decisionEntry.result
   if (-not $decisionResultNode) { continue }
@@ -1249,8 +1251,25 @@ foreach ($decisionEntry in $signalComparisonEntries) {
     if ($null -eq $decisionBucketEntry) { continue }
     $bucketLabel = [string]$decisionBucketEntry.label
     if ([string]::IsNullOrWhiteSpace($bucketLabel)) { continue }
-    if ($decisionFocusBucketSet.Add($bucketLabel)) {
-      $decisionFocusBuckets.Add($bucketLabel) | Out-Null
+    $bucketDisplayLabel = $bucketLabel
+    switch ([string]$decisionBucketEntry.classification) {
+      'noise' {
+        $bucketDisplayLabel = '{0} (noise)' -f $bucketLabel
+        if ($decisionContextBucketSet.Add($bucketDisplayLabel)) {
+          $decisionContextBuckets.Add($bucketDisplayLabel) | Out-Null
+        }
+        continue
+      }
+      'neutral' {
+        $bucketDisplayLabel = '{0} (neutral)' -f $bucketLabel
+        if ($decisionContextBucketSet.Add($bucketDisplayLabel)) {
+          $decisionContextBuckets.Add($bucketDisplayLabel) | Out-Null
+        }
+        continue
+      }
+    }
+    if ($decisionFocusBucketSet.Add($bucketDisplayLabel)) {
+      $decisionFocusBuckets.Add($bucketDisplayLabel) | Out-Null
     }
   }
 }
@@ -1294,6 +1313,9 @@ if ($sortedComparisons.Count -gt 0) {
   }
   if ($decisionFocusBuckets.Count -gt 0) {
     $summaryLines.Add(('- Focus buckets: `{0}`' -f ([string]::Join(', ', @($decisionFocusBuckets.ToArray())))))
+  }
+  if ($decisionContextBuckets.Count -gt 0) {
+    $summaryLines.Add(('- Context buckets: `{0}`' -f ([string]::Join(', ', @($decisionContextBuckets.ToArray())))))
   }
 }
 
@@ -1646,6 +1668,9 @@ if ($emitHtml -and $HtmlPath) {
     if ($decisionFocusBuckets.Count -gt 0) {
       [void]$htmlBuilder.AppendLine(('    <li><strong>Focus buckets</strong><span>{0}</span></li>' -f (ConvertTo-HtmlSafe ([string]::Join(', ', @($decisionFocusBuckets.ToArray()))))))
     }
+    if ($decisionContextBuckets.Count -gt 0) {
+      [void]$htmlBuilder.AppendLine(('    <li><strong>Context buckets</strong><span>{0}</span></li>' -f (ConvertTo-HtmlSafe ([string]::Join(', ', @($decisionContextBuckets.ToArray()))))))
+    }
     [void]$htmlBuilder.AppendLine('  </ul>')
   }
 
@@ -1924,6 +1949,17 @@ $historySummary = [ordered]@{
     coverageDetail = [string]$coverageClassDetail
     modeSensitivity = [string]$modeSensitivity
     outcomeLabels = @(Get-SortedUniqueStringArray -Value $outcomeLabels)
+  }
+  decisionGuidance = [ordered]@{
+    reviewPriority = [string]$decisionReviewPriority
+    latestPair = [ordered]@{
+      index = if ($latestComparisonEntry) { [int](Coalesce $latestComparisonEntry.index 0) } else { 0 }
+      status = [string]$decisionLatestStatus
+    }
+    signalPairs = @($signalComparisonEntries | ForEach-Object { [int](Coalesce $_.index 0) })
+    collapsedPairs = @($collapsedComparisonEntries | ForEach-Object { [int](Coalesce $_.index 0) })
+    focusBuckets = @($decisionFocusBuckets.ToArray())
+    contextBuckets = @($decisionContextBuckets.ToArray())
   }
   summary = [ordered]@{
     modes = if ($stats -and $stats.PSObject.Properties['modes']) { [int]$stats.modes } else { [int]$modeEntries.Count }
