@@ -1,0 +1,332 @@
+name: Pester run
+
+on:
+  workflow_call:
+    inputs:
+      include_integration:
+        required: false
+        type: string
+        default: 'false'
+      include_patterns:
+        required: false
+        type: string
+        default: ''
+      sample_id:
+        required: false
+        type: string
+      readiness_status:
+        required: false
+        type: string
+        default: 'unknown'
+      readiness_artifact_name:
+        required: false
+        type: string
+        default: 'pester-readiness'
+      checkout_repository:
+        required: false
+        type: string
+      checkout_ref:
+        required: false
+        type: string
+    outputs:
+      dispatcher_exit_code:
+        description: 'Dispatcher exit code from the self-hosted execution pass'
+        value: ${{ jobs.pester.outputs.dispatcher_exit_code }}
+      raw_artifact_name:
+        description: 'Artifact name containing raw execution outputs'
+        value: ${{ jobs.pester.outputs.raw_artifact_name }}
+  workflow_dispatch:
+    inputs:
+      include_integration:
+        description: "Include Integration-tagged tests in the execution pack"
+        required: false
+        default: 'false'
+        type: choice
+        options: ['false', 'true']
+      include_patterns:
+        description: 'Optional repo-relative IncludePatterns selector'
+        required: false
+        default: ''
+        type: string
+      sample_id:
+        description: 'Sampling correlation id (prevents cancels)'
+        required: false
+        default: ''
+        type: string
+      readiness_status:
+        description: 'Readiness receipt status'
+        required: false
+        default: 'unknown'
+        type: string
+      readiness_artifact_name:
+        description: 'Readiness receipt artifact name'
+        required: false
+        default: 'pester-readiness'
+        type: string
+      checkout_repository:
+        description: 'Repository to checkout for execution'
+        required: false
+        default: ''
+        type: string
+      checkout_ref:
+        description: 'Git ref or SHA to checkout for execution'
+        required: false
+        default: ''
+        type: string
+
+concurrency:
+  group: ${{ github.workflow }}-pester-run-${{ github.event.inputs.sample_id || inputs.sample_id || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  normalize:
+    runs-on: ubuntu-latest
+    outputs:
+      include_integration: ${{ steps.b.outputs.normalized }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          repository: ${{ inputs.checkout_repository || github.repository }}
+          ref: ${{ inputs.checkout_ref || github.sha }}
+      - name: Apply determinism profile
+        uses: ./.github/actions/determinism-profile
+        with:
+          strict: 'true'
+      - name: Normalize include_integration
+        id: b
+        uses: ./.github/actions/bool-normalize
+        with:
+          value: ${{ inputs.include_integration || 'false' }}
+
+  pester:
+    name: Pester (execution only)
+    if: ${{ inputs.readiness_status == 'ready' }}
+    runs-on: [self-hosted, Windows, X64, comparevi, capability-ingress]
+    needs: normalize
+    env:
+      LV_SUPPRESS_UI: ${{ vars.LV_SUPPRESS_UI || '1' }}
+      LV_NO_ACTIVATE: ${{ vars.LV_NO_ACTIVATE || '1' }}
+      LV_CURSOR_RESTORE: ${{ vars.LV_CURSOR_RESTORE || '1' }}
+      LV_IDLE_WAIT_SECONDS: ${{ vars.LV_IDLE_WAIT_SECONDS || '2' }}
+      LV_IDLE_MAX_WAIT_SECONDS: ${{ vars.LV_IDLE_MAX_WAIT_SECONDS || '5' }}
+      STUCK_GUARD: ${{ vars.STUCK_GUARD || '1' }}
+      CLEAN_LV_BEFORE: ${{ vars.CLEAN_LV_BEFORE || 'true' }}
+      CLEAN_LV_AFTER: ${{ vars.CLEAN_LV_AFTER || 'true' }}
+      CLEAN_LV_INCLUDE_COMPARE: ${{ vars.CLEAN_LV_INCLUDE_COMPARE || vars.CLEAN_LVCOMPARE || 'true' }}
+      LVCOMPARE_PATH: ${{ vars.LVCOMPARE_PATH || '' }}
+    outputs:
+      dispatcher_exit_code: ${{ steps.execution_receipt.outputs.dispatcher_exit_code }}
+      raw_artifact_name: ${{ steps.execution_receipt.outputs.raw_artifact_name }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install Node dependencies
+        shell: pwsh
+        run: node tools/npm/cli.mjs ci
+
+      - name: Export workflow token for priority sync
+        shell: pwsh
+        env:
+          WORKFLOW_TOKEN: ${{ github.token }}
+        run: |
+          if (-not $env:WORKFLOW_TOKEN) { throw 'github.token is empty' }
+          "GH_TOKEN=$env:WORKFLOW_TOKEN" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "GITHUB_TOKEN=$env:WORKFLOW_TOKEN" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Download readiness receipt artifact
+        uses: actions/download-artifact@v5
+        with:
+          name: ${{ inputs.readiness_artifact_name }}
+          path: tests/readiness
+
+      - name: Validate readiness receipt
+        id: readiness_receipt
+        shell: pwsh
+        run: |
+          $receiptPath = 'tests/readiness/selfhosted-readiness.json'
+          if (-not (Test-Path -LiteralPath $receiptPath)) {
+            throw "Readiness receipt missing: $receiptPath"
+          }
+          $receipt = Get-Content -LiteralPath $receiptPath -Raw | ConvertFrom-Json -ErrorAction Stop
+          if ($receipt.schema -ne 'pester-selfhosted-readiness-receipt@v1') {
+            throw ("Unexpected readiness receipt schema: {0}" -f $receipt.schema)
+          }
+          if ($receipt.status -ne 'ready') {
+            throw ("Readiness receipt status is not ready: {0}" -f $receipt.status)
+          }
+          $freshnessWindowSeconds = 900
+          if ($receipt.PSObject.Properties.Name -contains 'freshnessWindowSeconds') {
+            $freshnessWindowSeconds = [int]$receipt.freshnessWindowSeconds
+          }
+          $generatedAtUtc = [DateTime]::Parse($receipt.generatedAtUtc).ToUniversalTime()
+          $ageSeconds = [math]::Floor(([DateTime]::UtcNow - $generatedAtUtc).TotalSeconds)
+          if ($ageSeconds -gt $freshnessWindowSeconds) {
+            throw ("Readiness receipt stale: age {0}s exceeds freshness window {1}s" -f $ageSeconds, $freshnessWindowSeconds)
+          }
+          "path=$receiptPath" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "generated_at_utc=$($generatedAtUtc.ToString('o'))" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "freshness_window_seconds=$freshnessWindowSeconds" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+
+      - name: Acquire session lock
+        shell: pwsh
+        run: pwsh -NoLogo -NoProfile -File tools/Session-Lock.ps1 -Action Acquire -Group 'pester-selfhosted' -QueueWaitSeconds 15 -QueueMaxAttempts 40 -StaleSeconds 300 -HeartbeatSeconds 15
+
+      - name: LV Guard (pre)
+        uses: ./.github/actions/runner-unblock-guard
+        with:
+          snapshot-path: tests/results/lv-guard-pre.json
+          cleanup: ${{ env.CLEAN_LV_BEFORE == 'true' }}
+          process-names: 'LVCompare,LabVIEW'
+
+      - name: Prepare fixture copies (base/head)
+        if: ${{ needs.normalize.outputs.include_integration == 'true' }}
+        id: fixtures
+        uses: ./.github/actions/prepare-fixtures
+
+      - name: Export fixture env for tests
+        if: ${{ needs.normalize.outputs.include_integration == 'true' }}
+        shell: pwsh
+        run: |
+          if ('${{ steps.fixtures.outputs.base }}' -and '${{ steps.fixtures.outputs.head }}') {
+            "LV_BASE_VI=${{ steps.fixtures.outputs.base }}" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+            "LV_HEAD_VI=${{ steps.fixtures.outputs.head }}" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          } else {
+            Write-Host '::warning::prepare-fixtures did not emit expected outputs; proceeding without LV_* env.'
+          }
+
+      - name: Apply dispatcher profile
+        id: dprofile
+        uses: ./.github/actions/dispatcher-profile
+        with:
+          timeout-seconds: '0'
+          emit-failures-json-always: 'true'
+          detect-leaks: 'true'
+          fail-on-leaks: 'false'
+          kill-leaks: 'false'
+          leak-grace-seconds: '3'
+          clean-labview-before: 'false'
+          clean-after: 'false'
+          track-artifacts: 'true'
+
+      - name: Wire Probe (T1)
+        if: ${{ vars.WIRE_PROBES != '0' }}
+        uses: ./.github/actions/wire-probe
+        with:
+          phase: T1
+          results-dir: tests/results
+
+      - name: Run Pester tests via local dispatcher
+        id: dispatcher
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          $logPath = 'tests/results/pester-dispatcher.log'
+          $logDir = Split-Path -Parent $logPath
+          if (-not (Test-Path $logDir)) { New-Item -ItemType Directory -Force -Path $logDir | Out-Null }
+          if (Test-Path -LiteralPath $logPath) { Remove-Item -LiteralPath $logPath -Force }
+          $dispatcherPath = Join-Path (Get-Location) 'Invoke-PesterTests.ps1'
+          if (-not (Test-Path -LiteralPath $dispatcherPath -PathType Leaf)) {
+            throw "Dispatcher script not found at $dispatcherPath"
+          }
+          $bound = [ordered]@{}
+          $bound.TestsPath = 'tests'
+          $includeIntegration = '${{ needs.normalize.outputs.include_integration }}'
+          if ($includeIntegration) {
+            switch ($includeIntegration.ToString().ToLowerInvariant()) {
+              { $_ -in @('true','1','yes','y','on','include') } { $bound.IntegrationMode = 'include' }
+              { $_ -in @('false','0','no','n','off','exclude') } { $bound.IntegrationMode = 'exclude' }
+              'auto' { $bound.IntegrationMode = 'auto' }
+            }
+          }
+          $bound.ResultsPath = 'tests/results'
+          if ($env:DISPATCHER_LIVE_OUTPUT -ne '0') { $bound.LiveOutput = $true }
+          if ('${{ steps.dprofile.outputs.emit_failures_json_always }}' -eq 'true') { $bound.EmitFailuresJsonAlways = $true }
+          if ('${{ inputs.include_patterns }}' -ne '') {
+            $bound.IncludePatterns = (Split-Path -Leaf '${{ inputs.include_patterns }}')
+          }
+          $timeoutSeconds = '${{ steps.dprofile.outputs.timeout_seconds }}'
+          if ($timeoutSeconds -and $timeoutSeconds -match '^-?\d+(\.\d+)?$') {
+            $bound.TimeoutSeconds = [double]$timeoutSeconds
+          }
+          $lockScript = Join-Path (Get-Location) 'tools/Session-Lock.ps1'
+          $heartbeatSeconds = 15
+          $heartbeatJob = Start-ThreadJob -ScriptBlock {
+            param($scriptPath,$seconds)
+            while ($true) {
+              pwsh -NoLogo -NoProfile -File $scriptPath -Action Heartbeat | Out-Null
+              Start-Sleep -Seconds $seconds
+            }
+          } -ArgumentList $lockScript, $heartbeatSeconds
+          $exitCode = 0
+          try {
+            & $dispatcherPath @bound 2>&1 | Tee-Object -FilePath $logPath
+            $exitCode = $LASTEXITCODE
+          } finally {
+            if ($heartbeatJob) {
+              Stop-Job -Id $heartbeatJob.Id | Out-Null
+              Remove-Job -Id $heartbeatJob.Id -Force | Out-Null
+            }
+            pwsh -NoLogo -NoProfile -File $lockScript -Action Heartbeat | Out-Null
+          }
+          if (-not $env:GITHUB_OUTPUT) {
+            $fallbackOutput = Join-Path (Get-Location) 'tests/results/dispatcher-github-output.txt'
+            $fallbackDir = Split-Path -Parent $fallbackOutput
+            if (-not (Test-Path -LiteralPath $fallbackDir)) {
+              New-Item -ItemType Directory -Path $fallbackDir -Force | Out-Null
+            }
+            $env:GITHUB_OUTPUT = [System.IO.Path]::GetFullPath($fallbackOutput)
+          }
+          "exit_code=$exitCode" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          $global:LASTEXITCODE = 0
+
+      - name: Release session lock
+        if: always()
+        shell: pwsh
+        run: pwsh -NoLogo -NoProfile -File tools/Session-Lock.ps1 -Action Release
+
+      - name: Write execution receipt
+        id: execution_receipt
+        if: always()
+        shell: pwsh
+        run: |
+          $resultsDir = 'tests/results'
+          if (-not (Test-Path -LiteralPath $resultsDir)) {
+            New-Item -ItemType Directory -Path $resultsDir -Force | Out-Null
+          }
+          $summaryPath = Join-Path $resultsDir 'pester-summary.json'
+          $dispatcherExitCode = '${{ steps.dispatcher.outputs.exit_code }}'
+          $status = 'seam-defect'
+          if ($dispatcherExitCode -eq '') {
+            $dispatcherExitCode = '-1'
+          }
+          $readinessReceiptPresent = Test-Path -LiteralPath '${{ steps.readiness_receipt.outputs.path }}'
+          if ((Test-Path -LiteralPath $summaryPath) -and $dispatcherExitCode -eq '0') {
+            $status = 'completed'
+          } elseif (Test-Path -LiteralPath $summaryPath) {
+            $status = 'test-failures'
+          }
+          $receipt = [ordered]@{
+            schema             = 'pester-execution-receipt@v1'
+            generatedAtUtc     = [DateTime]::UtcNow.ToString('o')
+            readinessStatus    = '${{ inputs.readiness_status }}'
+            readinessReceiptPath = '${{ steps.readiness_receipt.outputs.path }}'
+            readinessReceiptPresent = $readinessReceiptPresent
+            readinessReceiptGeneratedAtUtc = '${{ steps.readiness_receipt.outputs.generated_at_utc }}'
+            readinessReceiptFreshnessWindowSeconds = '${{ steps.readiness_receipt.outputs.freshness_window_seconds }}'
+            dispatcherExitCode = [int]$dispatcherExitCode
+            summaryPresent     = Test-Path -LiteralPath $summaryPath
+            status             = $status
+            rawArtifactName    = 'pester-run-raw'
+          }
+          $receiptPath = Join-Path $resultsDir 'pester-run-receipt.json'
+          $receipt | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $receiptPath -Encoding UTF8
+          "dispatcher_exit_code=$dispatcherExitCode" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "raw_artifact_name=pester-run-raw" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+
+      - name: Upload raw Pester execution artifact
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: pester-run-raw
+          path: tests/results
+          if-no-files-found: warn

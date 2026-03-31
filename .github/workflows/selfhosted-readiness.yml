@@ -1,0 +1,238 @@
+name: Self-hosted readiness
+
+on:
+  workflow_call:
+    inputs:
+      sample_id:
+        required: false
+        type: string
+      checkout_repository:
+        required: false
+        type: string
+      checkout_ref:
+        required: false
+        type: string
+    outputs:
+      receipt_status:
+        description: 'Overall readiness status for the self-hosted ingress plane'
+        value: ${{ jobs.readiness.outputs.receipt_status }}
+      receipt_artifact_name:
+        description: 'Artifact name containing the readiness receipt bundle'
+        value: ${{ jobs.readiness.outputs.receipt_artifact_name }}
+  workflow_dispatch:
+    inputs:
+      sample_id:
+        description: 'Sampling correlation id (prevents cancels)'
+        required: false
+        default: ''
+        type: string
+      checkout_repository:
+        description: 'Repository to checkout for readiness and execution context'
+        required: false
+        default: ''
+        type: string
+      checkout_ref:
+        description: 'Git ref or SHA to checkout for readiness and execution context'
+        required: false
+        default: ''
+        type: string
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.inputs.sample_id || inputs.sample_id || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  readiness:
+    runs-on: [self-hosted, Windows, X64, comparevi, capability-ingress]
+    outputs:
+      receipt_status: ${{ steps.receipt.outputs.status }}
+      receipt_artifact_name: ${{ steps.receipt.outputs.artifact_name }}
+    env:
+      LVCOMPARE_PATH: ${{ vars.LVCOMPARE_PATH || '' }}
+      LV_IDLE_WAIT_SECONDS: ${{ vars.LV_IDLE_WAIT_SECONDS || '2' }}
+      LV_IDLE_MAX_WAIT_SECONDS: ${{ vars.LV_IDLE_MAX_WAIT_SECONDS || '5' }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          repository: ${{ inputs.checkout_repository || github.repository }}
+          ref: ${{ inputs.checkout_ref || github.sha }}
+
+      - name: Install Node dependencies
+        shell: pwsh
+        run: node tools/npm/cli.mjs ci
+
+      - name: Validate runner label contract
+        id: runner_labels
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          $outDir = 'tests/results/pester-readiness'
+          New-Item -ItemType Directory -Force -Path $outDir | Out-Null
+          $labels = if ($env:RUNNER_LABELS) {
+            @($env:RUNNER_LABELS -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+          } else {
+            @()
+          }
+          if ($labels.Count -eq 0) {
+            $labels = @('self-hosted', 'Windows', 'X64', 'comparevi', 'capability-ingress')
+          }
+          $required = @('self-hosted', 'Windows', 'X64', 'comparevi', 'capability-ingress')
+          $missing = @($required | Where-Object { $labels -notcontains $_ })
+          $status = if ($missing.Count -eq 0) { 'ready' } else { 'not-ready' }
+          $report = [ordered]@{
+            schema    = 'pester/selfhosted-runner-labels@v1'
+            status    = $status
+            labels    = $labels
+            required  = $required
+            missing   = $missing
+          }
+          $reportPath = Join-Path $outDir 'runner-label-contract.json'
+          $report | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $reportPath -Encoding UTF8
+          if ($status -ne 'ready') {
+            throw ("Runner label contract missing required labels: {0}" -f ($missing -join ', '))
+          }
+
+      - name: Probe session-lock health
+        id: session_lock
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          $lockScript = Join-Path (Get-Location) 'tools/Session-Lock.ps1'
+          if (-not (Test-Path -LiteralPath $lockScript -PathType Leaf)) {
+            throw "Session-Lock.ps1 not found: $lockScript"
+          }
+          pwsh -NoLogo -NoProfile -File $lockScript -Action Acquire -Group 'pester-selfhosted-readiness' -QueueWaitSeconds 5 -QueueMaxAttempts 3 -StaleSeconds 120 -HeartbeatSeconds 5
+          try {
+            pwsh -NoLogo -NoProfile -File $lockScript -Action Heartbeat | Out-Null
+          } finally {
+            pwsh -NoLogo -NoProfile -File $lockScript -Action Release | Out-Null
+          }
+
+      - name: Resolve .NET host toolchain
+        id: dotnet
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          $outDir = 'tests/results/pester-readiness'
+          New-Item -ItemType Directory -Force -Path $outDir | Out-Null
+          $candidates = New-Object System.Collections.Generic.List[string]
+          if ($env:COMPAREVI_DOTNET_EXE) { $candidates.Add($env:COMPAREVI_DOTNET_EXE) | Out-Null }
+          try {
+            $cmd = Get-Command dotnet -ErrorAction Stop | Select-Object -First 1
+            if ($cmd -and $cmd.Source) { $candidates.Add([string]$cmd.Source) | Out-Null }
+          } catch {}
+          $candidates.Add('C:\Program Files\dotnet\dotnet.exe') | Out-Null
+          $candidates.Add('C:\Program Files (x86)\dotnet\dotnet.exe') | Out-Null
+          $resolved = $null
+          foreach ($candidate in $candidates) {
+            if ([string]::IsNullOrWhiteSpace($candidate)) { continue }
+            if (Test-Path -LiteralPath $candidate) {
+              $resolved = (Resolve-Path -LiteralPath $candidate).Path
+              break
+            }
+          }
+          $status = if ($resolved) { 'ready' } else { 'not-ready' }
+          $report = [ordered]@{
+            schema     = 'pester/selfhosted-dotnet@v1'
+            status     = $status
+            resolved   = $resolved
+            candidates = @($candidates | Where-Object { $_ } | Select-Object -Unique)
+          }
+          $reportPath = Join-Path $outDir 'dotnet-readiness.json'
+          $report | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $reportPath -Encoding UTF8
+          if (-not $resolved) {
+            throw '.NET SDK/CLI not available on the self-hosted ingress plane.'
+          }
+          & $resolved --info | Out-Host
+          "path=$resolved" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+
+      - name: Probe Windows Docker runtime
+        id: docker_runtime
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          $outDir = 'tests/results/pester-readiness'
+          New-Item -ItemType Directory -Force -Path $outDir | Out-Null
+          $reportPath = Join-Path $outDir 'docker-runtime-manager.json'
+          pwsh -NoLogo -NoProfile -File tools/Invoke-DockerRuntimeManager.ps1 `
+            -ProbeScope windows `
+            -BootstrapWindowsImage:$false `
+            -OutputJsonPath $reportPath `
+            -SwitchRetryCount 1 `
+            -SwitchTimeoutSeconds 30
+
+      - name: Verify LVCompare and idle LabVIEW state
+        id: lvcompare
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          $outDir = 'tests/results/pester-readiness'
+          New-Item -ItemType Directory -Force -Path $outDir | Out-Null
+          $defaultCli = 'C:\Program Files\National Instruments\Shared\LabVIEW Compare\LVCompare.exe'
+          $candidates = @()
+          if ($env:LVCOMPARE_PATH) { $candidates += $env:LVCOMPARE_PATH }
+          $candidates += $defaultCli
+          $cli = $null
+          foreach ($p in $candidates) {
+            if ($p -and (Test-Path -LiteralPath $p)) { $cli = $p; break }
+          }
+          $lv = @(Get-Process -Name 'LabVIEW' -ErrorAction SilentlyContinue)
+          $status = if ($cli -and $lv.Count -eq 0) { 'ready' } else { 'not-ready' }
+          $report = [ordered]@{
+            schema          = 'pester/selfhosted-lvcompare@v1'
+            status          = $status
+            resolvedCliPath = $cli
+            detectedLabVIEW = @($lv | ForEach-Object { [ordered]@{ pid = $_.Id; sessionId = $_.SessionId } })
+            candidates      = $candidates
+          }
+          $reportPath = Join-Path $outDir 'lvcompare-readiness.json'
+          $report | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $reportPath -Encoding UTF8
+          if (-not $cli) {
+            throw ("LVCompare.exe not found on the ingress plane. Tried: {0}" -f (($candidates | Where-Object { $_ }) -join '; '))
+          }
+          if ($lv.Count -gt 0) {
+            $pids = $lv | ForEach-Object { '{0}(session={1})' -f $_.Id,$_.SessionId }
+            throw ("LabVIEW.exe is running during readiness probe: {0}" -f ($pids -join ', '))
+          }
+
+      - name: Write readiness receipt
+        id: receipt
+        if: always()
+        shell: pwsh
+        run: |
+          $outDir = 'tests/results/pester-readiness'
+          New-Item -ItemType Directory -Force -Path $outDir | Out-Null
+          $probeOutcomes = [ordered]@{
+            runnerLabels  = '${{ steps.runner_labels.outcome }}'
+            sessionLock   = '${{ steps.session_lock.outcome }}'
+            dotnet        = '${{ steps.dotnet.outcome }}'
+            dockerRuntime = '${{ steps.docker_runtime.outcome }}'
+            lvcompare     = '${{ steps.lvcompare.outcome }}'
+          }
+          $status = if (@($probeOutcomes.Values | Where-Object { $_ -ne 'success' }).Count -eq 0) { 'ready' } else { 'not-ready' }
+          $receipt = [ordered]@{
+            schema         = 'pester-selfhosted-readiness-receipt@v1'
+            generatedAtUtc = [DateTime]::UtcNow.ToString('o')
+            freshnessWindowSeconds = 900
+            status         = $status
+            sampleId       = '${{ inputs.sample_id || github.event.inputs.sample_id || '' }}'
+            probes         = [ordered]@{
+              runnerLabels  = [ordered]@{ outcome = $probeOutcomes.runnerLabels; reportPath = 'tests/results/pester-readiness/runner-label-contract.json' }
+              sessionLock   = [ordered]@{ outcome = $probeOutcomes.sessionLock }
+              dotnet        = [ordered]@{ outcome = $probeOutcomes.dotnet; reportPath = 'tests/results/pester-readiness/dotnet-readiness.json'; path = '${{ steps.dotnet.outputs.path }}' }
+              dockerRuntime = [ordered]@{ outcome = $probeOutcomes.dockerRuntime; reportPath = 'tests/results/pester-readiness/docker-runtime-manager.json' }
+              lvcompare     = [ordered]@{ outcome = $probeOutcomes.lvcompare; reportPath = 'tests/results/pester-readiness/lvcompare-readiness.json' }
+            }
+          }
+          $receiptPath = Join-Path $outDir 'selfhosted-readiness.json'
+          $receipt | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $receiptPath -Encoding UTF8
+          "status=$status" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "artifact_name=pester-readiness" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+
+      - name: Upload readiness receipt
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: pester-readiness
+          path: tests/results/pester-readiness
+          if-no-files-found: error

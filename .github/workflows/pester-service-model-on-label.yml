@@ -1,0 +1,114 @@
+name: Pester service-model pilot on trusted PR label
+
+on:
+  pull_request_target:
+    types: [labeled, reopened, synchronize]
+    branches: [main, develop, release/**]
+    paths-ignore:
+      - '**/*.md'
+  workflow_dispatch:
+    inputs:
+      sample_id:
+        description: 'Sampling correlation id (prevents cancels)'
+        required: false
+        default: ''
+        type: string
+      checkout_repository:
+        description: 'Repository to checkout for the pilot run'
+        required: false
+        default: ''
+        type: string
+      checkout_ref:
+        description: 'Git ref or SHA to checkout for the pilot run'
+        required: false
+        default: ''
+        type: string
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.event.inputs.sample_id || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  trust-context:
+    runs-on: ubuntu-latest
+    outputs:
+      should_run: ${{ steps.decide.outputs.should_run }}
+      checkout_repository: ${{ steps.decide.outputs.checkout_repository }}
+      checkout_ref: ${{ steps.decide.outputs.checkout_ref }}
+      trust_mode: ${{ steps.decide.outputs.trust_mode }}
+      reason: ${{ steps.decide.outputs.reason }}
+    steps:
+      - name: Decide trusted pilot routing
+        id: decide
+        shell: pwsh
+        env:
+          PR_LABELS_JSON: ${{ toJson(github.event.pull_request.labels.*.name) }}
+        run: |
+          $eventName = '${{ github.event_name }}'
+          $shouldRun = 'false'
+          $checkoutRepository = '${{ github.repository }}'
+          $checkoutRef = '${{ github.sha }}'
+          $trustMode = 'base-ref'
+          $reason = 'workflow-dispatch-default'
+          if ($eventName -eq 'workflow_dispatch') {
+            if ('${{ inputs.checkout_repository }}') { $checkoutRepository = '${{ inputs.checkout_repository }}' }
+            if ('${{ inputs.checkout_ref }}') { $checkoutRef = '${{ inputs.checkout_ref }}' }
+            $shouldRun = 'true'
+          } else {
+            $labels = @()
+            if ($env:PR_LABELS_JSON) {
+              try {
+                $labels = @((ConvertFrom-Json -InputObject $env:PR_LABELS_JSON -ErrorAction Stop) | Where-Object { $_ })
+              } catch {
+                throw ("Unable to parse PR labels JSON: {0}" -f $_.Exception.Message)
+              }
+            }
+            $hasLabel = $labels -contains 'pester-service-model'
+            $sameOwner = '${{ github.event.pull_request.head.repo.owner.login }}' -eq '${{ github.repository_owner }}'
+            if (-not $hasLabel) {
+              $reason = 'pilot-label-missing'
+            } elseif (-not $sameOwner) {
+              $reason = 'untrusted-cross-owner-fork'
+            } else {
+              $checkoutRepository = '${{ github.event.pull_request.head.repo.full_name }}'
+              $checkoutRef = '${{ github.event.pull_request.head.sha }}'
+              $trustMode = 'same-owner-head'
+              $shouldRun = 'true'
+              $reason = 'trusted-same-owner-head'
+            }
+          }
+          "should_run=$shouldRun" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "checkout_repository=$checkoutRepository" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "checkout_ref=$checkoutRef" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "trust_mode=$trustMode" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "reason=$reason" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+
+  pilot:
+    needs: trust-context
+    if: ${{ needs.trust-context.outputs.should_run == 'true' }}
+    uses: ./.github/workflows/pester-gate.yml
+    with:
+      include_integration: ${{ 'true' }}
+      sample_id: ${{ github.event.inputs.sample_id || '' }}
+      checkout_repository: ${{ needs.trust-context.outputs.checkout_repository }}
+      checkout_ref: ${{ needs.trust-context.outputs.checkout_ref }}
+
+  skipped:
+    needs: trust-context
+    if: ${{ needs.trust-context.outputs.should_run != 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Append skip summary
+        shell: pwsh
+        run: |
+          if ($env:GITHUB_STEP_SUMMARY) {
+            $lines = @('### Pester service-model pilot', '')
+            $lines += ('- Status: skipped')
+            $lines += ('- Reason: {0}' -f '${{ needs.trust-context.outputs.reason }}')
+            $lines += ('- Trust mode: {0}' -f '${{ needs.trust-context.outputs.trust_mode }}')
+            $lines -join "`n" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+          }

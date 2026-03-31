@@ -82,6 +82,26 @@
       ]
     },
     {
+      "workflow": ".github/workflows/selfhosted-readiness.yml",
+      "jobs": [
+        {
+          "id": "readiness",
+          "routingClass": "ingress-only",
+          "requiredCapabilityLabels": []
+        }
+      ]
+    },
+    {
+      "workflow": ".github/workflows/pester-run.yml",
+      "jobs": [
+        {
+          "id": "pester",
+          "routingClass": "ingress-only",
+          "requiredCapabilityLabels": []
+        }
+      ]
+    },
+    {
       "workflow": ".github/workflows/runbook-validation.yml",
       "jobs": [
         {

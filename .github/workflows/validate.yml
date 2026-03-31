@@ -1534,22 +1534,44 @@ jobs:
           'capability-ingress',
           'docker-lane'
         )
-        pwsh -NoLogo -NoProfile -File tools/Resolve-SelfHostedWindowsLanePlan.ps1 `
-          -Repository '${{ github.repository }}' `
-          -RequiredLabels $requiredLabels `
-          -ExecutionModel 'self-hosted-windows-docker-lane' `
-          -RunnerImage 'self-hosted-windows-docker-lane' `
-          -ExpectedContext 'desktop-windows' `
-          -ExpectedOs 'windows' `
-          -RequiredHealthReceipts @() `
-          -Notes @(
-            'Availability means an online, idle repository runner advertises the ingress plus docker-lane labels.',
-            'The lane may mutate Docker Desktop into the Windows engine and then restores the starting context after proof capture.'
-          ) `
-          -Token $env:GITHUB_TOKEN `
-          -OutputJsonPath $planPath `
-          -GitHubOutputPath $env:GITHUB_OUTPUT `
-          -StepSummaryPath $env:GITHUB_STEP_SUMMARY
+        $requiredHealthReceipts = @()
+        $notes = @(
+          'Availability means an online, idle repository runner advertises the ingress plus docker-lane labels.',
+          'The lane may mutate Docker Desktop into the Windows engine and then restores the starting context after proof capture.'
+        )
+        $args = @(
+          '-NoLogo',
+          '-NoProfile',
+          '-File',
+          'tools/Resolve-SelfHostedWindowsLanePlan.ps1',
+          '-Repository',
+          '${{ github.repository }}',
+          '-RequiredLabels'
+        ) + $requiredLabels + @(
+          '-ExecutionModel',
+          'self-hosted-windows-docker-lane',
+          '-RunnerImage',
+          'self-hosted-windows-docker-lane',
+          '-ExpectedContext',
+          'desktop-windows',
+          '-ExpectedOs',
+          'windows',
+          '-Notes'
+        ) + $notes + @(
+          '-Token',
+          $env:GITHUB_TOKEN,
+          '-OutputJsonPath',
+          $planPath,
+          '-GitHubOutputPath',
+          $env:GITHUB_OUTPUT,
+          '-StepSummaryPath',
+          $env:GITHUB_STEP_SUMMARY
+        )
+        if ($requiredHealthReceipts.Count -gt 0) {
+          $args += '-RequiredHealthReceipts'
+          $args += $requiredHealthReceipts
+        }
+        & pwsh @args
 
     - name: Append VI history Windows runner plan
       shell: pwsh
