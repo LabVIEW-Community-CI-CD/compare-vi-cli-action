@@ -174,6 +174,7 @@ test('trusted PR pilot router only runs self-hosted service-model proof for work
 
   assert.match(workflow, /name:\s+Pester service-model pilot on trusted PR label/);
   assert.match(workflow, /pull_request_target:/);
+  assert.match(workflow, /permissions:\s*\n\s+contents:\s+read\s*\n\s+issues:\s+read\s*\n\s+pull-requests:\s+read/);
   assert.match(workflow, /types:\s*\[labeled, reopened, synchronize\]/);
   assert.doesNotMatch(workflow, /paths-ignore:/);
   assert.match(workflow, /group:\s+trusted-pilot-router-\$\{\{\s*github\.event\.pull_request\.number \|\| github\.event\.inputs\.sample_id \|\| github\.ref\s*\}\}/);
