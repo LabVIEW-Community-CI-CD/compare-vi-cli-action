@@ -119,5 +119,75 @@ test('Resolve-SelfHostedWindowsLanePlan reports unavailable when the LV32 labels
   assert.equal(plan.available, false);
   assert.equal(plan.status, 'missing-label');
   assert.equal(plan.matchingRunnerCount, 0);
-  assert.match(plan.skipReason, /no online self-hosted Windows LV32 runner/i);
+  assert.match(plan.skipReason, /no online self-hosted Windows runner matched the required capability labels/i);
+});
+
+test('Resolve-SelfHostedWindowsLanePlan supports a docker-lane plan with no required health receipts', () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'selfhosted-windows-docker-lane-plan-'));
+  const inventoryPath = path.join(tempDir, 'runner-inventory.json');
+  const outputPath = path.join(tempDir, 'plan.json');
+
+  writeJson(inventoryPath, {
+    runners: [
+      {
+        id: 301,
+        name: 'docker-lane-runner-01',
+        status: 'online',
+        busy: false,
+        labels: [
+          'self-hosted',
+          'Windows',
+          'X64',
+          'comparevi',
+          'capability-ingress',
+          'docker-lane'
+        ]
+      }
+    ]
+  });
+
+  execFileSync('pwsh', [
+    '-NoLogo',
+    '-NoProfile',
+    '-Command',
+    [
+      '$requiredLabels = @(',
+      "'self-hosted',",
+      "'Windows',",
+      "'X64',",
+      "'comparevi',",
+      "'capability-ingress',",
+      "'docker-lane'",
+      ');',
+      '$requiredHealthReceipts = @();',
+      `& '${scriptPath.replace(/'/g, "''")}'`,
+      "-Repository 'LabVIEW-Community-CI-CD/compare-vi-cli-action'",
+      `-RunnerInventoryPath '${inventoryPath.replace(/'/g, "''")}'`,
+      '-RequiredLabels $requiredLabels',
+      "-ExecutionModel 'self-hosted-windows-docker-lane'",
+      "-RunnerImage 'self-hosted-windows-docker-lane'",
+      "-ExpectedContext 'desktop-windows'",
+      "-ExpectedOs 'windows'",
+      '-RequiredHealthReceipts $requiredHealthReceipts',
+      `-OutputJsonPath '${outputPath.replace(/'/g, "''")}'`
+    ].join(' '),
+  ], { cwd: repoRoot, stdio: 'pipe' });
+
+  const plan = JSON.parse(fs.readFileSync(outputPath, 'utf8'));
+  assert.equal(plan.available, true);
+  assert.equal(plan.status, 'available');
+  assert.equal(plan.executionModel, 'self-hosted-windows-docker-lane');
+  assert.equal(plan.runnerImage, 'self-hosted-windows-docker-lane');
+  assert.equal(plan.expectedContext, 'desktop-windows');
+  assert.deepEqual(plan.requiredLabels, [
+    'self-hosted',
+    'Windows',
+    'X64',
+    'comparevi',
+    'capability-ingress',
+    'docker-lane'
+  ]);
+  assert.deepEqual(plan.requiredHealthReceipts, []);
+  assert.equal(plan.matchingRunnerCount, 1);
+  assert.equal(plan.matchingRunners[0].name, 'docker-lane-runner-01');
 });
