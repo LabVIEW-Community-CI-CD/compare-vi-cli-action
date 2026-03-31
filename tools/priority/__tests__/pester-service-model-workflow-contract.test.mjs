@@ -17,15 +17,20 @@ test('pester gate pilot routes readiness, execution, and evidence through separa
   assert.match(workflow, /name:\s+Pester gate \(service model pilot\)/);
   assert.match(workflow, /workflow_call:/);
   assert.match(workflow, /workflow_dispatch:/);
-  assert.match(workflow, /jobs:\s*\n\s*readiness:\s*\n\s+uses:\s+\.\s*\/\.github\/workflows\/selfhosted-readiness\.yml/);
-  assert.match(workflow, /\n\s*pester-run:\s*\n\s+needs:\s+readiness\s*\n\s+if:\s+always\(\)\s*\n\s+uses:\s+\.\s*\/\.github\/workflows\/pester-run\.yml/);
+  assert.match(workflow, /route_should_run:/);
+  assert.match(workflow, /route_reason:/);
+  assert.match(workflow, /route_trust_mode:/);
+  assert.match(workflow, /jobs:\s*\n\s*skipped:\s*\n\s+if:\s+\$\{\{\s*!fromJSON\(inputs\.route_should_run \|\| 'true'\)\s*\}\}/);
+  assert.match(workflow, /\n\s*readiness:\s*\n\s+if:\s+\$\{\{\s*fromJSON\(inputs\.route_should_run \|\| 'true'\)\s*\}\}\s*\n\s+uses:\s+\.\s*\/\.github\/workflows\/selfhosted-readiness\.yml/);
+  assert.match(workflow, /\n\s*pester-run:\s*\n\s+needs:\s+readiness\s*\n\s+if:\s+\$\{\{\s*always\(\) && fromJSON\(inputs\.route_should_run \|\| 'true'\)\s*\}\}\s*\n\s+uses:\s+\.\s*\/\.github\/workflows\/pester-run\.yml/);
   assert.match(workflow, /readiness_artifact_name:\s+\$\{\{\s*needs\.readiness\.outputs\.receipt_artifact_name\s*\|\|\s*'pester-readiness'/);
   assert.match(workflow, /readiness_status:\s+\$\{\{\s*needs\.readiness\.outputs\.receipt_status\s*\|\|\s*needs\.readiness\.result/);
   assert.match(workflow, /checkout_repository:\s+\$\{\{\s*inputs\.checkout_repository \|\| github\.repository\s*\}\}/);
   assert.match(workflow, /checkout_ref:\s+\$\{\{\s*inputs\.checkout_ref \|\| github\.sha\s*\}\}/);
-  assert.match(workflow, /\n\s*pester-evidence:\s*\n\s+needs:\s+\[readiness, pester-run\]\s*\n\s+if:\s+always\(\)\s*\n\s+uses:\s+\.\s*\/\.github\/workflows\/pester-evidence\.yml/);
+  assert.match(workflow, /\n\s*pester-evidence:\s*\n\s+needs:\s+\[readiness, pester-run\]\s*\n\s+if:\s+\$\{\{\s*always\(\) && fromJSON\(inputs\.route_should_run \|\| 'true'\)\s*\}\}\s*\n\s+uses:\s+\.\s*\/\.github\/workflows\/pester-evidence\.yml/);
   assert.match(workflow, /execution_job_result:\s+\$\{\{\s*needs\.pester-run\.outputs\.execution_status\s*\|\|\s*needs\.pester-run\.result/);
   assert.match(workflow, /execution_receipt_artifact_name:\s+\$\{\{\s*needs\.pester-run\.outputs\.execution_receipt_artifact_name/);
+  assert.match(workflow, /### Pester gate \(service model pilot\)/);
 });
 
 test('selfhosted readiness owns host-plane certification and emits a receipt artifact', () => {
@@ -117,8 +122,13 @@ test('trusted PR pilot router only runs self-hosted service-model proof for work
   assert.match(workflow, /PR_LABELS_JSON:\s+\$\{\{\s*toJson\(github\.event\.pull_request\.labels\.\*\.name\)\s*\}\}/);
   assert.match(workflow, /ConvertFrom-Json -InputObject \$env:PR_LABELS_JSON/);
   assert.match(workflow, /head\.repo\.owner\.login/);
+  assert.match(workflow, /Add-Content -Path \$env:GITHUB_OUTPUT -Value "should_run=\$shouldRun"/);
+  assert.match(workflow, /### Trusted pilot routing/);
   assert.match(workflow, /\$trustMode = 'same-owner-head'/);
   assert.match(workflow, /reason = 'untrusted-cross-owner-fork'/);
   assert.match(workflow, /uses:\s+\.\s*\/\.github\/workflows\/pester-gate\.yml/);
+  assert.match(workflow, /route_should_run:\s+\$\{\{\s*needs\.trust-context\.outputs\.should_run \|\| 'false'\s*\}\}/);
+  assert.match(workflow, /route_reason:\s+\$\{\{\s*needs\.trust-context\.outputs\.reason \|\| ''\s*\}\}/);
+  assert.match(workflow, /route_trust_mode:\s+\$\{\{\s*needs\.trust-context\.outputs\.trust_mode \|\| ''\s*\}\}/);
   assert.match(workflow, /include_integration:\s+\$\{\{\s*'true'\s*\}\}/);
 });

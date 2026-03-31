@@ -79,34 +79,30 @@ jobs:
               $reason = 'trusted-same-owner-head'
             }
           }
-          "should_run=$shouldRun" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
-          "checkout_repository=$checkoutRepository" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
-          "checkout_ref=$checkoutRef" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
-          "trust_mode=$trustMode" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
-          "reason=$reason" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          Add-Content -Path $env:GITHUB_OUTPUT -Value "should_run=$shouldRun"
+          Add-Content -Path $env:GITHUB_OUTPUT -Value "checkout_repository=$checkoutRepository"
+          Add-Content -Path $env:GITHUB_OUTPUT -Value "checkout_ref=$checkoutRef"
+          Add-Content -Path $env:GITHUB_OUTPUT -Value "trust_mode=$trustMode"
+          Add-Content -Path $env:GITHUB_OUTPUT -Value "reason=$reason"
+          if ($env:GITHUB_STEP_SUMMARY) {
+            $lines = @('### Trusted pilot routing', '')
+            $lines += ('- Event: {0}' -f $eventName)
+            $lines += ('- Should run: {0}' -f $shouldRun)
+            $lines += ('- Reason: {0}' -f $reason)
+            $lines += ('- Trust mode: {0}' -f $trustMode)
+            $lines += ('- Checkout repository: {0}' -f $checkoutRepository)
+            $lines += ('- Checkout ref: {0}' -f $checkoutRef)
+            $lines -join "`n" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+          }
 
   pilot:
     needs: trust-context
-    if: ${{ needs.trust-context.outputs.should_run == 'true' }}
     uses: ./.github/workflows/pester-gate.yml
     with:
+      route_should_run: ${{ needs.trust-context.outputs.should_run || 'false' }}
+      route_reason: ${{ needs.trust-context.outputs.reason || '' }}
+      route_trust_mode: ${{ needs.trust-context.outputs.trust_mode || '' }}
       include_integration: ${{ 'true' }}
       sample_id: ${{ github.event.inputs.sample_id || '' }}
       checkout_repository: ${{ needs.trust-context.outputs.checkout_repository }}
       checkout_ref: ${{ needs.trust-context.outputs.checkout_ref }}
-
-  skipped:
-    needs: trust-context
-    if: ${{ needs.trust-context.outputs.should_run != 'true' }}
-    runs-on: ubuntu-latest
-    steps:
-      - name: Append skip summary
-        shell: pwsh
-        run: |
-          if ($env:GITHUB_STEP_SUMMARY) {
-            $lines = @('### Pester service-model pilot', '')
-            $lines += ('- Status: skipped')
-            $lines += ('- Reason: {0}' -f '${{ needs.trust-context.outputs.reason }}')
-            $lines += ('- Trust mode: {0}' -f '${{ needs.trust-context.outputs.trust_mode }}')
-            $lines -join "`n" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
-          }

@@ -3,6 +3,18 @@ name: Pester gate (service model pilot)
 on:
   workflow_call:
     inputs:
+      route_should_run:
+        required: false
+        default: 'true'
+        type: string
+      route_reason:
+        required: false
+        default: ''
+        type: string
+      route_trust_mode:
+        required: false
+        default: ''
+        type: string
       include_integration:
         required: false
         default: 'false'
@@ -25,6 +37,22 @@ on:
         type: string
   workflow_dispatch:
     inputs:
+      route_should_run:
+        description: 'Whether the service-model pilot should run or emit a routed skip'
+        required: false
+        default: 'true'
+        type: choice
+        options: ['false', 'true']
+      route_reason:
+        description: 'Optional skip reason emitted by the outer router'
+        required: false
+        default: ''
+        type: string
+      route_trust_mode:
+        description: 'Optional trust-mode emitted by the outer router'
+        required: false
+        default: ''
+        type: string
       include_integration:
         description: "Include Integration-tagged tests in the execution pack"
         required: false
@@ -57,7 +85,25 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  skipped:
+    if: ${{ !fromJSON(inputs.route_should_run || 'true') }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Append routed skip summary
+        shell: pwsh
+        run: |
+          if ($env:GITHUB_STEP_SUMMARY) {
+            $lines = @('### Pester gate (service model pilot)', '')
+            $lines += ('- Status: skipped')
+            $lines += ('- Reason: {0}' -f '${{ inputs.route_reason || 'route-should-not-run' }}')
+            $lines += ('- Trust mode: {0}' -f '${{ inputs.route_trust_mode || 'unspecified' }}')
+            $lines += ('- Checkout repository: {0}' -f '${{ inputs.checkout_repository || github.repository }}')
+            $lines += ('- Checkout ref: {0}' -f '${{ inputs.checkout_ref || github.sha }}')
+            $lines -join "`n" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+          }
+
   readiness:
+    if: ${{ fromJSON(inputs.route_should_run || 'true') }}
     uses: ./.github/workflows/selfhosted-readiness.yml
     with:
       sample_id: ${{ inputs.sample_id || '' }}
@@ -66,7 +112,7 @@ jobs:
 
   pester-run:
     needs: readiness
-    if: always()
+    if: ${{ always() && fromJSON(inputs.route_should_run || 'true') }}
     uses: ./.github/workflows/pester-run.yml
     with:
       include_integration: ${{ inputs.include_integration || 'false' }}
@@ -79,7 +125,7 @@ jobs:
 
   pester-evidence:
     needs: [readiness, pester-run]
-    if: always()
+    if: ${{ always() && fromJSON(inputs.route_should_run || 'true') }}
     uses: ./.github/workflows/pester-evidence.yml
     with:
       raw_artifact_name: ${{ needs.pester-run.outputs.raw_artifact_name }}
