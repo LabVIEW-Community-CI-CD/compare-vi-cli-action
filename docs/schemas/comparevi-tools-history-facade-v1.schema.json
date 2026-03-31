@@ -153,6 +153,7 @@
     "decisionGuidance": {
       "type": "object",
       "required": [
+        "decisionStatement",
         "reviewPriority",
         "latestPair",
         "latestSignalPair",
@@ -163,6 +164,9 @@
         "contextBuckets"
       ],
       "properties": {
+        "decisionStatement": {
+          "type": "string"
+        },
         "reviewPriority": {
           "type": "string"
         },

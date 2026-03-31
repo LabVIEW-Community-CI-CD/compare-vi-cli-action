@@ -217,6 +217,8 @@ Describe 'Render-VIHistoryReport.ps1' -Tag 'Unit' {
         $markdown | Should -Match '\| Mode Sensitivity \| `single-mode-observed` \|'
         $markdown | Should -Match '\| Outcome Labels \| `clean`, `signal-diff` \|'
         $markdown | Should -Match '## Decision guidance'
+        $markdown | Should -Match 'Decision statement'
+        $markdown | Should -Match 'Start at pair 2; it is the newest meaningful change'
         $markdown | Should -Match 'Review first'
         $markdown | Should -Match 'Review sequence'
         $markdown | Should -Match 'pair 2 \(Base commit -> Head commit\)'
@@ -239,6 +241,8 @@ Describe 'Render-VIHistoryReport.ps1' -Tag 'Unit' {
         $html | Should -Match 'Outcome Labels'
         $html | Should -Match '<code>clean</code>, <code>signal-diff</code>'
         $html | Should -Match 'Review first'
+        $html | Should -Match 'Decision statement'
+        $html | Should -Match 'Start at pair 2; it is the newest meaningful change'
         $html | Should -Match 'Review sequence'
         $html | Should -Match 'pair 2 \(Base commit -&gt; Head commit\)'
         $html | Should -Match '<th>Signal</th>'
@@ -271,6 +275,7 @@ Describe 'Render-VIHistoryReport.ps1' -Tag 'Unit' {
         $historySummary.target.sourceBranchRef | Should -Be 'feature/history-source'
         $historySummary.target.branchBudget.maxCommitCount | Should -Be 64
         $historySummary.target.branchBudget.commitCount | Should -Be 3
+        $historySummary.decisionGuidance.decisionStatement | Should -Be 'Start at pair 2; it is the newest meaningful change. It touches Functional behavior.'
         $historySummary.decisionGuidance.latestSignalPair.index | Should -Be 2
         $historySummary.decisionGuidance.latestSignalPair.baseSubject | Should -Be 'Base commit'
         $historySummary.decisionGuidance.latestSignalPair.headSubject | Should -Be 'Head commit'

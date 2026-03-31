@@ -1315,10 +1315,29 @@ if ($latestComparisonEntry) {
     $decisionLatestStatus = 'clean'
   }
 }
+$decisionStatement = ''
+if ($latestComparisonEntry -and $decisionLatestStatus -eq 'collapsed-noise' -and $latestSignalComparisonEntry) {
+  $decisionStatement = 'Newest VI touch is metadata-only.'
+  if ($decisionFocusBuckets.Count -gt 0) {
+    $decisionStatement = '{0} Start at pair {1}; newest meaningful change touches {2}.' -f $decisionStatement, (Coalesce $latestSignalComparisonEntry.index 'n/a'), ([string]::Join(', ', @($decisionFocusBuckets.ToArray())))
+  } else {
+    $decisionStatement = '{0} Start at pair {1}; it is the newest meaningful change.' -f $decisionStatement, (Coalesce $latestSignalComparisonEntry.index 'n/a')
+  }
+} elseif ($latestSignalComparisonEntry) {
+  $decisionStatement = 'Start at pair {0}; it is the newest meaningful change.' -f (Coalesce $latestSignalComparisonEntry.index 'n/a')
+  if ($decisionFocusBuckets.Count -gt 0) {
+    $decisionStatement = '{0} It touches {1}.' -f $decisionStatement, ([string]::Join(', ', @($decisionFocusBuckets.ToArray())))
+  }
+} elseif ($collapsedComparisonEntries.Count -gt 0) {
+  $decisionStatement = 'All observed pairs are metadata-only under the current noise policy.'
+} else {
+  $decisionStatement = 'No meaningful differences were observed in the selected history window.'
+}
 if ($sortedComparisons.Count -gt 0) {
   $summaryLines.Add('')
   $summaryLines.Add('## Decision guidance')
   $summaryLines.Add('')
+  $summaryLines.Add(('- Decision statement: {0}' -f $decisionStatement))
   $summaryLines.Add(('- Review priority: `{0}`' -f $decisionReviewPriority))
   if ($latestComparisonEntry) {
     $summaryLines.Add(('- Latest pair: `pair {0}` is `{1}`' -f (Coalesce $latestComparisonEntry.index 'n/a'), $decisionLatestStatus))
@@ -1686,6 +1705,7 @@ if ($emitHtml -and $HtmlPath) {
   if ($sortedComparisons.Count -gt 0) {
     [void]$htmlBuilder.AppendLine('  <h2>Decision guidance</h2>')
     [void]$htmlBuilder.AppendLine('  <ul>')
+    [void]$htmlBuilder.AppendLine(('    <li><strong>Decision statement</strong><span>{0}</span></li>' -f (ConvertTo-HtmlSafe $decisionStatement)))
     [void]$htmlBuilder.AppendLine(('    <li><strong>Review priority</strong><span>{0}</span></li>' -f (Format-HtmlCodeList -Values @($decisionReviewPriority))))
     if ($latestComparisonEntry) {
       [void]$htmlBuilder.AppendLine(('    <li><strong>Latest pair</strong><span><code>pair {0}</code> is <code>{1}</code></span></li>' -f (ConvertTo-HtmlSafe (Coalesce $latestComparisonEntry.index 'n/a')), (ConvertTo-HtmlSafe $decisionLatestStatus)))
@@ -1997,6 +2017,7 @@ $historySummary = [ordered]@{
     outcomeLabels = @(Get-SortedUniqueStringArray -Value $outcomeLabels)
   }
   decisionGuidance = [ordered]@{
+    decisionStatement = [string]$decisionStatement
     reviewPriority = [string]$decisionReviewPriority
     latestPair = [ordered]@{
       index = if ($latestComparisonEntry) { [int](Coalesce $latestComparisonEntry.index 0) } else { 0 }
