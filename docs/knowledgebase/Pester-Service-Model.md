@@ -48,3 +48,15 @@ The pilot can replace the monolith only after:
 - execution runs the declared pack without host bootstrap
 - evidence produces deterministic classifications
 - PR/release comparisons show better failure localization and lower operator ambiguity
+
+## Promotion Packet
+
+The current upstream promotion packet for the pilot is hosted-first:
+
+- `docs/requirements-pester-service-model-srs.md`
+- `docs/rtm-pester-service-model.csv`
+- `.github/workflows/pester-service-model-quality.yml`
+- `.github/workflows/pester-service-model-release-evidence.yml`
+
+That packet is derived from the retained fork dossier on `#2078` and is used to
+justify the next minimal upstream slice on `#2069`.
