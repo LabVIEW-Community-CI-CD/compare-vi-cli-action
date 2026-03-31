@@ -1,0 +1,141 @@
+name: Pester service-model release evidence
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches:
+      - develop
+    paths:
+      - '.github/workflows/pester-service-model-release-evidence.yml'
+      - '.github/workflows/pester-service-model-quality.yml'
+      - '.github/workflows/pester-context.yml'
+      - '.github/workflows/pester-gate.yml'
+      - '.github/workflows/pester-run.yml'
+      - '.github/workflows/pester-evidence.yml'
+      - '.github/workflows/pester-service-model-on-label.yml'
+      - '.github/workflows/selfhosted-readiness.yml'
+      - 'docs/knowledgebase/Pester-Service-Model.md'
+      - 'docs/architecture/pester-service-model-control-plane.md'
+      - 'docs/architecture/ADR-2078-pester-service-model-requirements.md'
+      - 'docs/cm-plan-pester-service-model.md'
+      - 'docs/release-procedure-pester-service-model.md'
+      - 'docs/requirements-pester-service-model-srs.md'
+      - 'docs/rtm-pester-service-model.csv'
+      - 'docs/testing/pester-service-model-test-plan.md'
+      - 'docs/pester-service-model-quality-report.md'
+      - 'docs/pester-service-model-information-item-map.md'
+      - 'tools/priority/materialize-pester-service-model-release-evidence.mjs'
+      - 'tools/priority/render-pester-service-model-promotion-dossier.mjs'
+      - 'tools/priority/write-node-test-coverage-xml.mjs'
+      - 'tools/priority/__tests__/pester-service-model-workflow-contract.test.mjs'
+      - 'tools/priority/__tests__/pester-service-model-quality-workflow-contract.test.mjs'
+      - 'tools/priority/__tests__/pester-service-model-release-evidence-workflow-contract.test.mjs'
+      - 'tools/priority/__tests__/write-node-test-coverage-xml.test.mjs'
+  push:
+    branches:
+      - integration/**
+      - codex/pester-service-model-*
+      - codex/integration-routing-observability
+    paths:
+      - '.github/workflows/pester-service-model-release-evidence.yml'
+      - '.github/workflows/pester-service-model-quality.yml'
+      - '.github/workflows/pester-context.yml'
+      - '.github/workflows/pester-gate.yml'
+      - '.github/workflows/pester-run.yml'
+      - '.github/workflows/pester-evidence.yml'
+      - '.github/workflows/pester-service-model-on-label.yml'
+      - '.github/workflows/selfhosted-readiness.yml'
+      - 'docs/knowledgebase/Pester-Service-Model.md'
+      - 'docs/architecture/pester-service-model-control-plane.md'
+      - 'docs/architecture/ADR-2078-pester-service-model-requirements.md'
+      - 'docs/cm-plan-pester-service-model.md'
+      - 'docs/release-procedure-pester-service-model.md'
+      - 'docs/requirements-pester-service-model-srs.md'
+      - 'docs/rtm-pester-service-model.csv'
+      - 'docs/testing/pester-service-model-test-plan.md'
+      - 'docs/pester-service-model-quality-report.md'
+      - 'docs/pester-service-model-information-item-map.md'
+      - 'tools/priority/materialize-pester-service-model-release-evidence.mjs'
+      - 'tools/priority/render-pester-service-model-promotion-dossier.mjs'
+      - 'tools/priority/write-node-test-coverage-xml.mjs'
+      - 'tools/priority/__tests__/pester-service-model-workflow-contract.test.mjs'
+      - 'tools/priority/__tests__/pester-service-model-quality-workflow-contract.test.mjs'
+      - 'tools/priority/__tests__/pester-service-model-release-evidence-workflow-contract.test.mjs'
+      - 'tools/priority/__tests__/write-node-test-coverage-xml.test.mjs'
+
+permissions:
+  contents: read
+
+env:
+  PSM_UPSTREAM_ISSUE: '2069'
+  PSM_FORK_ISSUE: '2078'
+  PSM_FORK_BASIS_COMMIT: 'e188d43768a16286f79b20046e508a7c6e53e2b2'
+  PSM_FORK_BASIS_URL: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/2078#issuecomment-4164132415'
+
+jobs:
+  release-evidence:
+    name: Release evidence / pester-service-model
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install Node dependencies
+        shell: bash
+        run: node tools/npm/cli.mjs ci
+
+      - name: Run packet tests with Node coverage
+        shell: bash
+        run: |
+          mkdir -p tests/results/_agent/pester-service-model
+          node --test --experimental-test-coverage \
+            tools/priority/__tests__/pester-service-model-workflow-contract.test.mjs \
+            tools/priority/__tests__/pester-service-model-quality-workflow-contract.test.mjs \
+            tools/priority/__tests__/write-node-test-coverage-xml.test.mjs \
+            2>&1 | tee tests/results/_agent/pester-service-model/node-test-coverage.log
+
+      - name: Materialize coverage.xml
+        shell: bash
+        run: |
+          node tools/priority/write-node-test-coverage-xml.mjs \
+            --input tests/results/_agent/pester-service-model/node-test-coverage.log \
+            --output tests/results/_agent/pester-service-model/coverage.xml \
+            --line-threshold 75
+
+      - name: Docs link check / lychee
+        uses: lycheeverse/lychee-action@v2
+        with:
+          fail: true
+          args: >-
+            --no-progress
+            --format json
+            --output tests/results/_agent/pester-service-model/docs-link-check.json
+            docs/knowledgebase/Pester-Service-Model.md
+            docs/architecture/pester-service-model-control-plane.md
+            docs/architecture/ADR-2078-pester-service-model-requirements.md
+            docs/cm-plan-pester-service-model.md
+            docs/release-procedure-pester-service-model.md
+            docs/requirements-pester-service-model-srs.md
+            docs/pester-service-model-quality-report.md
+            docs/pester-service-model-information-item-map.md
+
+      - name: Materialize release evidence bundle
+        shell: bash
+        run: |
+          node tools/priority/materialize-pester-service-model-release-evidence.mjs \
+            --version v0.1.0 \
+            --upstream-issue "$PSM_UPSTREAM_ISSUE" \
+            --fork-issue "$PSM_FORK_ISSUE" \
+            --fork-basis-commit "$PSM_FORK_BASIS_COMMIT" \
+            --fork-basis-url "$PSM_FORK_BASIS_URL"
+          node tools/priority/render-pester-service-model-promotion-dossier.mjs \
+            --upstream-issue "$PSM_UPSTREAM_ISSUE" \
+            --fork-issue "$PSM_FORK_ISSUE" \
+            --fork-basis-commit "$PSM_FORK_BASIS_COMMIT" \
+            --fork-basis-url "$PSM_FORK_BASIS_URL"
+
+      - name: Upload release-evidence bundle
+        uses: actions/upload-artifact@v7
+        with:
+          name: pester-service-model-release-evidence
+          path: tests/results/_agent/pester-service-model/release-evidence
+          if-no-files-found: error
