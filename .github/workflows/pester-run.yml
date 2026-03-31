@@ -38,6 +38,9 @@ on:
       execution_status:
         description: 'Execution contract outcome for the self-hosted execution pass'
         value: ${{ jobs.finalize.outputs.execution_status }}
+      execution_receipt_artifact_name:
+        description: 'Artifact name containing the execution contract receipt'
+        value: ${{ jobs.finalize.outputs.execution_receipt_artifact_name }}
   workflow_dispatch:
     inputs:
       include_integration:
@@ -120,6 +123,7 @@ jobs:
     outputs:
       dispatcher_exit_code: ${{ steps.execution_receipt.outputs.dispatcher_exit_code }}
       raw_artifact_name: ${{ steps.execution_receipt.outputs.raw_artifact_name }}
+      execution_receipt_status: ${{ steps.execution_receipt.outputs.status }}
     steps:
       - uses: actions/checkout@v5
 
@@ -323,6 +327,7 @@ jobs:
           }
           $receiptPath = Join-Path $resultsDir 'pester-run-receipt.json'
           $receipt | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $receiptPath -Encoding UTF8
+          "status=$status" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
           "dispatcher_exit_code=$dispatcherExitCode" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
           "raw_artifact_name=pester-run-raw" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
 
@@ -342,31 +347,75 @@ jobs:
       dispatcher_exit_code: ${{ steps.emit.outputs.dispatcher_exit_code }}
       raw_artifact_name: ${{ steps.emit.outputs.raw_artifact_name }}
       execution_status: ${{ steps.emit.outputs.execution_status }}
+      execution_receipt_artifact_name: ${{ steps.emit.outputs.execution_receipt_artifact_name }}
     steps:
       - name: Emit execution contract
         id: emit
         shell: pwsh
         run: |
+          $resultsDir = Join-Path 'tests/results' 'pester-execution-contract'
+          New-Item -ItemType Directory -Path $resultsDir -Force | Out-Null
           $executionStatus = 'unknown'
+          $receiptStatus = '${{ needs.pester.outputs.execution_receipt_status }}'
+          $rawArtifactName = ''
           if ('${{ inputs.readiness_status }}' -ne 'ready') {
             $executionStatus = 'skipped'
+            if ([string]::IsNullOrWhiteSpace($receiptStatus)) { $receiptStatus = 'skipped' }
           } else {
             switch ('${{ needs.pester.result }}') {
-              'success' { $executionStatus = 'completed' }
-              'failure' { $executionStatus = 'seam-defect' }
-              'cancelled' { $executionStatus = 'cancelled' }
-              'skipped' { $executionStatus = 'skipped' }
-              default { $executionStatus = 'unknown' }
+              'success' {
+                $executionStatus = 'completed'
+                $rawArtifactName = 'pester-run-raw'
+                if ([string]::IsNullOrWhiteSpace($receiptStatus)) { $receiptStatus = 'completed' }
+              }
+              'failure' {
+                $executionStatus = 'seam-defect'
+                $rawArtifactName = 'pester-run-raw'
+                if ([string]::IsNullOrWhiteSpace($receiptStatus)) { $receiptStatus = 'seam-defect' }
+              }
+              'cancelled' {
+                $executionStatus = 'cancelled'
+                if ([string]::IsNullOrWhiteSpace($receiptStatus)) { $receiptStatus = 'cancelled' }
+              }
+              'skipped' {
+                $executionStatus = 'skipped'
+                if ([string]::IsNullOrWhiteSpace($receiptStatus)) { $receiptStatus = 'skipped' }
+              }
+              default {
+                $executionStatus = 'unknown'
+                if ([string]::IsNullOrWhiteSpace($receiptStatus)) { $receiptStatus = 'unknown' }
+              }
             }
           }
           $dispatcherExitCode = '${{ needs.pester.outputs.dispatcher_exit_code }}'
           if ([string]::IsNullOrWhiteSpace($dispatcherExitCode)) {
-            if ($executionStatus -eq 'completed') {
+            if ($receiptStatus -eq 'completed') {
               $dispatcherExitCode = '0'
             } else {
               $dispatcherExitCode = '-1'
             }
           }
+          $receipt = [ordered]@{
+            schema             = 'pester-execution-receipt@v1'
+            generatedAtUtc     = [DateTime]::UtcNow.ToString('o')
+            readinessStatus    = '${{ inputs.readiness_status }}'
+            executionJobResult = '${{ needs.pester.result }}'
+            dispatcherExitCode = [int]$dispatcherExitCode
+            status             = $receiptStatus
+            rawArtifactName    = $rawArtifactName
+            rawArtifactExpected = -not [string]::IsNullOrWhiteSpace($rawArtifactName)
+            source             = 'pester-run/finalize'
+          }
+          $receiptPath = Join-Path $resultsDir 'pester-run-receipt.json'
+          $receipt | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $receiptPath -Encoding UTF8
           "execution_status=$executionStatus" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
           "dispatcher_exit_code=$dispatcherExitCode" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
-          "raw_artifact_name=pester-run-raw" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "raw_artifact_name=$rawArtifactName" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "execution_receipt_artifact_name=pester-execution-contract" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+
+      - name: Upload execution contract artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: pester-execution-contract
+          path: tests/results/pester-execution-contract
+          if-no-files-found: error
