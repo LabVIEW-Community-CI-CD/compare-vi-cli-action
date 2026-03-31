@@ -1,0 +1,159 @@
+name: Pester selection
+
+on:
+  workflow_call:
+    inputs:
+      include_integration:
+        required: false
+        type: string
+        default: 'false'
+      include_patterns:
+        required: false
+        type: string
+        default: ''
+      sample_id:
+        required: false
+        type: string
+      checkout_repository:
+        required: false
+        type: string
+      checkout_ref:
+        required: false
+        type: string
+    outputs:
+      receipt_status:
+        description: 'Overall selection status for pack shaping and dispatcher profile resolution'
+        value: ${{ jobs.selection.outputs.receipt_status }}
+      receipt_artifact_name:
+        description: 'Artifact name containing the selection receipt bundle'
+        value: ${{ jobs.selection.outputs.receipt_artifact_name }}
+  workflow_dispatch:
+    inputs:
+      include_integration:
+        description: "Include Integration-tagged tests in the execution pack"
+        required: false
+        default: 'false'
+        type: choice
+        options: ['false', 'true']
+      include_patterns:
+        description: 'Optional repo-relative IncludePatterns selector'
+        required: false
+        default: ''
+        type: string
+      sample_id:
+        description: 'Sampling correlation id (prevents cancels)'
+        required: false
+        default: ''
+        type: string
+      checkout_repository:
+        description: 'Repository to checkout for selection resolution'
+        required: false
+        default: ''
+        type: string
+      checkout_ref:
+        description: 'Git ref or SHA to checkout for selection resolution'
+        required: false
+        default: ''
+        type: string
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.inputs.sample_id || inputs.sample_id || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  selection:
+    runs-on: ubuntu-latest
+    outputs:
+      receipt_status: ${{ steps.receipt.outputs.status }}
+      receipt_artifact_name: ${{ steps.receipt.outputs.artifact_name }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          repository: ${{ inputs.checkout_repository || github.repository }}
+          ref: ${{ inputs.checkout_ref || github.sha }}
+
+      - name: Normalize include_integration
+        id: include_integration
+        uses: ./.github/actions/bool-normalize
+        with:
+          value: ${{ inputs.include_integration || 'false' }}
+
+      - name: Shape include patterns
+        id: include_patterns
+        shell: pwsh
+        env:
+          RAW_INCLUDE_PATTERNS: ${{ inputs.include_patterns || '' }}
+        run: |
+          $raw = $env:RAW_INCLUDE_PATTERNS
+          $tokens = New-Object System.Collections.Generic.List[string]
+          foreach ($candidate in ($raw -split "[`r`n,;]")) {
+            $token = $candidate.Trim()
+            if ([string]::IsNullOrWhiteSpace($token)) { continue }
+            $leaf = Split-Path -Leaf $token
+            if ([string]::IsNullOrWhiteSpace($leaf)) { continue }
+            if (-not $tokens.Contains($leaf)) {
+              $tokens.Add($leaf) | Out-Null
+            }
+          }
+          $patternsJson = @($tokens.ToArray()) | ConvertTo-Json -Compress
+          if (-not $patternsJson) { $patternsJson = '[]' }
+          "patterns_json=$patternsJson" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+
+      - name: Resolve dispatcher profile
+        id: dispatcher_profile
+        uses: ./.github/actions/dispatcher-profile
+        with:
+          timeout-seconds: '0'
+          emit-failures-json-always: 'true'
+          detect-leaks: 'true'
+          fail-on-leaks: 'false'
+          kill-leaks: 'false'
+          leak-grace-seconds: '3'
+          clean-labview-before: 'false'
+          clean-after: 'false'
+          track-artifacts: 'true'
+
+      - name: Write selection receipt
+        id: receipt
+        shell: pwsh
+        run: |
+          $outDir = 'tests/results/pester-selection'
+          New-Item -ItemType Directory -Force -Path $outDir | Out-Null
+          $includeIntegration = '${{ steps.include_integration.outputs.normalized }}'
+          $integrationMode = if ($includeIntegration -eq 'true') { 'include' } else { 'exclude' }
+          $includePatterns = '${{ steps.include_patterns.outputs.patterns_json }}' | ConvertFrom-Json -ErrorAction Stop
+          $receipt = [ordered]@{
+            schema         = 'pester-selection-receipt@v1'
+            generatedAtUtc = [DateTime]::UtcNow.ToString('o')
+            status         = 'ready'
+            sampleId       = '${{ inputs.sample_id || github.event.inputs.sample_id || '' }}'
+            selection      = [ordered]@{
+              includeIntegrationNormalized = $includeIntegration
+              integrationMode              = $integrationMode
+              includePatterns              = @($includePatterns)
+              fixtureRequired              = ($includeIntegration -eq 'true')
+            }
+            dispatcherProfile = [ordered]@{
+              timeoutSeconds         = '${{ steps.dispatcher_profile.outputs.timeout_seconds }}'
+              emitFailuresJsonAlways = '${{ steps.dispatcher_profile.outputs.emit_failures_json_always }}'
+              detectLeaks            = '${{ steps.dispatcher_profile.outputs.detect_leaks }}'
+              failOnLeaks            = '${{ steps.dispatcher_profile.outputs.fail_on_leaks }}'
+              killLeaks              = '${{ steps.dispatcher_profile.outputs.kill_leaks }}'
+              leakGraceSeconds       = '${{ steps.dispatcher_profile.outputs.leak_grace_seconds }}'
+              cleanLabVIEWBefore     = '${{ steps.dispatcher_profile.outputs.clean_labview_before }}'
+              cleanAfter             = '${{ steps.dispatcher_profile.outputs.clean_after }}'
+              trackArtifacts         = '${{ steps.dispatcher_profile.outputs.track_artifacts }}'
+            }
+          }
+          $receiptPath = Join-Path $outDir 'pester-selection.json'
+          $receipt | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $receiptPath -Encoding UTF8
+          "status=ready" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "artifact_name=pester-selection" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+
+      - name: Upload selection receipt
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: pester-selection
+          path: tests/results/pester-selection
+          if-no-files-found: error

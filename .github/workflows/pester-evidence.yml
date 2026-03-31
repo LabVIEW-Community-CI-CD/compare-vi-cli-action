@@ -23,6 +23,10 @@ on:
         required: false
         type: string
         default: 'unknown'
+      selection_status:
+        required: false
+        type: string
+        default: 'unknown'
       execution_job_result:
         required: false
         type: string
@@ -74,6 +78,11 @@ on:
         type: string
       readiness_status:
         description: 'Readiness receipt status'
+        required: false
+        default: 'unknown'
+        type: string
+      selection_status:
+        description: 'Selection receipt status'
         required: false
         default: 'unknown'
         type: string
@@ -280,6 +289,7 @@ jobs:
           $reasons = New-Object System.Collections.Generic.List[string]
           $contextStatus = '${{ inputs.context_status }}'
           $readinessStatus = '${{ inputs.readiness_status }}'
+          $selectionStatus = '${{ inputs.selection_status }}'
           $executionJobResult = '${{ inputs.execution_job_result }}'
           $executionReceiptPresent = '${{ steps.execution_receipt.outputs.present }}'
           $executionReceiptStatus = '${{ steps.execution_receipt.outputs.status }}'
@@ -288,6 +298,9 @@ jobs:
           }
           if ($readinessStatus -ne 'ready') {
             $reasons.Add(("readiness-status={0}" -f $readinessStatus)) | Out-Null
+          }
+          if ($selectionStatus -ne 'ready') {
+            $reasons.Add(("selection-status={0}" -f $selectionStatus)) | Out-Null
           }
           if ($executionJobResult -eq 'skipped') {
             $reasons.Add('execution-job-skipped') | Out-Null
@@ -309,6 +322,8 @@ jobs:
             $classification = 'context-blocked'
           } elseif ($readinessStatus -ne 'ready' -and $executionJobResult -in @('skipped','cancelled')) {
             $classification = 'readiness-blocked'
+          } elseif (($selectionStatus -ne 'ready' -and $executionJobResult -in @('skipped','cancelled')) -or $executionReceiptStatus -eq 'selection-blocked') {
+            $classification = 'selection-blocked'
           } elseif ($executionReceiptStatus -eq 'seam-defect') {
             $reasons.Add('execution-receipt-seam-defect') | Out-Null
           } elseif ($executionReceiptStatus -eq 'test-failures') {
@@ -336,6 +351,7 @@ jobs:
             generatedAtUtc     = [DateTime]::UtcNow.ToString('o')
             contextStatus      = $contextStatus
             readinessStatus    = $readinessStatus
+            selectionStatus    = $selectionStatus
             executionJobResult = $executionJobResult
             rawArtifactDownload = if ('${{ steps.artifact_name.outputs.should_download }}' -eq 'true') { '${{ steps.download.outcome }}' } else { 'skipped' }
             dispatcherExitCode = [int]$dispatcherExitCode

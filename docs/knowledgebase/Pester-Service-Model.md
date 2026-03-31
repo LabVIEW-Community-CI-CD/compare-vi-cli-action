@@ -11,7 +11,7 @@ That coupling is what makes the monolithic self-hosted seam expensive to reprodu
 
 ## Pilot Split
 
-The additive pilot introduces five workflow surfaces:
+The additive pilot introduces seven workflow surfaces:
 
 - `.github/workflows/pester-context.yml`
   - repo/control-plane receipts for repository slug, token-backed standing-priority sync, and context classification
@@ -21,6 +21,8 @@ The additive pilot introduces five workflow surfaces:
   - trusted PR/dispatch entrypoint for proving the pilot without exposing the self-hosted ingress plane to untrusted fork heads
 - `.github/workflows/selfhosted-readiness.yml`
   - host-plane readiness receipts for the self-hosted ingress surface
+- `.github/workflows/pester-selection.yml`
+  - receipt-driven pack shaping for integration mode, include patterns, and dispatcher profile resolution
 - `.github/workflows/pester-run.yml`
   - receipt-driven Pester execution only
 - `.github/workflows/pester-evidence.yml`
@@ -29,11 +31,12 @@ The additive pilot introduces five workflow surfaces:
 ## Design Rules
 
 - Context certifies repo/control-plane assumptions. It does not probe host readiness or execute tests.
+- Selection resolves integration mode, include patterns, and dispatcher profile into a receipt before execution begins.
+- Selection consumes context. It does not probe host readiness or invoke the dispatcher.
 - Readiness certifies the environment. It does not execute the test pack.
 - Readiness consumes context. It does not discover standing-priority state itself.
-- Selection is still internal to execution in the current pilot baseline; pulling it into its own receipt is the next planned decomposition slice.
 - Readiness emits a bounded-freshness receipt artifact that execution must download and validate before dispatch.
-- Execution consumes context and readiness. It does not bootstrap Docker runtimes, install core toolchains, or discover standing-priority state.
+- Execution consumes context, selection, and readiness. It does not normalize pack inputs, choose the dispatcher profile, bootstrap Docker runtimes, install core toolchains, or discover standing-priority state.
 - Execution writes an execution receipt before uploading raw artifacts so evidence can classify the real seam outcome.
 - Execution must also emit a skip-safe execution contract from an always-on finalize path so reusable-workflow outputs do not collapse when the execution job never starts.
 - Evidence consumes raw execution output plus the execution receipt. It classifies `context-blocked`, `readiness-blocked`, and `seam-defect` explicitly instead of collapsing them into one execution symptom.
@@ -45,6 +48,7 @@ The additive pilot introduces five workflow surfaces:
 The pilot can replace the monolith only after:
 
 - readiness receipts are stable on the ingress host
+- selection receipts resolve the declared pack and dispatcher profile without execution-side drift
 - execution runs the declared pack without host bootstrap
 - evidence produces deterministic classifications
 - PR/release comparisons show better failure localization and lower operator ambiguity

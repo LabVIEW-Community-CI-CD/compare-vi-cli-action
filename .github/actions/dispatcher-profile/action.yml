@@ -44,6 +44,27 @@ outputs:
   emit_failures_json_always:
     description: 'Emit failures json always (true/false)'
     value: ${{ steps.set.outputs.emit_failures_json_always }}
+  detect_leaks:
+    description: 'Detect lingering processes after execution (true/false)'
+    value: ${{ steps.set.outputs.detect_leaks }}
+  fail_on_leaks:
+    description: 'Fail the run on detected leaks (true/false)'
+    value: ${{ steps.set.outputs.fail_on_leaks }}
+  kill_leaks:
+    description: 'Attempt to kill leaks when detected (true/false)'
+    value: ${{ steps.set.outputs.kill_leaks }}
+  leak_grace_seconds:
+    description: 'Grace period before the final leak check'
+    value: ${{ steps.set.outputs.leak_grace_seconds }}
+  clean_labview_before:
+    description: 'Clean LabVIEW before execution (true/false)'
+    value: ${{ steps.set.outputs.clean_labview_before }}
+  clean_after:
+    description: 'Clean LabVIEW after execution (true/false)'
+    value: ${{ steps.set.outputs.clean_after }}
+  track_artifacts:
+    description: 'Track execution artifacts (true/false)'
+    value: ${{ steps.set.outputs.track_artifacts }}
 runs:
   using: composite
   steps:
@@ -73,6 +94,13 @@ runs:
         # Outputs for dispatcher parameters
         "timeout_seconds=$to" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
         "emit_failures_json_always=$emit" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+        "detect_leaks=$detect" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+        "fail_on_leaks=$fail" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+        "kill_leaks=$kill" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+        "leak_grace_seconds=$grace" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+        "clean_labview_before=$cleanBefore" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+        "clean_after=$cleanAfter" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+        "track_artifacts=$track" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
 
         if ($env:GITHUB_STEP_SUMMARY) {
           $lines = @('### Dispatcher Profile','')

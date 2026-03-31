@@ -3,7 +3,7 @@
 ## Scope
 
 This report covers the layered Pester service-model control plane defined by the
-trusted router, context, readiness, execution, and evidence workflows.
+trusted router, context, selection, readiness, execution, and evidence workflows.
 
 ## Current Evidence
 
@@ -28,6 +28,7 @@ trusted router, context, readiness, execution, and evidence workflows.
 
 - The subsystem now has explicit requirements and traceability.
 - The upstream slice now has dedicated hosted packet-quality and release-evidence gates.
+- Selection is now a first-class packet layer instead of execution-internal shaping.
 - Coverage and docs integrity now have dedicated packet-level gates.
 - Promotion remains blocked until additive proof against the monolith is
   intentionally accepted and the retained evidence bundle is used to justify the
