@@ -105,6 +105,7 @@ function Resolve-VICategorySlug {
     if ([string]::IsNullOrWhiteSpace($Name)) { return $null }
 
     $token = $Name.Trim().ToLowerInvariant()
+    if ($token -eq 'attributes') { return 'vi-attribute' }
     if ($script:CategoryDefinitions.ContainsKey($token)) { return $token }
     $normalizedToken = $token -replace '[-_]+', ' '
 

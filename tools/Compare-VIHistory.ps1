@@ -533,7 +533,7 @@ function Get-CanonicalComparisonCategoryName {
       'front-panel-position-size' { return 'Front Panel Position/Size' }
       'control-changes' { return 'Front Panel Controls' }
       'window' { return 'Window Properties' }
-      'attributes' { return 'Attributes' }
+      'attributes' { return 'VI Attribute' }
       'vi-attribute' { return 'VI Attribute' }
       'documentation' { return 'Documentation' }
       'execution' { return 'Execution Settings' }
@@ -1837,6 +1837,7 @@ foreach ($modeSpec in $modeSpecs) {
     flags       = $modeFlags
     resultsDir  = $modeResultsResolved
     comparisons = @()
+    collapsedComparisons = @()
     stats       = [ordered]@{
       processed      = 0
       diffs          = 0
@@ -2361,6 +2362,10 @@ foreach ($modeSpec in $modeSpecs) {
         }
       }
 
+      if ($collapsedThis) {
+        $modeManifest.collapsedComparisons += $comparisonRecordObject
+      }
+
       if ($appendComparison) {
         $modeManifest.comparisons += $comparisonRecordObject
       }
@@ -2836,7 +2841,7 @@ if (-not $renderSucceeded) {
       '| --- | --- | --- |'
       '| n/a | n/a | [report](./) |'
       ''
-      '## Attribute coverage'
+      '## Mode filter coverage'
       ''
       '_History renderer unavailable; see manifest for details._'
     )
@@ -2866,7 +2871,7 @@ if (-not $renderSucceeded) {
       </table>
     </section>
     <section>
-      <h2>Attribute coverage</h2>
+      <h2>Mode filter coverage</h2>
       <p>History renderer unavailable.</p>
     </section>
   </article>

@@ -502,6 +502,7 @@ exit 0
       $modeManifest.stats.signalDiffs | Should -Be 0
       $modeManifest.stats.noiseCollapsed | Should -BeGreaterThan 0
       @($modeManifest.comparisons).Count | Should -Be 0
+      @($modeManifest.collapsedComparisons).Count | Should -BeGreaterThan 0
       $modeManifest.stats.collapsedNoise.count | Should -Be $modeManifest.stats.noiseCollapsed
       $modeManifest.stats.collapsedNoise.categoryCounts.PSObject.Properties.Name | Should -Contain 'vi-attribute'
       $modeManifest.stats.collapsedNoise.categoryCounts.PSObject.Properties.Name | Should -Not -Contain 'unspecified'
@@ -512,12 +513,17 @@ exit 0
       $aggregate.stats.signalDiffs | Should -Be 0
       $aggregate.stats.noiseCollapsed | Should -BeGreaterThan 0
       $aggregate.stats.categoryCounts.PSObject.Properties.Name | Should -Contain 'VI Attribute'
+      $aggregate.stats.categoryCounts.PSObject.Properties.Name | Should -Not -Contain 'Attributes'
       $aggregate.stats.categoryCounts.PSObject.Properties.Name | Should -Not -Contain 'Cosmetic'
       $aggregate.stats.categoryCounts.PSObject.Properties.Name | Should -Not -Contain 'unspecified'
       [int]$aggregate.stats.bucketCounts.metadata | Should -BeGreaterThan 0
       $outputText | Should -Match 'LVCompare detected differences'
       $outputText | Should -Match 'VI attribute \(\d+\)'
       $outputText | Should -Not -Match 'unspecified'
+
+      $historyMd = Get-Content -LiteralPath (Join-Path $rd 'history-report.md') -Raw
+      $historyMd | Should -Match 'collapsed noise'
+      $historyMd | Should -Match 'Touch history'
     } finally {
       if ($null -eq $previousDiff) {
         Remove-Item Env:STUB_COMPARE_DIFF -ErrorAction SilentlyContinue
@@ -1449,7 +1455,10 @@ exit 0
       $historyMd | Should -Match '\| Coverage Class \| `catalog-aligned` \|'
       $historyMd | Should -Match '## Mode overview'
       $historyMd | Should -Match '\| Mode \| Processed \| Diffs \| Signal \| Collapsed Noise \| Missing \| Categories \| Buckets \| Flags \|'
-      $historyMd | Should -Match '## Attribute coverage'
+      $historyMd | Should -Match '## Commit pairs'
+      $historyMd | Should -Match 'collapsed noise'
+      $historyMd | Should -Match 'Touch history'
+      $historyMd | Should -Match '## Mode filter coverage'
       $historyMd | Should -Match 'History manifest:'
 
       $historyHtml = Get-Content -LiteralPath (Join-Path $rd 'history-report.html') -Raw
@@ -1463,8 +1472,9 @@ exit 0
       $historyHtml | Should -Match '<th>Signal</th>'
       $historyHtml | Should -Match '<th>Collapsed Noise</th>'
       $historyHtml | Should -Match '<h2>Commit pairs</h2>'
-      $historyHtml | Should -Match 'No commit pairs were captured'
-      $historyHtml | Should -Match '<h2>Attribute coverage</h2>'
+      $historyHtml | Should -Match 'Collapsed noise'
+      $historyHtml | Should -Match 'Touch history'
+      $historyHtml | Should -Match '<h2>Mode filter coverage</h2>'
     } finally {
       if ($null -eq $previousDiff) {
         Remove-Item Env:STUB_COMPARE_DIFF -ErrorAction SilentlyContinue
