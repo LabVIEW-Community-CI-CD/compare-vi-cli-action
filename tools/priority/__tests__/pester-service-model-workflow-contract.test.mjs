@@ -101,8 +101,11 @@ test('trusted PR pilot router only runs self-hosted service-model proof for work
   assert.match(workflow, /types:\s*\[labeled, reopened, synchronize\]/);
   assert.match(workflow, /workflow_dispatch:/);
   assert.match(workflow, /labels -contains 'pester-service-model'/);
+  assert.match(workflow, /PR_LABELS_JSON:\s+\$\{\{\s*toJson\(github\.event\.pull_request\.labels\.\*\.name\)\s*\}\}/);
+  assert.match(workflow, /ConvertFrom-Json -InputObject \$env:PR_LABELS_JSON/);
   assert.match(workflow, /head\.repo\.owner\.login/);
   assert.match(workflow, /\$trustMode = 'same-owner-head'/);
   assert.match(workflow, /reason = 'untrusted-cross-owner-fork'/);
   assert.match(workflow, /uses:\s+\.\s*\/\.github\/workflows\/pester-gate\.yml/);
+  assert.match(workflow, /include_integration:\s+\$\{\{\s*'true'\s*\}\}/);
 });

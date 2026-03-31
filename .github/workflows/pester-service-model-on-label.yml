@@ -45,6 +45,8 @@ jobs:
       - name: Decide trusted pilot routing
         id: decide
         shell: pwsh
+        env:
+          PR_LABELS_JSON: ${{ toJson(github.event.pull_request.labels.*.name) }}
         run: |
           $eventName = '${{ github.event_name }}'
           $shouldRun = 'false'
@@ -57,7 +59,14 @@ jobs:
             if ('${{ inputs.checkout_ref }}') { $checkoutRef = '${{ inputs.checkout_ref }}' }
             $shouldRun = 'true'
           } else {
-            $labels = @('${{ join(github.event.pull_request.labels.*.name, "','") }}' -split ',' | Where-Object { $_ })
+            $labels = @()
+            if ($env:PR_LABELS_JSON) {
+              try {
+                $labels = @((ConvertFrom-Json -InputObject $env:PR_LABELS_JSON -ErrorAction Stop) | Where-Object { $_ })
+              } catch {
+                throw ("Unable to parse PR labels JSON: {0}" -f $_.Exception.Message)
+              }
+            }
             $hasLabel = $labels -contains 'pester-service-model'
             $sameOwner = '${{ github.event.pull_request.head.repo.owner.login }}' -eq '${{ github.repository_owner }}'
             if (-not $hasLabel) {
@@ -83,7 +92,7 @@ jobs:
     if: ${{ needs.trust-context.outputs.should_run == 'true' }}
     uses: ./.github/workflows/pester-gate.yml
     with:
-      include_integration: 'true'
+      include_integration: ${{ 'true' }}
       sample_id: ${{ github.event.inputs.sample_id || '' }}
       checkout_repository: ${{ needs.trust-context.outputs.checkout_repository }}
       checkout_ref: ${{ needs.trust-context.outputs.checkout_ref }}
