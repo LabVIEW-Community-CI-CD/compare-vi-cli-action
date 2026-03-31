@@ -664,11 +664,15 @@ function Get-BucketLabelEntries {
   foreach ($item in $items) {
     if ($null -eq $item) { continue }
     $slug = $null
+    $classification = $null
     if ($item -is [pscustomobject]) {
       if ($item.PSObject.Properties['bucketSlug']) {
         $slug = [string]$item.bucketSlug
       } elseif ($item.PSObject.Properties['slug']) {
         $slug = [string]$item.slug
+      }
+      if ($item.PSObject.Properties['classification']) {
+        $classification = [string]$item.classification
       }
     } else {
       $slug = [string]$item
@@ -680,7 +684,7 @@ function Get-BucketLabelEntries {
         $entries.Add([pscustomobject]@{
           slug           = $meta.slug
           label          = $meta.label
-          classification = $meta.classification
+          classification = if ([string]::IsNullOrWhiteSpace($classification)) { $meta.classification } else { $classification }
         }) | Out-Null
       }
     }
@@ -1203,6 +1207,126 @@ if ($modeEntries.Count -gt 0) {
 
 $stepSummaryLines = @($summaryLines)
 
+$sortedComparisons = @(
+  $comparisons |
+    Sort-Object {
+      try { [int](Coalesce $_.index 0) } catch { 0 }
+    }
+)
+$latestComparisonEntry = if ($sortedComparisons.Count -gt 0) { $sortedComparisons[0] } else { $null }
+$collapsedComparisonEntries = @(
+  $sortedComparisons |
+    Where-Object {
+      $_.result -and
+      $_.result.PSObject.Properties['collapsed'] -and
+      [bool]$_.result.collapsed
+    }
+)
+$signalComparisonEntries = @(
+  $sortedComparisons |
+    Where-Object {
+      $resultNode = $_.result
+      if (-not $resultNode) { return $false }
+      $hasDiff = $resultNode.PSObject.Properties['diff'] -and ($resultNode.diff -eq $true)
+      if (-not $hasDiff) { return $false }
+      if ($resultNode.PSObject.Properties['collapsed'] -and [bool]$resultNode.collapsed) { return $false }
+      $detailNodes = @()
+      if ($resultNode.PSObject.Properties['categoryDetails'] -and $resultNode.categoryDetails) {
+        $detailNodes = @($resultNode.categoryDetails)
+      }
+      if ($detailNodes.Count -eq 0) { return $true }
+      @($detailNodes | Where-Object { [string]$_.classification -ne 'noise' }).Count -gt 0
+    }
+)
+$decisionFocusBuckets = New-Object System.Collections.Generic.List[string]
+$decisionFocusBucketSet = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+$decisionContextBuckets = New-Object System.Collections.Generic.List[string]
+$decisionContextBucketSet = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+foreach ($decisionEntry in $signalComparisonEntries) {
+  $decisionResultNode = $decisionEntry.result
+  if (-not $decisionResultNode) { continue }
+  $decisionBucketEntries = @()
+  if ($decisionResultNode.PSObject.Properties['categoryBucketDetails'] -and $decisionResultNode.categoryBucketDetails) {
+    $decisionBucketEntries = @(Get-BucketLabelEntries -Buckets $decisionResultNode.categoryBucketDetails)
+  } elseif ($decisionResultNode.PSObject.Properties['categoryBuckets'] -and $decisionResultNode.categoryBuckets) {
+    $decisionBucketEntries = @(Get-BucketLabelEntries -Buckets $decisionResultNode.categoryBuckets)
+  }
+  foreach ($decisionBucketEntry in $decisionBucketEntries) {
+    if ($null -eq $decisionBucketEntry) { continue }
+    $bucketLabel = [string]$decisionBucketEntry.label
+    if ([string]::IsNullOrWhiteSpace($bucketLabel)) { continue }
+    $bucketDisplayLabel = $bucketLabel
+    $isContextBucket = $false
+    switch ([string]$decisionBucketEntry.classification) {
+      'noise' {
+        $bucketDisplayLabel = '{0} (noise)' -f $bucketLabel
+        if ($decisionContextBucketSet.Add($bucketDisplayLabel)) {
+          $decisionContextBuckets.Add($bucketDisplayLabel) | Out-Null
+        }
+        $isContextBucket = $true
+        break
+      }
+      'neutral' {
+        $bucketDisplayLabel = '{0} (neutral)' -f $bucketLabel
+        if ($decisionContextBucketSet.Add($bucketDisplayLabel)) {
+          $decisionContextBuckets.Add($bucketDisplayLabel) | Out-Null
+        }
+        $isContextBucket = $true
+        break
+      }
+    }
+    if ($isContextBucket) { continue }
+    if ($decisionFocusBucketSet.Add($bucketDisplayLabel)) {
+      $decisionFocusBuckets.Add($bucketDisplayLabel) | Out-Null
+    }
+  }
+}
+$decisionReviewPriority = if ($signalComparisonEntries.Count -gt 0) {
+  'review-signal-pairs'
+} elseif ($collapsedComparisonEntries.Count -gt 0) {
+  'metadata-only-history'
+} else {
+  'no-diff'
+}
+$decisionLatestStatus = 'n/a'
+if ($latestComparisonEntry) {
+  $latestResultNode = $latestComparisonEntry.result
+  if ($latestResultNode -and $latestResultNode.PSObject.Properties['diff'] -and ($latestResultNode.diff -eq $true)) {
+    if ($latestResultNode.PSObject.Properties['collapsed'] -and [bool]$latestResultNode.collapsed) {
+      $decisionLatestStatus = 'collapsed-noise'
+    } else {
+      $decisionLatestStatus = 'signal-review'
+    }
+  } elseif ($latestResultNode -and $latestResultNode.PSObject.Properties['status'] -and $latestResultNode.status) {
+    $decisionLatestStatus = [string]$latestResultNode.status
+  } else {
+    $decisionLatestStatus = 'clean'
+  }
+}
+if ($sortedComparisons.Count -gt 0) {
+  $summaryLines.Add('')
+  $summaryLines.Add('## Decision guidance')
+  $summaryLines.Add('')
+  $summaryLines.Add(('- Review priority: `{0}`' -f $decisionReviewPriority))
+  if ($latestComparisonEntry) {
+    $summaryLines.Add(('- Latest pair: `pair {0}` is `{1}`' -f (Coalesce $latestComparisonEntry.index 'n/a'), $decisionLatestStatus))
+  }
+  if ($signalComparisonEntries.Count -gt 0) {
+    $summaryLines.Add(('- Signal pairs: `{0}`' -f ([string]::Join(', ', @($signalComparisonEntries | ForEach-Object { [string](Coalesce $_.index 'n/a') })))))
+  } else {
+    $summaryLines.Add('- Signal pairs: `none`')
+  }
+  if ($collapsedComparisonEntries.Count -gt 0) {
+    $summaryLines.Add(('- Collapsed pairs: `{0}`' -f ([string]::Join(', ', @($collapsedComparisonEntries | ForEach-Object { [string](Coalesce $_.index 'n/a') })))))
+  }
+  if ($decisionFocusBuckets.Count -gt 0) {
+    $summaryLines.Add(('- Focus buckets: `{0}`' -f ([string]::Join(', ', @($decisionFocusBuckets.ToArray())))))
+  }
+  if ($decisionContextBuckets.Count -gt 0) {
+    $summaryLines.Add(('- Context buckets: `{0}`' -f ([string]::Join(', ', @($decisionContextBuckets.ToArray())))))
+  }
+}
+
 $comparisonHtmlRows = New-Object System.Collections.Generic.List[object]
 if ($comparisons.Count -gt 0) {
   $summaryLines.Add('')
@@ -1534,6 +1658,30 @@ if ($emitHtml -and $HtmlPath) {
     [void]$htmlBuilder.AppendLine('  </table>')
   }
 
+  if ($sortedComparisons.Count -gt 0) {
+    [void]$htmlBuilder.AppendLine('  <h2>Decision guidance</h2>')
+    [void]$htmlBuilder.AppendLine('  <ul>')
+    [void]$htmlBuilder.AppendLine(('    <li><strong>Review priority</strong><span>{0}</span></li>' -f (Format-HtmlCodeList -Values @($decisionReviewPriority))))
+    if ($latestComparisonEntry) {
+      [void]$htmlBuilder.AppendLine(('    <li><strong>Latest pair</strong><span><code>pair {0}</code> is <code>{1}</code></span></li>' -f (ConvertTo-HtmlSafe (Coalesce $latestComparisonEntry.index 'n/a')), (ConvertTo-HtmlSafe $decisionLatestStatus)))
+    }
+    if ($signalComparisonEntries.Count -gt 0) {
+      [void]$htmlBuilder.AppendLine(('    <li><strong>Signal pairs</strong><span><code>{0}</code></span></li>' -f (ConvertTo-HtmlSafe ([string]::Join(', ', @($signalComparisonEntries | ForEach-Object { [string](Coalesce $_.index 'n/a') }))))))
+    } else {
+      [void]$htmlBuilder.AppendLine('    <li><strong>Signal pairs</strong><span><code>none</code></span></li>')
+    }
+    if ($collapsedComparisonEntries.Count -gt 0) {
+      [void]$htmlBuilder.AppendLine(('    <li><strong>Collapsed pairs</strong><span><code>{0}</code></span></li>' -f (ConvertTo-HtmlSafe ([string]::Join(', ', @($collapsedComparisonEntries | ForEach-Object { [string](Coalesce $_.index 'n/a') }))))))
+    }
+    if ($decisionFocusBuckets.Count -gt 0) {
+      [void]$htmlBuilder.AppendLine(('    <li><strong>Focus buckets</strong><span>{0}</span></li>' -f (ConvertTo-HtmlSafe ([string]::Join(', ', @($decisionFocusBuckets.ToArray()))))))
+    }
+    if ($decisionContextBuckets.Count -gt 0) {
+      [void]$htmlBuilder.AppendLine(('    <li><strong>Context buckets</strong><span>{0}</span></li>' -f (ConvertTo-HtmlSafe ([string]::Join(', ', @($decisionContextBuckets.ToArray()))))))
+    }
+    [void]$htmlBuilder.AppendLine('  </ul>')
+  }
+
   [void]$htmlBuilder.AppendLine('  <h2>Commit pairs</h2>')
   if ($comparisonHtmlRows.Count -gt 0) {
     [void]$htmlBuilder.AppendLine('  <table>')
@@ -1809,6 +1957,17 @@ $historySummary = [ordered]@{
     coverageDetail = [string]$coverageClassDetail
     modeSensitivity = [string]$modeSensitivity
     outcomeLabels = @(Get-SortedUniqueStringArray -Value $outcomeLabels)
+  }
+  decisionGuidance = [ordered]@{
+    reviewPriority = [string]$decisionReviewPriority
+    latestPair = [ordered]@{
+      index = if ($latestComparisonEntry) { [int](Coalesce $latestComparisonEntry.index 0) } else { 0 }
+      status = [string]$decisionLatestStatus
+    }
+    signalPairs = @($signalComparisonEntries | ForEach-Object { [int](Coalesce $_.index 0) })
+    collapsedPairs = @($collapsedComparisonEntries | ForEach-Object { [int](Coalesce $_.index 0) })
+    focusBuckets = @($decisionFocusBuckets.ToArray())
+    contextBuckets = @($decisionContextBuckets.ToArray())
   }
   summary = [ordered]@{
     modes = if ($stats -and $stats.PSObject.Properties['modes']) { [int]$stats.modes } else { [int]$modeEntries.Count }

@@ -1445,6 +1445,12 @@ exit 0
       $historySummary.observedInterpretation.coverageClass | Should -Be 'catalog-aligned'
       @($historySummary.execution.requestedModes) | Should -Be @('default')
       @($historySummary.execution.executedModes) | Should -Be @('default')
+      $historySummary.decisionGuidance.reviewPriority | Should -Be 'metadata-only-history'
+      @($historySummary.decisionGuidance.signalPairs) | Should -Be @()
+      @($historySummary.decisionGuidance.collapsedPairs) | Should -Be @(1)
+      $historySummary.decisionGuidance.latestPair.index | Should -Be 1
+      $historySummary.decisionGuidance.latestPair.status | Should -Be 'collapsed-noise'
+      @($historySummary.decisionGuidance.PSObject.Properties.Name) | Should -Contain 'contextBuckets'
 
       $historyMd = Get-Content -LiteralPath (Join-Path $rd 'history-report.md') -Raw
       $historyMd | Should -Match 'Requested Modes: `default`'
@@ -1455,6 +1461,9 @@ exit 0
       $historyMd | Should -Match '\| Coverage Class \| `catalog-aligned` \|'
       $historyMd | Should -Match '## Mode overview'
       $historyMd | Should -Match '\| Mode \| Processed \| Diffs \| Signal \| Collapsed Noise \| Missing \| Categories \| Buckets \| Flags \|'
+      $historyMd | Should -Match '## Decision guidance'
+      $historyMd | Should -Match 'Review priority'
+      $historyMd | Should -Match 'Latest pair'
       $historyMd | Should -Match '## Commit pairs'
       $historyMd | Should -Match 'collapsed noise'
       $historyMd | Should -Match 'Touch history'
@@ -1471,6 +1480,9 @@ exit 0
       $historyHtml | Should -Match '<h2>Summary</h2>'
       $historyHtml | Should -Match '<th>Signal</th>'
       $historyHtml | Should -Match '<th>Collapsed Noise</th>'
+      $historyHtml | Should -Match '<h2>Decision guidance</h2>'
+      $historyHtml | Should -Match 'Review priority'
+      $historyHtml | Should -Match 'Latest pair'
       $historyHtml | Should -Match '<h2>Commit pairs</h2>'
       $historyHtml | Should -Match 'Collapsed noise'
       $historyHtml | Should -Match 'Touch history'
