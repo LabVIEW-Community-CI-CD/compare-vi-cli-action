@@ -39,6 +39,7 @@ jobs:
       include_patterns: ${{ inputs.include_patterns || '' }}
       sample_id: ${{ inputs.sample_id || '' }}
       readiness_status: ${{ needs.readiness.outputs.receipt_status }}
+      readiness_artifact_name: ${{ needs.readiness.outputs.receipt_artifact_name }}
 
   pester-evidence:
     needs: [readiness, pester-run]
@@ -49,4 +50,3 @@ jobs:
       dispatcher_exit_code: ${{ needs.pester-run.outputs.dispatcher_exit_code }}
       readiness_status: ${{ needs.readiness.outputs.receipt_status }}
       execution_job_result: ${{ needs.pester-run.result }}
-

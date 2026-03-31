@@ -18,6 +18,10 @@ on:
         required: false
         type: string
         default: 'unknown'
+      readiness_artifact_name:
+        required: false
+        type: string
+        default: 'pester-readiness'
     outputs:
       dispatcher_exit_code:
         description: 'Dispatcher exit code from the self-hosted execution pass'
@@ -47,6 +51,11 @@ on:
         description: 'Readiness receipt status'
         required: false
         default: 'unknown'
+        type: string
+      readiness_artifact_name:
+        description: 'Readiness receipt artifact name'
+        required: false
+        default: 'pester-readiness'
         type: string
 
 concurrency:
@@ -104,6 +113,40 @@ jobs:
           if (-not $env:WORKFLOW_TOKEN) { throw 'github.token is empty' }
           "GH_TOKEN=$env:WORKFLOW_TOKEN" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
           "GITHUB_TOKEN=$env:WORKFLOW_TOKEN" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Download readiness receipt artifact
+        uses: actions/download-artifact@v5
+        with:
+          name: ${{ inputs.readiness_artifact_name }}
+          path: tests/readiness
+
+      - name: Validate readiness receipt
+        id: readiness_receipt
+        shell: pwsh
+        run: |
+          $receiptPath = 'tests/readiness/selfhosted-readiness.json'
+          if (-not (Test-Path -LiteralPath $receiptPath)) {
+            throw "Readiness receipt missing: $receiptPath"
+          }
+          $receipt = Get-Content -LiteralPath $receiptPath -Raw | ConvertFrom-Json -ErrorAction Stop
+          if ($receipt.schema -ne 'pester-selfhosted-readiness-receipt@v1') {
+            throw ("Unexpected readiness receipt schema: {0}" -f $receipt.schema)
+          }
+          if ($receipt.status -ne 'ready') {
+            throw ("Readiness receipt status is not ready: {0}" -f $receipt.status)
+          }
+          $freshnessWindowSeconds = 900
+          if ($receipt.PSObject.Properties.Name -contains 'freshnessWindowSeconds') {
+            $freshnessWindowSeconds = [int]$receipt.freshnessWindowSeconds
+          }
+          $generatedAtUtc = [DateTime]::Parse($receipt.generatedAtUtc).ToUniversalTime()
+          $ageSeconds = [math]::Floor(([DateTime]::UtcNow - $generatedAtUtc).TotalSeconds)
+          if ($ageSeconds -gt $freshnessWindowSeconds) {
+            throw ("Readiness receipt stale: age {0}s exceeds freshness window {1}s" -f $ageSeconds, $freshnessWindowSeconds)
+          }
+          "path=$receiptPath" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "generated_at_utc=$($generatedAtUtc.ToString('o'))" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "freshness_window_seconds=$freshnessWindowSeconds" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
 
       - name: Acquire session lock
         shell: pwsh
@@ -222,14 +265,6 @@ jobs:
         shell: pwsh
         run: pwsh -NoLogo -NoProfile -File tools/Session-Lock.ps1 -Action Release
 
-      - name: Upload raw Pester execution artifact
-        if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          name: pester-run-raw
-          path: tests/results
-          if-no-files-found: warn
-
       - name: Write execution receipt
         id: execution_receipt
         if: always()
@@ -245,6 +280,7 @@ jobs:
           if ($dispatcherExitCode -eq '') {
             $dispatcherExitCode = '-1'
           }
+          $readinessReceiptPresent = Test-Path -LiteralPath '${{ steps.readiness_receipt.outputs.path }}'
           if ((Test-Path -LiteralPath $summaryPath) -and $dispatcherExitCode -eq '0') {
             $status = 'completed'
           } elseif (Test-Path -LiteralPath $summaryPath) {
@@ -254,6 +290,10 @@ jobs:
             schema             = 'pester-execution-receipt@v1'
             generatedAtUtc     = [DateTime]::UtcNow.ToString('o')
             readinessStatus    = '${{ inputs.readiness_status }}'
+            readinessReceiptPath = '${{ steps.readiness_receipt.outputs.path }}'
+            readinessReceiptPresent = $readinessReceiptPresent
+            readinessReceiptGeneratedAtUtc = '${{ steps.readiness_receipt.outputs.generated_at_utc }}'
+            readinessReceiptFreshnessWindowSeconds = '${{ steps.readiness_receipt.outputs.freshness_window_seconds }}'
             dispatcherExitCode = [int]$dispatcherExitCode
             summaryPresent     = Test-Path -LiteralPath $summaryPath
             status             = $status
@@ -264,3 +304,10 @@ jobs:
           "dispatcher_exit_code=$dispatcherExitCode" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
           "raw_artifact_name=pester-run-raw" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
 
+      - name: Upload raw Pester execution artifact
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: pester-run-raw
+          path: tests/results
+          if-no-files-found: warn

@@ -194,6 +194,7 @@ jobs:
           $receipt = [ordered]@{
             schema         = 'pester-selfhosted-readiness-receipt@v1'
             generatedAtUtc = [DateTime]::UtcNow.ToString('o')
+            freshnessWindowSeconds = 900
             status         = $status
             sampleId       = '${{ inputs.sample_id || github.event.inputs.sample_id || '' }}'
             probes         = [ordered]@{
@@ -216,4 +217,3 @@ jobs:
           name: pester-readiness
           path: tests/results/pester-readiness
           if-no-files-found: error
-

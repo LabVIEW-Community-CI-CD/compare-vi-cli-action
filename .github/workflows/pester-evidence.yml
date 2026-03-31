@@ -107,6 +107,25 @@ jobs:
             New-Item -ItemType Directory -Path 'tests/results' -Force | Out-Null
           }
 
+      - name: Validate execution receipt artifact
+        id: execution_receipt
+        if: always()
+        shell: pwsh
+        run: |
+          $receiptPath = Join-Path 'tests/results' 'pester-run-receipt.json'
+          if (-not (Test-Path -LiteralPath $receiptPath)) {
+            "present=false" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+            "status=missing" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+            exit 0
+          }
+          $receipt = Get-Content -LiteralPath $receiptPath -Raw | ConvertFrom-Json -ErrorAction Stop
+          if ($receipt.schema -ne 'pester-execution-receipt@v1') {
+            throw ("Unexpected execution receipt schema: {0}" -f $receipt.schema)
+          }
+          "present=true" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "status=$($receipt.status)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "dispatcher_exit_code=$($receipt.dispatcherExitCode)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+
       - name: Publish Pester summary
         if: always()
         continue-on-error: true
@@ -228,6 +247,8 @@ jobs:
           $summaryPath = Join-Path $resultsDir 'pester-summary.json'
           $classification = 'seam-defect'
           $reasons = New-Object System.Collections.Generic.List[string]
+          $executionReceiptPresent = '${{ steps.execution_receipt.outputs.present }}'
+          $executionReceiptStatus = '${{ steps.execution_receipt.outputs.status }}'
           if ('${{ inputs.readiness_status }}' -ne 'ready') {
             $reasons.Add(("readiness-status={0}" -f '${{ inputs.readiness_status }}')) | Out-Null
           }
@@ -236,9 +257,18 @@ jobs:
           }
           $dispatcherExitCode = '${{ inputs.dispatcher_exit_code }}'
           if ([string]::IsNullOrWhiteSpace($dispatcherExitCode)) { $dispatcherExitCode = '-1' }
-          if (Test-Path -LiteralPath $summaryPath) {
+          if ($executionReceiptPresent -ne 'true') {
+            $reasons.Add('execution-receipt-missing') | Out-Null
+          } elseif ($executionReceiptStatus -eq 'seam-defect') {
+            $reasons.Add('execution-receipt-seam-defect') | Out-Null
+          } elseif ($executionReceiptStatus -eq 'test-failures') {
+            $classification = 'test-failures'
+          } elseif (Test-Path -LiteralPath $summaryPath) {
             try {
               $summary = Get-Content -LiteralPath $summaryPath -Raw | ConvertFrom-Json -ErrorAction Stop
+              if ('${{ steps.execution_receipt.outputs.dispatcher_exit_code }}' -and '${{ steps.execution_receipt.outputs.dispatcher_exit_code }}' -ne $dispatcherExitCode) {
+                $reasons.Add('dispatcher-exit-mismatch') | Out-Null
+              }
               if (($summary.failed + $summary.errors) -gt 0 -or $dispatcherExitCode -ne '0') {
                 $classification = 'test-failures'
               } else {
@@ -281,4 +311,3 @@ jobs:
       - name: Propagate gate outcome
         if: ${{ steps.classify.outputs.classification != 'ok' && inputs.continue_on_error != 'true' }}
         run: exit 1
-
