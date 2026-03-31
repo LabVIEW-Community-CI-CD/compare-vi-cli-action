@@ -171,6 +171,7 @@ exit 0
       DOCKER_STUB_CONTEXT = $env:DOCKER_STUB_CONTEXT
       DOCKER_STUB_CONTEXT_SHOW_EMPTY = $env:DOCKER_STUB_CONTEXT_SHOW_EMPTY
       DOCKER_STUB_CONTEXT_USE_FAIL_TARGET = $env:DOCKER_STUB_CONTEXT_USE_FAIL_TARGET
+      DOCKER_COMMAND_OVERRIDE = $env:DOCKER_COMMAND_OVERRIDE
       DOCKER_HOST = $env:DOCKER_HOST
     }
   }
@@ -229,6 +230,48 @@ exit 0
     $snapshot.observed.PSObject.Properties.Name | Should -Contain 'dockerBackendProcesses'
     $snapshot.result.reason | Should -Match 'parseReason=(daemon-unavailable|docker-info-command-failed)'
     $snapshot.result.reason | Should -Match 'exitCode=1'
+  }
+
+  It 'honors DOCKER_COMMAND_OVERRIDE before a failing docker on PATH' {
+    $work = Join-Path $TestDrive 'docker-command-override'
+    New-Item -ItemType Directory -Path $work -Force | Out-Null
+    & $script:CreateDockerWslStubs -WorkRoot $work
+
+    $fallbackBin = Join-Path $work 'fallback-bin'
+    New-Item -ItemType Directory -Path $fallbackBin -Force | Out-Null
+    if ($IsWindows) {
+      @"
+@echo off
+echo fallback docker should not run 1>&2
+exit /b 9
+"@ | Set-Content -LiteralPath (Join-Path $fallbackBin 'docker.cmd') -Encoding ascii
+      $env:PATH = "{0};{1}" -f $fallbackBin, $env:PATH
+    } else {
+      @'
+#!/usr/bin/env bash
+echo fallback docker should not run 1>&2
+exit 9
+'@ | Set-Content -LiteralPath (Join-Path $fallbackBin 'docker') -Encoding utf8
+      & chmod +x (Join-Path $fallbackBin 'docker')
+      $env:PATH = "{0}:{1}" -f $fallbackBin, $env:PATH
+    }
+
+    Set-Item Env:DOCKER_COMMAND_OVERRIDE (Join-Path $work 'bin' 'docker.ps1')
+    Set-Item Env:DOCKER_STUB_INFO_MODE 'parsed-linux'
+    Set-Item Env:DOCKER_STUB_CONTEXT 'desktop-linux'
+
+    $snapshotPath = Join-Path $work 'runtime.json'
+    $output = & pwsh -NoLogo -NoProfile -File $script:GuardScript `
+      -ExpectedOsType linux `
+      -ExpectedContext desktop-linux `
+      -AutoRepair:$false `
+      -SnapshotPath $snapshotPath `
+      -GitHubOutputPath '' 2>&1
+    $LASTEXITCODE | Should -Be 0 -Because ($output -join "`n")
+
+    $snapshot = Get-Content -LiteralPath $snapshotPath -Raw | ConvertFrom-Json -Depth 12
+    $snapshot.result.status | Should -Be 'ok'
+    $snapshot.observed.osType | Should -Be 'linux'
   }
 
   It 'classifies parse-defect when docker info output is non-empty but unparseable' {
