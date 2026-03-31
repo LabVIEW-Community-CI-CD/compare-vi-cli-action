@@ -3,7 +3,7 @@ name: Pester service-model pilot on trusted PR label
 on:
   pull_request_target:
     types: [labeled, reopened, synchronize]
-    branches: [main, develop, release/**]
+    branches: [main, develop, integration/**, release/**]
     paths-ignore:
       - '**/*.md'
   workflow_dispatch:
