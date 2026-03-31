@@ -1,0 +1,284 @@
+name: Pester evidence
+
+on:
+  workflow_call:
+    inputs:
+      raw_artifact_name:
+        required: false
+        type: string
+        default: 'pester-run-raw'
+      dispatcher_exit_code:
+        required: false
+        type: string
+        default: ''
+      readiness_status:
+        required: false
+        type: string
+        default: 'unknown'
+      execution_job_result:
+        required: false
+        type: string
+        default: ''
+      continue_on_error:
+        required: false
+        type: string
+        default: 'false'
+    outputs:
+      classification:
+        description: 'Final evidence classification'
+        value: ${{ jobs.evidence.outputs.classification }}
+      total:
+        description: 'Total tests discovered'
+        value: ${{ jobs.evidence.outputs.total }}
+      passed:
+        description: 'Passed tests count'
+        value: ${{ jobs.evidence.outputs.passed }}
+      failed:
+        description: 'Failed tests count'
+        value: ${{ jobs.evidence.outputs.failed }}
+      errors:
+        description: 'Errors count'
+        value: ${{ jobs.evidence.outputs.errors }}
+      duration_s:
+        description: 'Duration in seconds'
+        value: ${{ jobs.evidence.outputs.duration_s }}
+  workflow_dispatch:
+    inputs:
+      raw_artifact_name:
+        description: 'Raw execution artifact name'
+        required: false
+        default: 'pester-run-raw'
+        type: string
+      dispatcher_exit_code:
+        description: 'Dispatcher exit code from execution workflow'
+        required: false
+        default: ''
+        type: string
+      readiness_status:
+        description: 'Readiness receipt status'
+        required: false
+        default: 'unknown'
+        type: string
+      execution_job_result:
+        description: 'Execution job result'
+        required: false
+        default: ''
+        type: string
+      continue_on_error:
+        description: 'Treat failing evidence as notice-only'
+        required: false
+        default: 'false'
+        type: choice
+        options: ['false', 'true']
+
+jobs:
+  evidence:
+    runs-on: ubuntu-latest
+    outputs:
+      classification: ${{ steps.classify.outputs.classification }}
+      total: ${{ steps.export.outputs.total }}
+      passed: ${{ steps.export.outputs.passed }}
+      failed: ${{ steps.export.outputs.failed }}
+      errors: ${{ steps.export.outputs.errors }}
+      duration_s: ${{ steps.export.outputs.duration_s }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Resolve raw artifact name
+        id: artifact_name
+        shell: pwsh
+        run: |
+          $artifactName = '${{ inputs.raw_artifact_name }}'
+          if ([string]::IsNullOrWhiteSpace($artifactName)) { $artifactName = 'pester-run-raw' }
+          "name=$artifactName" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+
+      - name: Download raw execution artifact
+        id: download
+        continue-on-error: true
+        uses: actions/download-artifact@v5
+        with:
+          name: ${{ steps.artifact_name.outputs.name }}
+          path: .
+
+      - name: Ensure results directory
+        shell: pwsh
+        run: |
+          if (-not (Test-Path -LiteralPath 'tests/results')) {
+            New-Item -ItemType Directory -Path 'tests/results' -Force | Out-Null
+          }
+
+      - name: Publish Pester summary
+        if: always()
+        continue-on-error: true
+        shell: pwsh
+        run: pwsh -File scripts/Write-PesterSummaryToStepSummary.ps1 -ResultsDir 'tests/results'
+
+      - name: Validate Pester summary schema-lite (notice-only)
+        if: always()
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          $json = Join-Path 'tests/results' 'pester-summary.json'
+          if (Test-Path $json) {
+            $schemas = @(
+              'docs/schemas/pester-summary-v1_7_1.schema.json',
+              'docs/schemas/pester-summary-v1_7.schema.json',
+              'docs/schemas/pester-summary-v1_6.schema.json',
+              'docs/schemas/pester-summary-v1_5.schema.json',
+              'docs/schemas/pester-summary-v1_4.schema.json',
+              'docs/schemas/pester-summary-v1_3.schema.json',
+              'docs/schemas/pester-summary-v1_2.schema.json',
+              'docs/schemas/pester-summary-v1_1.schema.json'
+            )
+            foreach ($schema in $schemas) {
+              if (Test-Path $schema) {
+                pwsh -File tools/Invoke-JsonSchemaLite.ps1 -JsonPath $json -SchemaPath $schema
+                if ($LASTEXITCODE -eq 0) { break }
+              }
+            }
+          }
+
+      - name: Ensure session index (fallback)
+        if: always()
+        continue-on-error: true
+        shell: pwsh
+        run: pwsh -File tools/Ensure-SessionIndex.ps1 -ResultsDir 'tests/results' -SummaryJson 'pester-summary.json'
+
+      - name: Wire Probe (S1)
+        if: always()
+        uses: ./.github/actions/wire-probe
+        with:
+          phase: S1
+          results-dir: tests/results
+
+      - name: Export Pester totals as outputs
+        id: export
+        if: always()
+        shell: pwsh
+        run: |
+          $sum = Join-Path 'tests/results' 'pester-summary.json'
+          if (Test-Path $sum) {
+            $js = Get-Content $sum -Raw | ConvertFrom-Json
+            "total=$($js.total)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+            "passed=$($js.passed)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+            "failed=$($js.failed)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+            "errors=$($js.errors)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+            "duration_s=$($js.duration_s)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          } else {
+            "total=0" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+            "passed=0" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+            "failed=0" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+            "errors=0" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+            "duration_s=0" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          }
+
+      - name: Session index post
+        if: always()
+        uses: ./.github/actions/session-index-post
+        with:
+          results-dir: tests/results
+          validate-schema: true
+          upload: true
+          artifact-name: session-index
+
+      - name: Append session summary
+        if: always()
+        continue-on-error: true
+        shell: pwsh
+        run: pwsh -File tools/Write-SessionIndexSummary.ps1 -ResultsDir 'tests/results'
+
+      - name: Append top Pester failures
+        if: always()
+        continue-on-error: true
+        shell: pwsh
+        run: pwsh -File tools/Write-PesterTopFailures.ps1 -ResultsDir 'tests/results' -Top 10
+
+      - name: Write compact totals JSON
+        if: always()
+        shell: pwsh
+        run: |
+          $outDir = 'tests/results'
+          $sum = Join-Path $outDir 'pester-summary.json'
+          $obj = [ordered]@{
+            schema = 'pester-totals/v1'
+            includeIntegration = $null
+            status = 'missing-summary'
+          }
+          if (Test-Path $sum) {
+            try {
+              $js = Get-Content $sum -Raw | ConvertFrom-Json -ErrorAction Stop
+              $obj.total = $js.total
+              $obj.passed = $js.passed
+              $obj.failed = $js.failed
+              $obj.errors = $js.errors
+              $obj.duration_s = $js.duration_s
+              $obj.status = if (($js.failed + $js.errors) -gt 0) { 'fail' } else { 'ok' }
+            } catch {
+              $obj.status = 'unknown'
+            }
+          }
+          $obj | ConvertTo-Json -Depth 5 | Out-File -FilePath (Join-Path $outDir 'pester-totals.json') -Encoding utf8
+
+      - name: Classify evidence outcome
+        id: classify
+        if: always()
+        shell: pwsh
+        run: |
+          $resultsDir = 'tests/results'
+          $summaryPath = Join-Path $resultsDir 'pester-summary.json'
+          $classification = 'seam-defect'
+          $reasons = New-Object System.Collections.Generic.List[string]
+          if ('${{ inputs.readiness_status }}' -ne 'ready') {
+            $reasons.Add(("readiness-status={0}" -f '${{ inputs.readiness_status }}')) | Out-Null
+          }
+          if ('${{ inputs.execution_job_result }}' -eq 'skipped') {
+            $reasons.Add('execution-job-skipped') | Out-Null
+          }
+          $dispatcherExitCode = '${{ inputs.dispatcher_exit_code }}'
+          if ([string]::IsNullOrWhiteSpace($dispatcherExitCode)) { $dispatcherExitCode = '-1' }
+          if (Test-Path -LiteralPath $summaryPath) {
+            try {
+              $summary = Get-Content -LiteralPath $summaryPath -Raw | ConvertFrom-Json -ErrorAction Stop
+              if (($summary.failed + $summary.errors) -gt 0 -or $dispatcherExitCode -ne '0') {
+                $classification = 'test-failures'
+              } else {
+                $classification = 'ok'
+              }
+            } catch {
+              $classification = 'seam-defect'
+              $reasons.Add('summary-unparseable') | Out-Null
+            }
+          } else {
+            $reasons.Add('summary-missing') | Out-Null
+          }
+          $receipt = [ordered]@{
+            schema             = 'pester-evidence-classification@v1'
+            generatedAtUtc     = [DateTime]::UtcNow.ToString('o')
+            readinessStatus    = '${{ inputs.readiness_status }}'
+            executionJobResult = '${{ inputs.execution_job_result }}'
+            dispatcherExitCode = [int]$dispatcherExitCode
+            summaryPresent     = Test-Path -LiteralPath $summaryPath
+            classification     = $classification
+            reasons            = @($reasons)
+          }
+          $receipt | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath (Join-Path $resultsDir 'pester-evidence-classification.json') -Encoding UTF8
+          "classification=$classification" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+
+      - name: Generate dev dashboard report
+        if: always()
+        continue-on-error: true
+        shell: pwsh
+        run: pwsh -File tools/Invoke-DevDashboard.ps1 -Group 'pester-selfhosted' -ResultsRoot 'tests/results'
+
+      - name: Upload evidence artifact
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: pester-evidence
+          path: tests/results
+          if-no-files-found: warn
+
+      - name: Propagate gate outcome
+        if: ${{ steps.classify.outputs.classification != 'ok' && inputs.continue_on_error != 'true' }}
+        run: exit 1
+

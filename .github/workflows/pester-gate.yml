@@ -1,0 +1,52 @@
+name: Pester gate (service model pilot)
+
+on:
+  workflow_dispatch:
+    inputs:
+      include_integration:
+        description: "Include Integration-tagged tests in the execution pack"
+        required: false
+        default: 'false'
+        type: choice
+        options: ['false', 'true']
+      include_patterns:
+        description: 'Optional repo-relative IncludePatterns selector'
+        required: false
+        default: ''
+        type: string
+      sample_id:
+        description: 'Sampling correlation id (prevents cancels)'
+        required: false
+        default: ''
+        type: string
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.inputs.sample_id || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  readiness:
+    uses: ./.github/workflows/selfhosted-readiness.yml
+    with:
+      sample_id: ${{ inputs.sample_id || '' }}
+
+  pester-run:
+    needs: readiness
+    if: always()
+    uses: ./.github/workflows/pester-run.yml
+    with:
+      include_integration: ${{ inputs.include_integration || 'false' }}
+      include_patterns: ${{ inputs.include_patterns || '' }}
+      sample_id: ${{ inputs.sample_id || '' }}
+      readiness_status: ${{ needs.readiness.outputs.receipt_status }}
+
+  pester-evidence:
+    needs: [readiness, pester-run]
+    if: always()
+    uses: ./.github/workflows/pester-evidence.yml
+    with:
+      raw_artifact_name: ${{ needs.pester-run.outputs.raw_artifact_name }}
+      dispatcher_exit_code: ${{ needs.pester-run.outputs.dispatcher_exit_code }}
+      readiness_status: ${{ needs.readiness.outputs.receipt_status }}
+      execution_job_result: ${{ needs.pester-run.result }}
+
