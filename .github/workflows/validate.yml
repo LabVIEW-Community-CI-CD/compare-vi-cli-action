@@ -1496,6 +1496,9 @@ jobs:
       execution_model: ${{ steps.plan.outputs.execution_model }}
       runner_image: ${{ steps.plan.outputs.runner_image }}
       expected_context: ${{ steps.plan.outputs.expected_context }}
+      expected_os: ${{ steps.plan.outputs.expected_os }}
+      required_labels: ${{ steps.plan.outputs.required_labels }}
+      matching_runner_count: ${{ steps.plan.outputs.matching_runner_count }}
     steps:
     - uses: actions/checkout@v5
       with:
@@ -1513,18 +1516,37 @@ jobs:
       with:
         phase: J2
         results-dir: tests/results
-    - name: Resolve portable hosted Windows lane
+    - name: Resolve self-hosted Windows Docker lane
       id: plan
       shell: pwsh
+      env:
+        GITHUB_TOKEN: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
+        GH_TOKEN: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
       run: |
         $resultsRoot = 'tests/results/_agent/vi-history-dispatch'
         New-Item -ItemType Directory -Path $resultsRoot -Force | Out-Null
-        $planPath = Join-Path $resultsRoot 'validate-vi-history-windows-hosted-plan.json'
-        pwsh -NoLogo -NoProfile -File tools/Resolve-HostedWindowsLanePlan.ps1 `
-          -RunnerImage 'windows-2022' `
-          -ContainerImage 'nationalinstruments/labview:2026q1-windows' `
-          -ExpectedContext 'default' `
+        $planPath = Join-Path $resultsRoot 'validate-vi-history-windows-docker-plan.json'
+        $requiredLabels = @(
+          'self-hosted',
+          'Windows',
+          'X64',
+          'comparevi',
+          'capability-ingress',
+          'docker-lane'
+        )
+        pwsh -NoLogo -NoProfile -File tools/Resolve-SelfHostedWindowsLanePlan.ps1 `
+          -Repository '${{ github.repository }}' `
+          -RequiredLabels $requiredLabels `
+          -ExecutionModel 'self-hosted-windows-docker-lane' `
+          -RunnerImage 'self-hosted-windows-docker-lane' `
+          -ExpectedContext 'desktop-windows' `
           -ExpectedOs 'windows' `
+          -RequiredHealthReceipts @() `
+          -Notes @(
+            'Availability means an online, idle repository runner advertises the ingress plus docker-lane labels.',
+            'The lane may mutate Docker Desktop into the Windows engine and then restores the starting context after proof capture.'
+          ) `
+          -Token $env:GITHUB_TOKEN `
           -OutputJsonPath $planPath `
           -GitHubOutputPath $env:GITHUB_OUTPUT `
           -StepSummaryPath $env:GITHUB_STEP_SUMMARY
@@ -1534,15 +1556,16 @@ jobs:
       run: |
         if ($env:GITHUB_STEP_SUMMARY) {
           $lines = @(
-            '### VI History Scenarios (Windows hosted plan)',
+            '### VI History Scenarios (Windows self-hosted Docker plan)',
             '',
             ('- execute_lanes: `{0}`' -f '${{ needs.vi-history-scenarios-plan.outputs.execute_lanes }}'),
             ('- lane_available: `{0}`' -f '${{ steps.plan.outputs.available }}'),
             ('- lane_status: `{0}`' -f '${{ steps.plan.outputs.status }}'),
             ('- skip_reason: `{0}`' -f '${{ steps.plan.outputs.skip_reason }}'),
-            ('- hosted_model: `{0}`' -f '${{ steps.plan.outputs.execution_model }}'),
+            ('- execution_model: `{0}`' -f '${{ steps.plan.outputs.execution_model }}'),
             ('- runner_image: `{0}`' -f '${{ steps.plan.outputs.runner_image }}'),
-            '- hosted model: agents can dispatch this portable hosted Windows lane while continuing on local Linux or Windows Docker Desktop lanes.'
+            ('- required_labels: `{0}`' -f '${{ steps.plan.outputs.required_labels }}'),
+            '- self-hosted docker model: validate 64-bit LabVIEW in the Windows container while the LV32 lane runs in parallel as the native host-plane reference.'
           )
           $lines -join "`n" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
         }
@@ -1551,20 +1574,24 @@ jobs:
       if: always()
       uses: actions/upload-artifact@v7
       with:
-        name: validate-vi-history-windows-hosted-plan
-        path: tests/results/_agent/vi-history-dispatch/validate-vi-history-windows-hosted-plan.json
+        name: validate-vi-history-windows-docker-plan
+        path: tests/results/_agent/vi-history-dispatch/validate-vi-history-windows-docker-plan.json
         if-no-files-found: error
 
   vi-history-scenarios-windows:
     needs: [smoke-gate, lint, session-index, session-index-v2-contract, vi-history-scenarios-plan, vi-history-scenarios-windows-plan]
     if: needs.smoke-gate.outputs.skip != 'true' && needs.vi-history-scenarios-plan.outputs.execute_lanes == 'true' && needs.vi-history-scenarios-windows-plan.outputs.available == 'true'
-    runs-on: windows-2022
+    runs-on: [self-hosted, Windows, X64, comparevi, capability-ingress, docker-lane]
+    continue-on-error: true
     timeout-minutes: 50
     permissions:
+      actions: read
       contents: read
     env:
       NI_WINDOWS_IMAGE: nationalinstruments/labview:2026q1-windows
       NI_WINDOWS_LABVIEW_PATH: C:\Program Files\National Instruments\LabVIEW 2026\LabVIEW.exe
+      GITHUB_TOKEN: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
+      GH_TOKEN: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
     defaults:
       run:
         shell: pwsh
@@ -1573,13 +1600,14 @@ jobs:
       run: |
         if ($env:GITHUB_STEP_SUMMARY) {
           $lines = @(
-            '### VI History Scenarios (Windows lane)',
+            '### VI History Scenarios (Windows self-hosted Docker lane)',
             '',
             ('- execute_lanes: `{0}`' -f '${{ needs.vi-history-scenarios-plan.outputs.execute_lanes }}'),
-            ('- hosted_status: `{0}`' -f '${{ needs.vi-history-scenarios-windows-plan.outputs.status }}'),
+            ('- plan_status: `{0}`' -f '${{ needs.vi-history-scenarios-windows-plan.outputs.status }}'),
             ('- runner_image: `{0}`' -f '${{ needs.vi-history-scenarios-windows-plan.outputs.runner_image }}'),
             ('- expected_context: `{0}`' -f '${{ needs.vi-history-scenarios-windows-plan.outputs.expected_context }}'),
-            '- image pull budget: Windows image hydration is materially slower than the Linux lane, so keep local lanes active while hosted proof runs.'
+            ('- required_labels: `{0}`' -f '${{ needs.vi-history-scenarios-windows-plan.outputs.required_labels }}'),
+            '- self-hosted 64-bit proof runs on the ingress host and pairs with the parallel LV32 lane so 32-bit host-plane drift has an immediate native reference.'
           )
           $lines -join "`n" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
         }
@@ -1601,7 +1629,31 @@ jobs:
       with:
         phase: J2
         results-dir: tests/results
-    - name: Collect hosted Windows runner health
+    - name: Validate self-hosted runner label contract
+      shell: pwsh
+      run: |
+        $resultsRoot = Join-Path $env:GITHUB_WORKSPACE 'tests/results/local-parity/windows'
+        New-Item -ItemType Directory -Path $resultsRoot -Force | Out-Null
+        $requiredLabels = @(
+          'self-hosted',
+          'Windows',
+          'X64',
+          'comparevi',
+          'capability-ingress',
+          'docker-lane'
+        )
+        foreach ($label in $requiredLabels) {
+          $contractPath = Join-Path $resultsRoot ("runner-label-contract-{0}.json" -f $label)
+          pwsh -NoLogo -NoProfile -File tools/Assert-RunnerLabelContract.ps1 `
+            -Repository '${{ github.repository }}' `
+            -RunnerName $env:RUNNER_NAME `
+            -RequiredLabel $label `
+            -Token $env:GITHUB_TOKEN `
+            -OutputJsonPath $contractPath `
+            -GitHubOutputPath $env:GITHUB_OUTPUT `
+            -StepSummaryPath $env:GITHUB_STEP_SUMMARY
+        }
+    - name: Collect self-hosted Windows runner health
       shell: pwsh
       run: |
         pwsh -NoLogo -NoProfile -File tools/Collect-RunnerHealth.ps1 `
@@ -1618,8 +1670,9 @@ jobs:
         pwsh -NoLogo -NoProfile -File tools/Test-WindowsNI2026q1HostPreflight.ps1 `
           -Image $env:NI_WINDOWS_IMAGE `
           -ResultsDir $resultsRoot `
-          -ExecutionSurface 'github-hosted-windows' `
-          -AllowUnavailable `
+          -ExecutionSurface 'desktop-local' `
+          -ManageDockerEngine:$true `
+          -AllowHostEngineMutation:$true `
           -OutputJsonPath $summaryPath `
           -GitHubOutputPath $env:GITHUB_OUTPUT `
           -StepSummaryPath $env:GITHUB_STEP_SUMMARY
@@ -1650,6 +1703,8 @@ jobs:
           -LabVIEWPath $env:NI_WINDOWS_LABVIEW_PATH `
           -ReportPath $reportPath `
           -TimeoutSeconds 600 `
+          -ManageDockerEngine:$false `
+          -AllowHostEngineMutation:$false `
           -RuntimeEngineReadyTimeoutSeconds 180 `
           -RuntimeEngineReadyPollSeconds 5 `
           -RuntimeSnapshotPath $runtimeSnapshot
@@ -1743,7 +1798,33 @@ jobs:
       if: always() && steps.windows-preflight.outputs.windows_host_preflight_status != 'ready'
       shell: pwsh
       run: |
-        Write-Host ("::notice::Skipping hosted Windows compare because preflight status was {0} ({1})." -f '${{ steps.windows-preflight.outputs.windows_host_preflight_status }}', '${{ steps.windows-preflight.outputs.windows_host_preflight_failure_class }}')
+        Write-Host ("::notice::Skipping self-hosted Windows Docker compare because preflight status was {0} ({1})." -f '${{ steps.windows-preflight.outputs.windows_host_preflight_status }}', '${{ steps.windows-preflight.outputs.windows_host_preflight_failure_class }}')
+
+    - name: Restore Docker Desktop context after Windows proof
+      if: always()
+      shell: pwsh
+      run: |
+        $resultsRoot = 'tests/results/local-parity/windows'
+        $preflightPath = Join-Path $resultsRoot 'windows-ni-2026q1-host-preflight.json'
+        if (-not (Test-Path -LiteralPath $preflightPath -PathType Leaf)) {
+          Write-Host ("::notice::Skipping Docker Desktop restore because preflight artifact was not found at {0}" -f $preflightPath)
+          exit 0
+        }
+        $preflight = Get-Content -LiteralPath $preflightPath -Raw | ConvertFrom-Json -Depth 20
+        $restoreContext = if ($preflight.contexts.PSObject.Properties['start'] -and -not [string]::IsNullOrWhiteSpace([string]$preflight.contexts.start)) {
+          [string]$preflight.contexts.start
+        } else {
+          'desktop-windows'
+        }
+        $restorePath = Join-Path $resultsRoot 'runtime-manager-restore-windows.json'
+        pwsh -NoLogo -NoProfile -File tools/Invoke-DockerRuntimeManager.ps1 `
+          -ProbeScope 'windows' `
+          -BootstrapWindowsImage:$false `
+          -BootstrapLinuxImage:$false `
+          -RestoreContext $restoreContext `
+          -OutputJsonPath $restorePath `
+          -GitHubOutputPath '' `
+          -StepSummaryPath $env:GITHUB_STEP_SUMMARY | Out-Null
 
     - name: Upload VI history scenario artifacts (Windows lane)
       if: always()
@@ -1759,6 +1840,8 @@ jobs:
           tests/results/local-parity/windows/container-export/**
           tests/results/local-parity/windows/windows-ni-2026q1-host-preflight.json
           tests/results/local-parity/windows/runtime-manager-compare-windows.json
+          tests/results/local-parity/windows/runtime-manager-restore-windows.json
+          tests/results/local-parity/windows/runner-label-contract-*.json
           tests/results/local-parity/windows/_agent/runner-health.json
         if-no-files-found: warn
 

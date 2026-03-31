@@ -120,6 +120,13 @@
       "workflow": ".github/workflows/validate.yml",
       "jobs": [
         {
+          "id": "vi-history-scenarios-windows",
+          "routingClass": "specialized-opt-in",
+          "requiredCapabilityLabels": [
+            "docker-lane"
+          ]
+        },
+        {
           "id": "vi-history-scenarios-windows-lv32",
           "routingClass": "specialized-opt-in",
           "requiredCapabilityLabels": [

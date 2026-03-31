@@ -1,7 +1,7 @@
 <!-- markdownlint-disable-next-line MD041 -->
 # Feature Branch Enforcement & Merge Queue
 
-| `develop` (live id may drift) | `refs/heads/develop` | Merge queue enabled (`merge_method=SQUASH`, `grouping=ALLGREEN`, build queue <=20 entries, 1-minute quiet window). Required checks: `lint`, `fixtures`, `Policy Guard (Upstream) / policy-guard`, `vi-history-scenarios-linux`, `commit-integrity`. Non-required hosted proof lanes may run alongside the queue contract, including `session-index`, `issue-snapshot`, `semver`, `agent-review-policy`, `hook-parity`, and `vi-history-scenarios-windows` on GitHub-hosted `windows-2022`. Copilot review settings are no longer enforced through policy; draft/ready review semantics are repo-owned and validated by `agent-review-policy`. |
+| `develop` (live id may drift) | `refs/heads/develop` | Merge queue enabled (`merge_method=SQUASH`, `grouping=ALLGREEN`, build queue <=20 entries, 1-minute quiet window). Required checks: `lint`, `fixtures`, `Policy Guard (Upstream) / policy-guard`, `vi-history-scenarios-linux`, `commit-integrity`. Non-required supporting lanes may run alongside the queue contract, including `session-index`, `issue-snapshot`, `semver`, `agent-review-policy`, `hook-parity`, plus the self-hosted Windows Docker and LV32 VI-history proofs that run in parallel on the compare ingress host. Copilot review settings are no longer enforced through policy; draft/ready review semantics are repo-owned and validated by `agent-review-policy`. |
 
 ## Purpose
 
@@ -129,10 +129,16 @@ checked into `tools/priority/policy.json` so `priority:policy` stays authoritati
 - **Required checks**: `lint`, `fixtures`, `Policy Guard (Upstream) / policy-guard`,
   `vi-history-scenarios-linux`, `commit-integrity`.
 - **Supporting non-required lanes**: `session-index`, `issue-snapshot`, `semver`,
-  `agent-review-policy`, `hook-parity`, plus hosted Windows proving.
-- **Non-required hosted proof**: `vi-history-scenarios-windows` may run on GitHub-hosted
-  `windows-2022` to validate `nationalinstruments/labview:2026q1-windows`. Agents may
-  dispatch that hosted lane while manually running the Linux or Windows Docker Desktop/WSL2 lanes on this host.
+  `agent-review-policy`, `hook-parity`, plus parallel Windows 64-bit and LV32 proving.
+- **Non-required self-hosted Docker proof**: `vi-history-scenarios-windows` runs on the
+  compare ingress host with the `docker-lane` capability label to validate
+  `nationalinstruments/labview:2026q1-windows` without paying GitHub-hosted Windows
+  image-hydration time on every PR. The lane may flip Docker Desktop into the
+  Windows engine, capture the 64-bit container proof, and restore the starting
+  context afterward.
+- **Parallel LV32 reference proof**: `vi-history-scenarios-windows-lv32` runs beside the
+  Docker lane so native 32-bit LabVIEW and the 64-bit Windows container can be observed
+  together without serializing the Windows-side feedback loop.
 - **Admin bypass**: leave disabled; administrators should only intervene when `priority:policy` confirms parity.
 - **Reapply**: Use `node tools/npm/run-script.mjs priority:policy -- --apply` to push the manifest configuration when drift is detected.
 

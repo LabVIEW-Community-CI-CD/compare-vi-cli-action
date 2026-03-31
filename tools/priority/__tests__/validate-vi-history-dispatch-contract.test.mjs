@@ -57,35 +57,41 @@ test('validate workflow Linux VI-history lane consumes shared dispatch-plan outp
   assert.doesNotMatch(linuxSection, /pull-requests: read/);
 });
 
-test('validate workflow Windows VI-history lane is gated by shared dispatch planning and portable hosted execution', () => {
+test('validate workflow Windows VI-history lane is gated by shared dispatch planning and self-hosted docker execution', () => {
   const workflow = readRepoFile('.github/workflows/validate.yml');
   const planSection = extractWorkflowJobSection(workflow, 'vi-history-scenarios-windows-plan', 'vi-history-scenarios-windows');
   const windowsSection = extractWorkflowJobSection(workflow, 'vi-history-scenarios-windows', 'vi-history-scenarios-windows-lv32-plan');
 
   assert.match(workflow, /vi-history-scenarios-windows-plan:\s*\r?\n\s+needs:\s*\[smoke-gate, lint, session-index, session-index-v2-contract, vi-history-scenarios-plan\]\r?\n\s+if:\s+needs\.smoke-gate\.outputs\.skip != 'true'/);
   assert.match(planSection, /permissions:\s*\r?\n\s+contents: read/);
-  assert.match(planSection, /Resolve portable hosted Windows lane/);
-  assert.match(planSection, /tools\/Resolve-HostedWindowsLanePlan\.ps1/);
-  assert.match(planSection, /-RunnerImage 'windows-2022'/);
+  assert.match(planSection, /Resolve self-hosted Windows Docker lane/);
+  assert.match(planSection, /tools\/Resolve-SelfHostedWindowsLanePlan\.ps1/);
+  assert.match(planSection, /-RequiredLabels \$requiredLabels/);
+  assert.match(planSection, /docker-lane/);
   assert.match(planSection, /outputs:\s*\r?\n\s+available:\s+\$\{\{\s*steps\.plan\.outputs\.available\s*\}\}/);
 
   assert.match(workflow, /vi-history-scenarios-windows:\s*\r?\n\s+needs:\s*\[smoke-gate, lint, session-index, session-index-v2-contract, vi-history-scenarios-plan, vi-history-scenarios-windows-plan\]\r?\n\s+if:\s+needs\.smoke-gate\.outputs\.skip != 'true' && needs\.vi-history-scenarios-plan\.outputs\.execute_lanes == 'true' && needs\.vi-history-scenarios-windows-plan\.outputs\.available == 'true'/);
-  assert.match(windowsSection, /runs-on:\s*windows-2022/);
+  assert.match(windowsSection, /runs-on:\s*\[self-hosted, Windows, X64, comparevi, capability-ingress, docker-lane\]/);
+  assert.match(windowsSection, /continue-on-error:\s*true/);
   assert.match(windowsSection, /Print VI history Windows runtime alignment/);
-  assert.match(windowsSection, /Collect hosted Windows runner health/);
+  assert.match(windowsSection, /Validate self-hosted runner label contract/);
+  assert.match(windowsSection, /Assert-RunnerLabelContract\.ps1/);
+  assert.match(windowsSection, /Collect self-hosted Windows runner health/);
   assert.match(windowsSection, /Collect-RunnerHealth\.ps1/);
   assert.match(windowsSection, /Project VI history Windows Docker-side evidence/);
   assert.match(windowsSection, /tools\/Write-VIHistoryLaneEvidence\.ps1/);
   assert.match(windowsSection, /Test-WindowsNI2026q1HostPreflight\.ps1/);
-  assert.match(windowsSection, /-ExecutionSurface 'github-hosted-windows'/);
-  assert.match(windowsSection, /-AllowUnavailable/);
+  assert.match(windowsSection, /-ExecutionSurface 'desktop-local'/);
+  assert.match(windowsSection, /-ManageDockerEngine:\$true/);
+  assert.match(windowsSection, /-AllowHostEngineMutation:\$true/);
   assert.match(windowsSection, /id:\s*windows-preflight/);
   assert.match(windowsSection, /Run-NIWindowsContainerCompare\.ps1/);
   assert.match(windowsSection, /if:\s*steps\.windows-preflight\.outputs\.windows_host_preflight_status == 'ready'/);
+  assert.match(windowsSection, /Restore Docker Desktop context after Windows proof/);
+  assert.match(windowsSection, /Invoke-DockerRuntimeManager\.ps1/);
   assert.match(windowsSection, /tests\/results\/local-parity\/windows\/_agent\/runner-health\.json/);
   assert.match(windowsSection, /ni-windows-container-stdout\.txt/);
   assert.match(windowsSection, /ni-windows-container-stderr\.txt/);
-  assert.doesNotMatch(windowsSection, /Assert-RunnerLabelContract\.ps1/);
 });
 
 test('validate workflow self-hosted Windows LV32 VI-history lane is gated by inventory planning and headless proof receipts', () => {

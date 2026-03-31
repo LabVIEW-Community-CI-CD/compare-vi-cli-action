@@ -21,6 +21,8 @@ param(
   [string]$ResultsDir = 'tests/results/local-parity',
   [ValidateSet('desktop-local', 'github-hosted-windows')]
   [string]$ExecutionSurface = 'desktop-local',
+  [bool]$ManageDockerEngine = $false,
+  [bool]$AllowHostEngineMutation = $false,
   [switch]$AllowUnavailable,
   [string]$OutputJsonPath = '',
   [string]$GitHubOutputPath = $env:GITHUB_OUTPUT,
@@ -292,7 +294,8 @@ try {
     $summary.contexts.final = [string]$desktopObservation.context
     $summary.contexts.finalOsType = [string]$desktopObservation.osType
 
-    if ([string]::Equals([string]$desktopObservation.osType, 'linux', [System.StringComparison]::OrdinalIgnoreCase)) {
+    $canMutateDesktopEngine = $ManageDockerEngine -and $AllowHostEngineMutation
+    if ([string]::Equals([string]$desktopObservation.osType, 'linux', [System.StringComparison]::OrdinalIgnoreCase) -and -not $canMutateDesktopEngine) {
       $summary.status = 'failure'
       $summary.failureClass = 'docker-engine-mismatch'
       $summary.failureMessage = ("desktop-local Windows NI preflight requires Docker Desktop Windows containers. Observed context '{0}' with OSType '{1}'. Switch Docker Desktop to Windows containers (`desktop-windows`) and retry." -f ([string]$desktopObservation.context ?? ''), [string]$desktopObservation.osType)
@@ -354,8 +357,8 @@ try {
       -RuntimeProvider 'desktop' `
       -ExpectedContext 'default' `
       -AutoRepair:$true `
-      -ManageDockerEngine:$false `
-      -AllowHostEngineMutation:$false `
+      -ManageDockerEngine:$ManageDockerEngine `
+      -AllowHostEngineMutation:$AllowHostEngineMutation `
       -SnapshotPath $snapshotPath `
       -GitHubOutputPath ''
     if ($LASTEXITCODE -ne 0) {
