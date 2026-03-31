@@ -30,6 +30,7 @@ The additive pilot introduces four workflow surfaces:
 - Readiness emits a bounded-freshness receipt artifact that execution must download and validate before dispatch.
 - Execution consumes readiness. It does not bootstrap Docker runtimes or install core toolchains.
 - Execution writes an execution receipt before uploading raw artifacts so evidence can classify the real seam outcome.
+- Execution must also emit a skip-safe execution contract from an always-on finalize path so reusable-workflow outputs do not collapse when the execution job never starts.
 - Evidence consumes raw execution output plus the execution receipt. It classifies `seam-defect` explicitly when execution never yields a valid summary or never yields a valid execution receipt.
 - The existing required gate remains in place until the pilot proves equivalent or better behavior.
 - Trusted PR proving must stay on `pull_request_target` with same-owner gating. Cross-owner fork heads are not allowed to drive self-hosted execution.

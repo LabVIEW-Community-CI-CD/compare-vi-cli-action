@@ -72,8 +72,8 @@ jobs:
       include_integration: ${{ inputs.include_integration || 'false' }}
       include_patterns: ${{ inputs.include_patterns || '' }}
       sample_id: ${{ inputs.sample_id || '' }}
-      readiness_status: ${{ needs.readiness.outputs.receipt_status }}
-      readiness_artifact_name: ${{ needs.readiness.outputs.receipt_artifact_name }}
+      readiness_status: ${{ needs.readiness.outputs.receipt_status || needs.readiness.result || 'unknown' }}
+      readiness_artifact_name: ${{ needs.readiness.outputs.receipt_artifact_name || 'pester-readiness' }}
       checkout_repository: ${{ inputs.checkout_repository || github.repository }}
       checkout_ref: ${{ inputs.checkout_ref || github.sha }}
 
@@ -83,6 +83,7 @@ jobs:
     uses: ./.github/workflows/pester-evidence.yml
     with:
       raw_artifact_name: ${{ needs.pester-run.outputs.raw_artifact_name }}
+      execution_receipt_artifact_name: ${{ needs.pester-run.outputs.execution_receipt_artifact_name || 'pester-execution-contract' }}
       dispatcher_exit_code: ${{ needs.pester-run.outputs.dispatcher_exit_code }}
-      readiness_status: ${{ needs.readiness.outputs.receipt_status }}
-      execution_job_result: ${{ needs.pester-run.result }}
+      readiness_status: ${{ needs.readiness.outputs.receipt_status || needs.readiness.result || 'unknown' }}
+      execution_job_result: ${{ needs.pester-run.outputs.execution_status || needs.pester-run.result }}
