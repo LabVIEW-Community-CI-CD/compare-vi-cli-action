@@ -1496,6 +1496,9 @@ jobs:
       execution_model: ${{ steps.plan.outputs.execution_model }}
       runner_image: ${{ steps.plan.outputs.runner_image }}
       expected_context: ${{ steps.plan.outputs.expected_context }}
+      expected_os: ${{ steps.plan.outputs.expected_os }}
+      required_labels: ${{ steps.plan.outputs.required_labels }}
+      matching_runner_count: ${{ steps.plan.outputs.matching_runner_count }}
     steps:
     - uses: actions/checkout@v5
       with:
