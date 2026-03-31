@@ -19,10 +19,12 @@ test('pester gate pilot routes readiness, execution, and evidence through separa
   assert.match(workflow, /workflow_dispatch:/);
   assert.match(workflow, /jobs:\s*\n\s*readiness:\s*\n\s+uses:\s+\.\s*\/\.github\/workflows\/selfhosted-readiness\.yml/);
   assert.match(workflow, /\n\s*pester-run:\s*\n\s+needs:\s+readiness\s*\n\s+if:\s+always\(\)\s*\n\s+uses:\s+\.\s*\/\.github\/workflows\/pester-run\.yml/);
-  assert.match(workflow, /readiness_artifact_name:\s+\$\{\{\s*needs\.readiness\.outputs\.receipt_artifact_name\s*\}\}/);
+  assert.match(workflow, /readiness_artifact_name:\s+\$\{\{\s*needs\.readiness\.outputs\.receipt_artifact_name\s*\|\|\s*'pester-readiness'/);
+  assert.match(workflow, /readiness_status:\s+\$\{\{\s*needs\.readiness\.outputs\.receipt_status\s*\|\|\s*needs\.readiness\.result/);
   assert.match(workflow, /checkout_repository:\s+\$\{\{\s*inputs\.checkout_repository \|\| github\.repository\s*\}\}/);
   assert.match(workflow, /checkout_ref:\s+\$\{\{\s*inputs\.checkout_ref \|\| github\.sha\s*\}\}/);
   assert.match(workflow, /\n\s*pester-evidence:\s*\n\s+needs:\s+\[readiness, pester-run\]\s*\n\s+if:\s+always\(\)\s*\n\s+uses:\s+\.\s*\/\.github\/workflows\/pester-evidence\.yml/);
+  assert.match(workflow, /execution_job_result:\s+\$\{\{\s*needs\.pester-run\.outputs\.execution_status\s*\|\|\s*needs\.pester-run\.result/);
 });
 
 test('selfhosted readiness owns host-plane certification and emits a receipt artifact', () => {
@@ -50,6 +52,7 @@ test('pester run is execution-only and validates the readiness receipt before di
   assert.match(workflow, /name:\s+Pester run/);
   assert.match(workflow, /name:\s+Pester \(execution only\)/);
   assert.match(workflow, /if:\s+\$\{\{\s*inputs\.readiness_status == 'ready'\s*\}\}/);
+  assert.match(workflow, /execution_status:/);
   assert.match(workflow, /repository:\s+\$\{\{\s*inputs\.checkout_repository \|\| github\.repository\s*\}\}/);
   assert.match(workflow, /ref:\s+\$\{\{\s*inputs\.checkout_ref \|\| github\.sha\s*\}\}/);
   assert.match(workflow, /Download readiness receipt artifact/);
@@ -58,6 +61,7 @@ test('pester run is execution-only and validates the readiness receipt before di
   assert.match(workflow, /Run Pester tests via local dispatcher/);
   assert.match(workflow, /pester-run-receipt\.json/);
   assert.match(workflow, /Upload raw Pester execution artifact/);
+  assert.match(workflow, /Emit execution contract/);
   assert.doesNotMatch(workflow, /Install Pester/);
   assert.doesNotMatch(workflow, /Invoke-DockerRuntimeManager\.ps1/);
   assert.doesNotMatch(workflow, /Write-PesterSummaryToStepSummary\.ps1/);
@@ -76,6 +80,7 @@ test('pester evidence classifies seam defects explicitly from raw execution outp
   assert.match(workflow, /Ensure-SessionIndex\.ps1/);
   assert.match(workflow, /Invoke-DevDashboard\.ps1/);
   assert.match(workflow, /classification = 'seam-defect'/);
+  assert.match(workflow, /raw-artifact-download=/);
   assert.match(workflow, /execution-receipt-seam-defect/);
   assert.match(workflow, /Upload evidence artifact/);
   assert.match(workflow, /Propagate gate outcome/);

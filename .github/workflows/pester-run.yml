@@ -31,10 +31,13 @@ on:
     outputs:
       dispatcher_exit_code:
         description: 'Dispatcher exit code from the self-hosted execution pass'
-        value: ${{ jobs.pester.outputs.dispatcher_exit_code }}
+        value: ${{ jobs.finalize.outputs.dispatcher_exit_code }}
       raw_artifact_name:
         description: 'Artifact name containing raw execution outputs'
-        value: ${{ jobs.pester.outputs.raw_artifact_name }}
+        value: ${{ jobs.finalize.outputs.raw_artifact_name }}
+      execution_status:
+        description: 'Execution contract outcome for the self-hosted execution pass'
+        value: ${{ jobs.finalize.outputs.execution_status }}
   workflow_dispatch:
     inputs:
       include_integration:
@@ -330,3 +333,40 @@ jobs:
           name: pester-run-raw
           path: tests/results
           if-no-files-found: warn
+
+  finalize:
+    runs-on: ubuntu-latest
+    needs: [normalize, pester]
+    if: always()
+    outputs:
+      dispatcher_exit_code: ${{ steps.emit.outputs.dispatcher_exit_code }}
+      raw_artifact_name: ${{ steps.emit.outputs.raw_artifact_name }}
+      execution_status: ${{ steps.emit.outputs.execution_status }}
+    steps:
+      - name: Emit execution contract
+        id: emit
+        shell: pwsh
+        run: |
+          $executionStatus = 'unknown'
+          if ('${{ inputs.readiness_status }}' -ne 'ready') {
+            $executionStatus = 'skipped'
+          } else {
+            switch ('${{ needs.pester.result }}') {
+              'success' { $executionStatus = 'completed' }
+              'failure' { $executionStatus = 'seam-defect' }
+              'cancelled' { $executionStatus = 'cancelled' }
+              'skipped' { $executionStatus = 'skipped' }
+              default { $executionStatus = 'unknown' }
+            }
+          }
+          $dispatcherExitCode = '${{ needs.pester.outputs.dispatcher_exit_code }}'
+          if ([string]::IsNullOrWhiteSpace($dispatcherExitCode)) {
+            if ($executionStatus -eq 'completed') {
+              $dispatcherExitCode = '0'
+            } else {
+              $dispatcherExitCode = '-1'
+            }
+          }
+          "execution_status=$executionStatus" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "dispatcher_exit_code=$dispatcherExitCode" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "raw_artifact_name=pester-run-raw" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8

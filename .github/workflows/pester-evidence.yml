@@ -60,7 +60,7 @@ on:
         default: 'unknown'
         type: string
       execution_job_result:
-        description: 'Execution job result'
+        description: 'Execution contract outcome'
         required: false
         default: ''
         type: string
@@ -254,6 +254,15 @@ jobs:
           }
           if ('${{ inputs.execution_job_result }}' -eq 'skipped') {
             $reasons.Add('execution-job-skipped') | Out-Null
+          } elseif ('${{ inputs.execution_job_result }}' -eq 'cancelled') {
+            $reasons.Add('execution-job-cancelled') | Out-Null
+          } elseif ('${{ inputs.execution_job_result }}' -eq 'seam-defect') {
+            $reasons.Add('execution-job-seam-defect') | Out-Null
+          } elseif ('${{ inputs.execution_job_result }}' -eq 'unknown') {
+            $reasons.Add('execution-job-unknown') | Out-Null
+          }
+          if ('${{ steps.download.outcome }}' -ne 'success') {
+            $reasons.Add(("raw-artifact-download={0}" -f '${{ steps.download.outcome }}')) | Out-Null
           }
           $dispatcherExitCode = '${{ inputs.dispatcher_exit_code }}'
           if ([string]::IsNullOrWhiteSpace($dispatcherExitCode)) { $dispatcherExitCode = '-1' }
@@ -286,6 +295,7 @@ jobs:
             generatedAtUtc     = [DateTime]::UtcNow.ToString('o')
             readinessStatus    = '${{ inputs.readiness_status }}'
             executionJobResult = '${{ inputs.execution_job_result }}'
+            rawArtifactDownload = '${{ steps.download.outcome }}'
             dispatcherExitCode = [int]$dispatcherExitCode
             summaryPresent     = Test-Path -LiteralPath $summaryPath
             classification     = $classification
