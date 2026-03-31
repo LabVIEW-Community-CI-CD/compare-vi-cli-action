@@ -4,8 +4,6 @@ on:
   pull_request_target:
     types: [labeled, reopened, synchronize]
     branches: [main, develop, integration/**, release/**]
-    paths-ignore:
-      - '**/*.md'
   workflow_dispatch:
     inputs:
       sample_id:
@@ -81,15 +79,25 @@ jobs:
               $reason = 'trusted-same-owner-head'
             }
           }
-          "should_run=$shouldRun" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
-          "checkout_repository=$checkoutRepository" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
-          "checkout_ref=$checkoutRef" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
-          "trust_mode=$trustMode" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
-          "reason=$reason" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          Add-Content -Path $env:GITHUB_OUTPUT -Value "should_run=$shouldRun"
+          Add-Content -Path $env:GITHUB_OUTPUT -Value "checkout_repository=$checkoutRepository"
+          Add-Content -Path $env:GITHUB_OUTPUT -Value "checkout_ref=$checkoutRef"
+          Add-Content -Path $env:GITHUB_OUTPUT -Value "trust_mode=$trustMode"
+          Add-Content -Path $env:GITHUB_OUTPUT -Value "reason=$reason"
+          if ($env:GITHUB_STEP_SUMMARY) {
+            $lines = @('### Trusted pilot routing', '')
+            $lines += ('- Event: {0}' -f $eventName)
+            $lines += ('- Should run: {0}' -f $shouldRun)
+            $lines += ('- Reason: {0}' -f $reason)
+            $lines += ('- Trust mode: {0}' -f $trustMode)
+            $lines += ('- Checkout repository: {0}' -f $checkoutRepository)
+            $lines += ('- Checkout ref: {0}' -f $checkoutRef)
+            $lines -join "`n" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+          }
 
   pilot:
     needs: trust-context
-    if: ${{ needs.trust-context.outputs.should_run == 'true' }}
+    if: ${{ fromJSON(needs.trust-context.outputs.should_run || 'false') }}
     uses: ./.github/workflows/pester-gate.yml
     with:
       include_integration: ${{ 'true' }}
@@ -99,7 +107,7 @@ jobs:
 
   skipped:
     needs: trust-context
-    if: ${{ needs.trust-context.outputs.should_run != 'true' }}
+    if: ${{ !fromJSON(needs.trust-context.outputs.should_run || 'false') }}
     runs-on: ubuntu-latest
     steps:
       - name: Append skip summary
