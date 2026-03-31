@@ -22,6 +22,12 @@ on:
         required: false
         type: string
         default: 'pester-readiness'
+      checkout_repository:
+        required: false
+        type: string
+      checkout_ref:
+        required: false
+        type: string
     outputs:
       dispatcher_exit_code:
         description: 'Dispatcher exit code from the self-hosted execution pass'
@@ -57,6 +63,16 @@ on:
         required: false
         default: 'pester-readiness'
         type: string
+      checkout_repository:
+        description: 'Repository to checkout for execution'
+        required: false
+        default: ''
+        type: string
+      checkout_ref:
+        description: 'Git ref or SHA to checkout for execution'
+        required: false
+        default: ''
+        type: string
 
 concurrency:
   group: ${{ github.workflow }}-pester-run-${{ github.event.inputs.sample_id || inputs.sample_id || github.ref }}
@@ -69,6 +85,9 @@ jobs:
       include_integration: ${{ steps.b.outputs.normalized }}
     steps:
       - uses: actions/checkout@v5
+        with:
+          repository: ${{ inputs.checkout_repository || github.repository }}
+          ref: ${{ inputs.checkout_ref || github.sha }}
       - name: Apply determinism profile
         uses: ./.github/actions/determinism-profile
         with:

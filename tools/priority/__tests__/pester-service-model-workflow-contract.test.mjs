@@ -15,10 +15,13 @@ test('pester gate pilot routes readiness, execution, and evidence through separa
   const workflow = readRepoFile('.github/workflows/pester-gate.yml');
 
   assert.match(workflow, /name:\s+Pester gate \(service model pilot\)/);
+  assert.match(workflow, /workflow_call:/);
   assert.match(workflow, /workflow_dispatch:/);
   assert.match(workflow, /jobs:\s*\n\s*readiness:\s*\n\s+uses:\s+\.\s*\/\.github\/workflows\/selfhosted-readiness\.yml/);
   assert.match(workflow, /\n\s*pester-run:\s*\n\s+needs:\s+readiness\s*\n\s+if:\s+always\(\)\s*\n\s+uses:\s+\.\s*\/\.github\/workflows\/pester-run\.yml/);
   assert.match(workflow, /readiness_artifact_name:\s+\$\{\{\s*needs\.readiness\.outputs\.receipt_artifact_name\s*\}\}/);
+  assert.match(workflow, /checkout_repository:\s+\$\{\{\s*inputs\.checkout_repository \|\| github\.repository\s*\}\}/);
+  assert.match(workflow, /checkout_ref:\s+\$\{\{\s*inputs\.checkout_ref \|\| github\.sha\s*\}\}/);
   assert.match(workflow, /\n\s*pester-evidence:\s*\n\s+needs:\s+\[readiness, pester-run\]\s*\n\s+if:\s+always\(\)\s*\n\s+uses:\s+\.\s*\/\.github\/workflows\/pester-evidence\.yml/);
 });
 
@@ -29,6 +32,8 @@ test('selfhosted readiness owns host-plane certification and emits a receipt art
   assert.match(workflow, /workflow_call:/);
   assert.match(workflow, /receipt_status:/);
   assert.match(workflow, /runs-on:\s*\[self-hosted, Windows, X64, comparevi, capability-ingress\]/);
+  assert.match(workflow, /repository:\s+\$\{\{\s*inputs\.checkout_repository \|\| github\.repository\s*\}\}/);
+  assert.match(workflow, /ref:\s+\$\{\{\s*inputs\.checkout_ref \|\| github\.sha\s*\}\}/);
   assert.match(workflow, /Validate runner label contract/);
   assert.match(workflow, /Probe session-lock health/);
   assert.match(workflow, /Resolve \.NET host toolchain/);
@@ -45,6 +50,8 @@ test('pester run is execution-only and validates the readiness receipt before di
   assert.match(workflow, /name:\s+Pester run/);
   assert.match(workflow, /name:\s+Pester \(execution only\)/);
   assert.match(workflow, /if:\s+\$\{\{\s*inputs\.readiness_status == 'ready'\s*\}\}/);
+  assert.match(workflow, /repository:\s+\$\{\{\s*inputs\.checkout_repository \|\| github\.repository\s*\}\}/);
+  assert.match(workflow, /ref:\s+\$\{\{\s*inputs\.checkout_ref \|\| github\.sha\s*\}\}/);
   assert.match(workflow, /Download readiness receipt artifact/);
   assert.match(workflow, /Validate readiness receipt/);
   assert.match(workflow, /selfhosted-readiness\.json/);
@@ -84,4 +91,18 @@ test('knowledgebase documents the additive service model and keeps the monolith 
   assert.match(doc, /readiness receipt/i);
   assert.match(doc, /execution receipt/i);
   assert.match(doc, /existing required gate remains in place/i);
+});
+
+test('trusted PR pilot router only runs self-hosted service-model proof for workflow dispatch or same-owner labeled PR heads', () => {
+  const workflow = readRepoFile('.github/workflows/pester-service-model-on-label.yml');
+
+  assert.match(workflow, /name:\s+Pester service-model pilot on trusted PR label/);
+  assert.match(workflow, /pull_request_target:/);
+  assert.match(workflow, /types:\s*\[labeled, reopened, synchronize\]/);
+  assert.match(workflow, /workflow_dispatch:/);
+  assert.match(workflow, /labels -contains 'pester-service-model'/);
+  assert.match(workflow, /head\.repo\.owner\.login/);
+  assert.match(workflow, /\$trustMode = 'same-owner-head'/);
+  assert.match(workflow, /reason = 'untrusted-cross-owner-fork'/);
+  assert.match(workflow, /uses:\s+\.\s*\/\.github\/workflows\/pester-gate\.yml/);
 });

@@ -6,6 +6,12 @@ on:
       sample_id:
         required: false
         type: string
+      checkout_repository:
+        required: false
+        type: string
+      checkout_ref:
+        required: false
+        type: string
     outputs:
       receipt_status:
         description: 'Overall readiness status for the self-hosted ingress plane'
@@ -17,6 +23,16 @@ on:
     inputs:
       sample_id:
         description: 'Sampling correlation id (prevents cancels)'
+        required: false
+        default: ''
+        type: string
+      checkout_repository:
+        description: 'Repository to checkout for readiness and execution context'
+        required: false
+        default: ''
+        type: string
+      checkout_ref:
+        description: 'Git ref or SHA to checkout for readiness and execution context'
         required: false
         default: ''
         type: string
@@ -37,6 +53,9 @@ jobs:
       LV_IDLE_MAX_WAIT_SECONDS: ${{ vars.LV_IDLE_MAX_WAIT_SECONDS || '5' }}
     steps:
       - uses: actions/checkout@v5
+        with:
+          repository: ${{ inputs.checkout_repository || github.repository }}
+          ref: ${{ inputs.checkout_ref || github.sha }}
 
       - name: Install Node dependencies
         shell: pwsh

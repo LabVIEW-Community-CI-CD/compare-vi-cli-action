@@ -1,6 +1,28 @@
 name: Pester gate (service model pilot)
 
 on:
+  workflow_call:
+    inputs:
+      include_integration:
+        required: false
+        default: 'false'
+        type: string
+      include_patterns:
+        required: false
+        default: ''
+        type: string
+      sample_id:
+        required: false
+        default: ''
+        type: string
+      checkout_repository:
+        required: false
+        default: ''
+        type: string
+      checkout_ref:
+        required: false
+        default: ''
+        type: string
   workflow_dispatch:
     inputs:
       include_integration:
@@ -19,6 +41,16 @@ on:
         required: false
         default: ''
         type: string
+      checkout_repository:
+        description: 'Repository to checkout for the pilot run'
+        required: false
+        default: ''
+        type: string
+      checkout_ref:
+        description: 'Git ref or SHA to checkout for the pilot run'
+        required: false
+        default: ''
+        type: string
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.inputs.sample_id || github.ref }}
@@ -29,6 +61,8 @@ jobs:
     uses: ./.github/workflows/selfhosted-readiness.yml
     with:
       sample_id: ${{ inputs.sample_id || '' }}
+      checkout_repository: ${{ inputs.checkout_repository || github.repository }}
+      checkout_ref: ${{ inputs.checkout_ref || github.sha }}
 
   pester-run:
     needs: readiness
@@ -40,6 +74,8 @@ jobs:
       sample_id: ${{ inputs.sample_id || '' }}
       readiness_status: ${{ needs.readiness.outputs.receipt_status }}
       readiness_artifact_name: ${{ needs.readiness.outputs.receipt_artifact_name }}
+      checkout_repository: ${{ inputs.checkout_repository || github.repository }}
+      checkout_ref: ${{ inputs.checkout_ref || github.sha }}
 
   pester-evidence:
     needs: [readiness, pester-run]

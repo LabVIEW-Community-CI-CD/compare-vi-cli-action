@@ -15,6 +15,8 @@ The additive pilot introduces four workflow surfaces:
 
 - `.github/workflows/pester-gate.yml`
   - top-level router for the pilot service model
+- `.github/workflows/pester-service-model-on-label.yml`
+  - trusted PR/dispatch entrypoint for proving the pilot without exposing the self-hosted ingress plane to untrusted fork heads
 - `.github/workflows/selfhosted-readiness.yml`
   - host-plane readiness receipts for the self-hosted ingress surface
 - `.github/workflows/pester-run.yml`
@@ -30,6 +32,7 @@ The additive pilot introduces four workflow surfaces:
 - Execution writes an execution receipt before uploading raw artifacts so evidence can classify the real seam outcome.
 - Evidence consumes raw execution output plus the execution receipt. It classifies `seam-defect` explicitly when execution never yields a valid summary or never yields a valid execution receipt.
 - The existing required gate remains in place until the pilot proves equivalent or better behavior.
+- Trusted PR proving must stay on `pull_request_target` with same-owner gating. Cross-owner fork heads are not allowed to drive self-hosted execution.
 
 ## Promotion Rule
 
