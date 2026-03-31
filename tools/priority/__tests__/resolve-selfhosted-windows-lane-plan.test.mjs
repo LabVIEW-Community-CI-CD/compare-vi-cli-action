@@ -119,5 +119,5 @@ test('Resolve-SelfHostedWindowsLanePlan reports unavailable when the LV32 labels
   assert.equal(plan.available, false);
   assert.equal(plan.status, 'missing-label');
   assert.equal(plan.matchingRunnerCount, 0);
-  assert.match(plan.skipReason, /no online self-hosted Windows LV32 runner/i);
+  assert.match(plan.skipReason, /no online self-hosted Windows runner matched the required capability labels/i);
 });
