@@ -106,6 +106,102 @@ function Get-ShortSha {
   return $Value.Substring(0, $Length)
 }
 
+function Format-DecisionTimestamp {
+  param($Value)
+
+  if ($null -eq $Value) { return '' }
+
+  if ($Value -is [DateTimeOffset]) {
+    return $Value.ToString('yyyy-MM-ddTHH:mm:ssK')
+  }
+
+  if ($Value -is [DateTime]) {
+    return ([DateTimeOffset]$Value).ToString('yyyy-MM-ddTHH:mm:ssK')
+  }
+
+  $text = [string]$Value
+  if ([string]::IsNullOrWhiteSpace($text)) { return '' }
+
+  try {
+    $parsed = [DateTimeOffset]::Parse($text, [System.Globalization.CultureInfo]::InvariantCulture, [System.Globalization.DateTimeStyles]::RoundtripKind)
+    return $parsed.ToString('yyyy-MM-ddTHH:mm:ssK')
+  } catch {
+    return $text
+  }
+}
+
+function New-DecisionPairMetadata {
+  param([AllowNull()][object]$Entry)
+
+  if (-not $Entry) {
+    return [ordered]@{
+      index = 0
+      baseRef = ''
+      headRef = ''
+      baseSubject = ''
+      headSubject = ''
+      baseDate = ''
+      headDate = ''
+    }
+  }
+
+  return [ordered]@{
+    index = [int](Coalesce $Entry.index 0)
+    baseRef = [string](Coalesce (Coalesce $Entry.base.short $Entry.base.full) '')
+    headRef = [string](Coalesce (Coalesce $Entry.head.short $Entry.head.full) '')
+    baseSubject = [string](Coalesce $Entry.base.subject '')
+    headSubject = [string](Coalesce $Entry.head.subject '')
+    baseDate = [string](Format-DecisionTimestamp -Value $Entry.base.date)
+    headDate = [string](Format-DecisionTimestamp -Value $Entry.head.date)
+  }
+}
+
+function Format-DecisionCommitLabel {
+  param(
+    [string]$Ref,
+    [string]$Subject,
+    [string]$Date
+  )
+
+  $label = [string](Coalesce $Ref 'n/a')
+  $details = New-Object System.Collections.Generic.List[string]
+  if (-not [string]::IsNullOrWhiteSpace($Subject)) {
+    $details.Add($Subject) | Out-Null
+  }
+  if (-not [string]::IsNullOrWhiteSpace($Date)) {
+    $details.Add($Date) | Out-Null
+  }
+  if ($details.Count -gt 0) {
+    $label = '{0} ({1})' -f $label, ([string]::Join('; ', @($details.ToArray())))
+  }
+  return $label
+}
+
+function Format-DecisionPairTimelineLabel {
+  param(
+    [AllowNull()][object]$Pair,
+    [switch]$UseSubjectsOnly
+  )
+
+  if (-not $Pair) { return 'pair n/a' }
+
+  if ($UseSubjectsOnly.IsPresent) {
+    $baseLabel = if (-not [string]::IsNullOrWhiteSpace([string]$Pair.baseSubject)) { [string]$Pair.baseSubject } else { [string](Coalesce $Pair.baseRef 'n/a') }
+    if (-not [string]::IsNullOrWhiteSpace([string]$Pair.baseDate)) {
+      $baseLabel = '{0} @ {1}' -f $baseLabel, [string]$Pair.baseDate
+    }
+    $headLabel = if (-not [string]::IsNullOrWhiteSpace([string]$Pair.headSubject)) { [string]$Pair.headSubject } else { [string](Coalesce $Pair.headRef 'n/a') }
+    if (-not [string]::IsNullOrWhiteSpace([string]$Pair.headDate)) {
+      $headLabel = '{0} @ {1}' -f $headLabel, [string]$Pair.headDate
+    }
+  } else {
+    $baseLabel = Format-DecisionCommitLabel -Ref ([string](Coalesce $Pair.baseRef 'n/a')) -Subject ([string](Coalesce $Pair.baseSubject '')) -Date ([string](Coalesce $Pair.baseDate ''))
+    $headLabel = Format-DecisionCommitLabel -Ref ([string](Coalesce $Pair.headRef 'n/a')) -Subject ([string](Coalesce $Pair.headSubject '')) -Date ([string](Coalesce $Pair.headDate ''))
+  }
+
+  return 'pair {0} ({1} -> {2})' -f (Coalesce $Pair.index 'n/a'), $baseLabel, $headLabel
+}
+
 function Get-LineageLabel {
   param(
     [object]$Lineage,
@@ -1288,18 +1384,14 @@ $decisionReviewPriority = if ($signalComparisonEntries.Count -gt 0) {
 } else {
   'no-diff'
 }
+$decisionLatestPair = New-DecisionPairMetadata -Entry $latestComparisonEntry
+$latestSignalComparisonEntry = if ($signalComparisonEntries.Count -gt 0) { $signalComparisonEntries[0] } else { $null }
+$decisionLatestSignalPair = New-DecisionPairMetadata -Entry $latestSignalComparisonEntry
 $decisionReviewSequence = @(
   $signalComparisonEntries | ForEach-Object {
-    [ordered]@{
-      index = [int](Coalesce $_.index 0)
-      baseRef = [string](Coalesce (Coalesce $_.base.short $_.base.full) '')
-      headRef = [string](Coalesce (Coalesce $_.head.short $_.head.full) '')
-      baseSubject = [string](Coalesce $_.base.subject '')
-      headSubject = [string](Coalesce $_.head.subject '')
-    }
+    New-DecisionPairMetadata -Entry $_
   }
 )
-$latestSignalComparisonEntry = if ($signalComparisonEntries.Count -gt 0) { $signalComparisonEntries[0] } else { $null }
 $decisionLatestStatus = 'n/a'
 if ($latestComparisonEntry) {
   $latestResultNode = $latestComparisonEntry.result
@@ -1340,17 +1432,15 @@ if ($sortedComparisons.Count -gt 0) {
   $summaryLines.Add(('- Decision statement: {0}' -f $decisionStatement))
   $summaryLines.Add(('- Review priority: `{0}`' -f $decisionReviewPriority))
   if ($latestComparisonEntry) {
-    $summaryLines.Add(('- Latest pair: `pair {0}` is `{1}`' -f (Coalesce $latestComparisonEntry.index 'n/a'), $decisionLatestStatus))
+    $summaryLines.Add(('- Latest pair: `{0}` is `{1}`' -f (Format-DecisionPairTimelineLabel -Pair $decisionLatestPair), $decisionLatestStatus))
   }
   if ($latestSignalComparisonEntry) {
-    $latestSignalBaseRef = [string](Coalesce (Coalesce $latestSignalComparisonEntry.base.short $latestSignalComparisonEntry.base.full) 'n/a')
-    $latestSignalHeadRef = [string](Coalesce (Coalesce $latestSignalComparisonEntry.head.short $latestSignalComparisonEntry.head.full) 'n/a')
-    $summaryLines.Add(('- Review first: `pair {0}` (`{1}` -> `{2}`)' -f (Coalesce $latestSignalComparisonEntry.index 'n/a'), $latestSignalBaseRef, $latestSignalHeadRef))
+    $summaryLines.Add(('- Review first: `{0}`' -f (Format-DecisionPairTimelineLabel -Pair $decisionLatestSignalPair)))
   }
   if ($decisionReviewSequence.Count -gt 0) {
     $reviewSequenceLabels = @(
       $decisionReviewSequence | ForEach-Object {
-        'pair {0} ({1} -> {2})' -f $_.index, (Coalesce $_.baseSubject 'n/a'), (Coalesce $_.headSubject 'n/a')
+        Format-DecisionPairTimelineLabel -Pair $_ -UseSubjectsOnly
       }
     )
     $summaryLines.Add(('- Review sequence: `{0}`' -f ([string]::Join('; ', $reviewSequenceLabels))))
@@ -1391,10 +1481,8 @@ if ($comparisons.Count -gt 0) {
     }
     if ([string]::IsNullOrWhiteSpace($lineageLabel)) { $lineageLabel = 'Mainline' }
 
-    $baseRef = Coalesce $entry.base.short $entry.base.full
-    if ($entry.base.subject) { $baseRef = '{0} ({1})' -f $baseRef, $entry.base.subject }
-    $headRef = Coalesce $entry.head.short $entry.head.full
-    if ($entry.head.subject) { $headRef = '{0} ({1})' -f $headRef, $entry.head.subject }
+    $baseRef = Format-DecisionCommitLabel -Ref ([string](Coalesce $entry.base.short $entry.base.full)) -Subject ([string](Coalesce $entry.base.subject '')) -Date (Format-DecisionTimestamp -Value $entry.base.date)
+    $headRef = Format-DecisionCommitLabel -Ref ([string](Coalesce $entry.head.short $entry.head.full)) -Subject ([string](Coalesce $entry.head.subject '')) -Date (Format-DecisionTimestamp -Value $entry.head.date)
     $resultNode = $entry.result
     $hasDiffValue = $resultNode -and $resultNode.PSObject.Properties['diff']
     $diffValue = $hasDiffValue -and ($resultNode.diff -eq $true)
@@ -1708,17 +1796,15 @@ if ($emitHtml -and $HtmlPath) {
     [void]$htmlBuilder.AppendLine(('    <li><strong>Decision statement</strong><span>{0}</span></li>' -f (ConvertTo-HtmlSafe $decisionStatement)))
     [void]$htmlBuilder.AppendLine(('    <li><strong>Review priority</strong><span>{0}</span></li>' -f (Format-HtmlCodeList -Values @($decisionReviewPriority))))
     if ($latestComparisonEntry) {
-      [void]$htmlBuilder.AppendLine(('    <li><strong>Latest pair</strong><span><code>pair {0}</code> is <code>{1}</code></span></li>' -f (ConvertTo-HtmlSafe (Coalesce $latestComparisonEntry.index 'n/a')), (ConvertTo-HtmlSafe $decisionLatestStatus)))
+      [void]$htmlBuilder.AppendLine(('    <li><strong>Latest pair</strong><span><code>{0}</code> is <code>{1}</code></span></li>' -f (ConvertTo-HtmlSafe (Format-DecisionPairTimelineLabel -Pair $decisionLatestPair)), (ConvertTo-HtmlSafe $decisionLatestStatus)))
     }
     if ($latestSignalComparisonEntry) {
-      $latestSignalBaseRef = [string](Coalesce (Coalesce $latestSignalComparisonEntry.base.short $latestSignalComparisonEntry.base.full) 'n/a')
-      $latestSignalHeadRef = [string](Coalesce (Coalesce $latestSignalComparisonEntry.head.short $latestSignalComparisonEntry.head.full) 'n/a')
-      [void]$htmlBuilder.AppendLine(('    <li><strong>Review first</strong><span><code>pair {0}</code> (<code>{1}</code> -&gt; <code>{2}</code>)</span></li>' -f (ConvertTo-HtmlSafe (Coalesce $latestSignalComparisonEntry.index 'n/a')), (ConvertTo-HtmlSafe $latestSignalBaseRef), (ConvertTo-HtmlSafe $latestSignalHeadRef)))
+      [void]$htmlBuilder.AppendLine(('    <li><strong>Review first</strong><span><code>{0}</code></span></li>' -f (ConvertTo-HtmlSafe (Format-DecisionPairTimelineLabel -Pair $decisionLatestSignalPair))))
     }
     if ($decisionReviewSequence.Count -gt 0) {
       $reviewSequenceLabels = @(
         $decisionReviewSequence | ForEach-Object {
-          'pair {0} ({1} -> {2})' -f $_.index, (Coalesce $_.baseSubject 'n/a'), (Coalesce $_.headSubject 'n/a')
+          Format-DecisionPairTimelineLabel -Pair $_ -UseSubjectsOnly
         }
       )
       [void]$htmlBuilder.AppendLine(('    <li><strong>Review sequence</strong><span><code>{0}</code></span></li>' -f (ConvertTo-HtmlSafe ([string]::Join('; ', $reviewSequenceLabels)))))
@@ -2020,15 +2106,23 @@ $historySummary = [ordered]@{
     decisionStatement = [string]$decisionStatement
     reviewPriority = [string]$decisionReviewPriority
     latestPair = [ordered]@{
-      index = if ($latestComparisonEntry) { [int](Coalesce $latestComparisonEntry.index 0) } else { 0 }
+      index = [int](Coalesce $decisionLatestPair.index 0)
       status = [string]$decisionLatestStatus
+      baseRef = [string](Coalesce $decisionLatestPair.baseRef '')
+      headRef = [string](Coalesce $decisionLatestPair.headRef '')
+      baseSubject = [string](Coalesce $decisionLatestPair.baseSubject '')
+      headSubject = [string](Coalesce $decisionLatestPair.headSubject '')
+      baseDate = [string](Coalesce $decisionLatestPair.baseDate '')
+      headDate = [string](Coalesce $decisionLatestPair.headDate '')
     }
     latestSignalPair = [ordered]@{
-      index = if ($latestSignalComparisonEntry) { [int](Coalesce $latestSignalComparisonEntry.index 0) } else { 0 }
-      baseRef = if ($latestSignalComparisonEntry) { [string](Coalesce (Coalesce $latestSignalComparisonEntry.base.short $latestSignalComparisonEntry.base.full) '') } else { '' }
-      headRef = if ($latestSignalComparisonEntry) { [string](Coalesce (Coalesce $latestSignalComparisonEntry.head.short $latestSignalComparisonEntry.head.full) '') } else { '' }
-      baseSubject = if ($latestSignalComparisonEntry) { [string](Coalesce $latestSignalComparisonEntry.base.subject '') } else { '' }
-      headSubject = if ($latestSignalComparisonEntry) { [string](Coalesce $latestSignalComparisonEntry.head.subject '') } else { '' }
+      index = [int](Coalesce $decisionLatestSignalPair.index 0)
+      baseRef = [string](Coalesce $decisionLatestSignalPair.baseRef '')
+      headRef = [string](Coalesce $decisionLatestSignalPair.headRef '')
+      baseSubject = [string](Coalesce $decisionLatestSignalPair.baseSubject '')
+      headSubject = [string](Coalesce $decisionLatestSignalPair.headSubject '')
+      baseDate = [string](Coalesce $decisionLatestSignalPair.baseDate '')
+      headDate = [string](Coalesce $decisionLatestSignalPair.headDate '')
     }
     reviewSequence = @(
       $decisionReviewSequence | ForEach-Object {
@@ -2038,6 +2132,8 @@ $historySummary = [ordered]@{
           headRef = [string](Coalesce $_.headRef '')
           baseSubject = [string](Coalesce $_.baseSubject '')
           headSubject = [string](Coalesce $_.headSubject '')
+          baseDate = [string](Coalesce $_.baseDate '')
+          headDate = [string](Coalesce $_.headDate '')
         }
       }
     )

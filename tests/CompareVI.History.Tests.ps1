@@ -574,6 +574,27 @@ exit 0
 
       $aggregate.stats.signalDiffs | Should -Be 1
       $aggregate.stats.noiseCollapsed | Should -Be 0
+
+      $historySummaryPath = Join-Path $rd 'history-summary.json'
+      Test-Path -LiteralPath $historySummaryPath | Should -BeTrue
+      $historySummary = Get-Content -LiteralPath $historySummaryPath -Raw | ConvertFrom-Json -Depth 12
+      $historySummary.decisionGuidance.decisionStatement | Should -Match '^Start at pair 1; it is the newest meaningful change\. It touches '
+      $historySummary.decisionGuidance.latestPair.status | Should -Be 'signal-review'
+      $historySummary.decisionGuidance.latestPair.baseDate | Should -Not -BeNullOrEmpty
+      $historySummary.decisionGuidance.latestPair.headDate | Should -Not -BeNullOrEmpty
+      $historySummary.decisionGuidance.latestSignalPair.index | Should -Be 1
+      $historySummary.decisionGuidance.latestSignalPair.baseDate | Should -Not -BeNullOrEmpty
+      $historySummary.decisionGuidance.latestSignalPair.headDate | Should -Not -BeNullOrEmpty
+      @($historySummary.decisionGuidance.reviewSequence).Count | Should -Be 1
+      $historySummary.decisionGuidance.reviewSequence[0].baseDate | Should -Not -BeNullOrEmpty
+      $historySummary.decisionGuidance.reviewSequence[0].headDate | Should -Not -BeNullOrEmpty
+
+      $historyMd = Get-Content -LiteralPath (Join-Path $rd 'history-report.md') -Raw
+      $historyMd | Should -Match 'Decision statement'
+      $historyMd | Should -Match 'Review first'
+      $historyMd | Should -Match 'Review sequence'
+      $historyMd | Should -Match 'pair 1 \('
+      $historyMd | Should -Match 'T\d{2}:\d{2}:\d{2}'
     } finally {
       if ($null -eq $previousDiff) {
         Remove-Item Env:STUB_COMPARE_DIFF -ErrorAction SilentlyContinue

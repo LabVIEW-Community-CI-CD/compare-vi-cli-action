@@ -108,11 +108,13 @@ Describe 'Render-VIHistoryReport.ps1' -Tag 'Unit' {
                         full   = 'aaa111111111'
                         short  = 'aaa1111'
                         subject= 'Clean base commit'
+                        date   = '2026-03-09T09:00:00Z'
                     }
                     head  = @{
                         full   = 'bbb222222222'
                         short  = 'bbb2222'
                         subject= 'Clean head commit'
+                        date   = '2026-03-10T10:00:00Z'
                     }
                     lineage = [ordered]@{
                         type        = 'touch-history'
@@ -142,11 +144,13 @@ Describe 'Render-VIHistoryReport.ps1' -Tag 'Unit' {
                         full   = 'abc123456789'
                         short  = 'abc1234'
                         subject= 'Base commit'
+                        date   = '2026-03-11T11:00:00Z'
                     }
                     head  = @{
                         full   = 'def987654321'
                         short  = 'def9876'
                         subject= 'Head commit'
+                        date   = '2026-03-12T12:00:00Z'
                     }
                     lineage = [ordered]@{
                         type        = 'merge-parent'
@@ -221,9 +225,11 @@ Describe 'Render-VIHistoryReport.ps1' -Tag 'Unit' {
         $markdown | Should -Match 'Start at pair 2; it is the newest meaningful change'
         $markdown | Should -Match 'Review first'
         $markdown | Should -Match 'Review sequence'
-        $markdown | Should -Match 'pair 2 \(Base commit -> Head commit\)'
+        $markdown | Should -Match 'pair 2 \(abc1234 \(Base commit; 2026-03-11T11:00:00\+00:00\) -> def9876 \(Head commit; 2026-03-12T12:00:00\+00:00\)\)'
+        $markdown | Should -Match 'pair 2 \(Base commit @ 2026-03-11T11:00:00\+00:00 -> Head commit @ 2026-03-12T12:00:00\+00:00\)'
         $markdown | Should -Match '\| Mode \| Processed \| Diffs \| Signal \| Collapsed Noise \| Missing \| Categories \| Buckets \| Flags \|'
         $markdown | Should -Match '\| Mode \| Pair \| Lineage \| Base \| Head \| Diff \| Duration \(s\) \| Categories \| Buckets \| Report \| Highlights \|'
+        $markdown | Should -Match 'aaa1111 \(Clean base commit; 2026-03-09T09:00:00\+00:00\)'
         $markdown | Should -Match 'Touch history'
 
         $html = Get-Content -LiteralPath $htmlPath -Raw
@@ -244,7 +250,8 @@ Describe 'Render-VIHistoryReport.ps1' -Tag 'Unit' {
         $html | Should -Match 'Decision statement'
         $html | Should -Match 'Start at pair 2; it is the newest meaningful change'
         $html | Should -Match 'Review sequence'
-        $html | Should -Match 'pair 2 \(Base commit -&gt; Head commit\)'
+        $html | Should -Match 'pair 2 \(abc1234 \(Base commit; 2026-03-11T11:00:00\+00:00\) -&gt; def9876 \(Head commit; 2026-03-12T12:00:00\+00:00\)\)'
+        $html | Should -Match 'pair 2 \(Base commit @ 2026-03-11T11:00:00\+00:00 -&gt; Head commit @ 2026-03-12T12:00:00\+00:00\)'
         $html | Should -Match '<th>Signal</th>'
         $html | Should -Match '<th>Collapsed Noise</th>'
         $html | Should -Match '<th>Lineage</th>'
@@ -271,18 +278,24 @@ Describe 'Render-VIHistoryReport.ps1' -Tag 'Unit' {
         $historySummaryLine | Should -Not -BeNullOrEmpty
         $historySummaryPath = (($historySummaryLine -split '=', 2)[1]).Trim()
         Test-Path -LiteralPath $historySummaryPath | Should -BeTrue
-        $historySummary = Get-Content -LiteralPath $historySummaryPath -Raw | ConvertFrom-Json -Depth 12
+        $historySummary = Get-Content -LiteralPath $historySummaryPath -Raw | ConvertFrom-Json -Depth 12 -DateKind String
         $historySummary.target.sourceBranchRef | Should -Be 'feature/history-source'
         $historySummary.target.branchBudget.maxCommitCount | Should -Be 64
         $historySummary.target.branchBudget.commitCount | Should -Be 3
+        $historySummary.decisionGuidance.latestPair.baseDate | Should -Be '2026-03-09T09:00:00+00:00'
+        $historySummary.decisionGuidance.latestPair.headDate | Should -Be '2026-03-10T10:00:00+00:00'
         $historySummary.decisionGuidance.decisionStatement | Should -Be 'Start at pair 2; it is the newest meaningful change. It touches Functional behavior.'
         $historySummary.decisionGuidance.latestSignalPair.index | Should -Be 2
         $historySummary.decisionGuidance.latestSignalPair.baseSubject | Should -Be 'Base commit'
         $historySummary.decisionGuidance.latestSignalPair.headSubject | Should -Be 'Head commit'
+        $historySummary.decisionGuidance.latestSignalPair.baseDate | Should -Be '2026-03-11T11:00:00+00:00'
+        $historySummary.decisionGuidance.latestSignalPair.headDate | Should -Be '2026-03-12T12:00:00+00:00'
         @($historySummary.decisionGuidance.reviewSequence).Count | Should -Be 1
         $historySummary.decisionGuidance.reviewSequence[0].index | Should -Be 2
         $historySummary.decisionGuidance.reviewSequence[0].baseSubject | Should -Be 'Base commit'
         $historySummary.decisionGuidance.reviewSequence[0].headSubject | Should -Be 'Head commit'
+        $historySummary.decisionGuidance.reviewSequence[0].baseDate | Should -Be '2026-03-11T11:00:00+00:00'
+        $historySummary.decisionGuidance.reviewSequence[0].headDate | Should -Be '2026-03-12T12:00:00+00:00'
     }
 
     It 'preserves branch budget numeric fields when the source object is a hashtable' {
