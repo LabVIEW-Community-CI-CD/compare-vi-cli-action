@@ -4,8 +4,6 @@ on:
   pull_request_target:
     types: [labeled, reopened, synchronize]
     branches: [main, develop, integration/**, release/**]
-    paths-ignore:
-      - '**/*.md'
   workflow_dispatch:
     inputs:
       sample_id:
