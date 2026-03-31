@@ -7,6 +7,39 @@ The format is based on Keep a Changelog, and this project adheres to Semantic Ve
 
 ## [Unreleased]
 
+## [v0.6.10] - 2026-03-30
+
+### Changed
+
+- `Compare-VIHistory.ps1`, `Render-VIHistoryReport.ps1`, and the supporting
+  category helpers now preserve touch-history chronology, keep collapsed noise
+  pairs visible, canonicalize history labels, and emit review-order guidance so
+  the canonical VI-history proof answers which pair to inspect first instead of
+  flattening the newest meaningful change into report noise.
+- `validate.yml` now treats Windows VI-history proofing as a self-hosted split:
+  `vi-history-scenarios-windows` runs the 64-bit Windows Docker proof on the
+  ingress host, while `vi-history-scenarios-windows-lv32` runs in parallel as
+  the native 32-bit reference lane.
+- The NI Linux proof tooling and local `comparevi-history` fast loop now honor
+  `DOCKER_COMMAND_OVERRIDE`, making WSL-hosted `docker.exe` and wrapper-based
+  runtimes behave consistently during canonical proof replay.
+
+### Added
+
+- Chronology-aware decision guidance in the VI-history report facade,
+  including newest-pair status, explicit review sequence, and focus/context
+  bucket summaries for the canonical proof target.
+- Workflow-planner coverage for the self-hosted Windows Docker split,
+  including regression checks for the empty health-receipt binding path.
+- Local fast-loop regression coverage proving the released facade can pre-pull
+  the proof image through a docker override path before the hosted proof runs.
+
+### Documentation
+
+- Updated the release helper packet for the `v0.6.10` maintenance cut and
+  shifted the canonical product proof references from `DrawIcon.vi` to
+  `Tooling/deployment/VIP_Pre-Install Custom Action.vi`.
+
 ## [v0.6.9] - 2026-03-30
 
 ### Fixed
