@@ -253,6 +253,7 @@
     "session:teststand:validate": "node tools/npm/run-script.mjs schema:validate -- --schema docs/schema/generated/teststand-compare-session.schema.json --data fixtures/teststand-session/session-index.json --data fixtures/teststand-session/session-index.dual-plane-parity.json --data tests/results/teststand-session/session-index.json --optional",
     "smoke:vi-history": "pwsh -NoLogo -NoProfile -File tools/Test-PRVIHistorySmoke.ps1",
     "smoke:vi-stage": "pwsh -NoLogo -NoProfile -File tools/Test-PRVIStagingSmoke.ps1",
+    "tests:execution:local": "pwsh -NoLogo -NoProfile -File tools/Run-PesterExecutionOnly.Local.ps1",
     "tests:comparevi": "pwsh -NoLogo -NoProfile -File Invoke-PesterTests.ps1 -IncludePatterns CompareVI*",
     "tests:comparevi:int": "pwsh -NoLogo -NoProfile -File Invoke-PesterTests.ps1 -IncludePatterns CompareVI* -IntegrationMode include",
     "tests:comparevi:single-int": "pwsh -NoLogo -NoProfile -Command \"$env:LV_BASE_VI=(Resolve-Path 'VI1.vi').Path; $env:LV_HEAD_VI=(Resolve-Path 'VI2.vi').Path; pwsh -NoLogo -NoProfile -File Invoke-PesterTests.ps1 -TestsPath tests/CompareVI.RealCli.SingleRun.Integration.Tests.ps1 -IntegrationMode include\"",

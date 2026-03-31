@@ -306,6 +306,12 @@ jobs:
             $reasons.Add('execution-job-skipped') | Out-Null
           } elseif ($executionJobResult -eq 'cancelled') {
             $reasons.Add('execution-job-cancelled') | Out-Null
+          } elseif ($executionJobResult -eq 'results-xml-truncated') {
+            $reasons.Add('execution-job-results-xml-truncated') | Out-Null
+          } elseif ($executionJobResult -eq 'invalid-results-xml') {
+            $reasons.Add('execution-job-invalid-results-xml') | Out-Null
+          } elseif ($executionJobResult -eq 'missing-results-xml') {
+            $reasons.Add('execution-job-missing-results-xml') | Out-Null
           } elseif ($executionJobResult -eq 'seam-defect') {
             $reasons.Add('execution-job-seam-defect') | Out-Null
           } elseif ($executionJobResult -eq 'unknown') {
@@ -324,6 +330,15 @@ jobs:
             $classification = 'readiness-blocked'
           } elseif (($selectionStatus -ne 'ready' -and $executionJobResult -in @('skipped','cancelled')) -or $executionReceiptStatus -eq 'selection-blocked') {
             $classification = 'selection-blocked'
+          } elseif ($executionReceiptStatus -eq 'results-xml-truncated') {
+            $classification = 'results-xml-truncated'
+            $reasons.Add('execution-receipt-results-xml-truncated') | Out-Null
+          } elseif ($executionReceiptStatus -eq 'invalid-results-xml') {
+            $classification = 'invalid-results-xml'
+            $reasons.Add('execution-receipt-invalid-results-xml') | Out-Null
+          } elseif ($executionReceiptStatus -eq 'missing-results-xml') {
+            $classification = 'missing-results-xml'
+            $reasons.Add('execution-receipt-missing-results-xml') | Out-Null
           } elseif ($executionReceiptStatus -eq 'seam-defect') {
             $reasons.Add('execution-receipt-seam-defect') | Out-Null
           } elseif ($executionReceiptStatus -eq 'test-failures') {
@@ -334,7 +349,13 @@ jobs:
               if ('${{ steps.execution_receipt.outputs.dispatcher_exit_code }}' -and '${{ steps.execution_receipt.outputs.dispatcher_exit_code }}' -ne $dispatcherExitCode) {
                 $reasons.Add('dispatcher-exit-mismatch') | Out-Null
               }
-              if (($summary.failed + $summary.errors) -gt 0 -or $dispatcherExitCode -ne '0') {
+              if (($summary.PSObject.Properties.Name -contains 'resultsXmlStatus') -and [string]$summary.resultsXmlStatus -like 'truncated*') {
+                $classification = 'results-xml-truncated'
+                $reasons.Add(("results-xml-status={0}" -f [string]$summary.resultsXmlStatus)) | Out-Null
+              } elseif (($summary.PSObject.Properties.Name -contains 'resultsXmlStatus') -and [string]$summary.resultsXmlStatus -like 'invalid*') {
+                $classification = 'invalid-results-xml'
+                $reasons.Add(("results-xml-status={0}" -f [string]$summary.resultsXmlStatus)) | Out-Null
+              } elseif (($summary.failed + $summary.errors) -gt 0 -or $dispatcherExitCode -ne '0') {
                 $classification = 'test-failures'
               } else {
                 $classification = 'ok'

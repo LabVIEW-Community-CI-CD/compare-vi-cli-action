@@ -27,6 +27,11 @@ The additive pilot introduces seven workflow surfaces:
   - receipt-driven Pester execution only
 - `.github/workflows/pester-evidence.yml`
   - summary, classification, session-index, dashboard, and artifact publication
+- `tools/Run-PesterExecutionOnly.Local.ps1`
+  - local harness for the execution slice without the workflow shell: lock, LV guard,
+    fixture prep, dispatcher profile, dispatch, execution postprocess, and local execution receipt
+- `tools/Invoke-PesterExecutionPostprocess.ps1`
+  - execution-post contract for XML integrity classification and machine-readable summary repair
 
 ## Design Rules
 
@@ -39,6 +44,10 @@ The additive pilot introduces seven workflow surfaces:
 - Execution consumes context, selection, and readiness. It does not normalize pack inputs, choose the dispatcher profile, bootstrap Docker runtimes, install core toolchains, or discover standing-priority state.
 - Execution writes an execution receipt before uploading raw artifacts so evidence can classify the real seam outcome.
 - Execution must also emit a skip-safe execution contract from an always-on finalize path so reusable-workflow outputs do not collapse when the execution job never starts.
+- Execution-post shall classify `results-xml-truncated`, `invalid-results-xml`, and `missing-results-xml` explicitly instead of collapsing XML integrity debt into generic `seam-defect`.
+- Local iteration must not depend on the workflow shell. The local harness should
+  make the execution slice runnable on its own while keeping the same preflight
+  and receipt boundaries.
 - Evidence consumes raw execution output plus the execution receipt. It classifies `context-blocked`, `readiness-blocked`, and `seam-defect` explicitly instead of collapsing them into one execution symptom.
 - The existing required gate remains in place until the pilot proves equivalent or better behavior.
 - Trusted PR proving must stay on `pull_request_target` with same-owner gating. Cross-owner fork heads are not allowed to drive self-hosted execution.
