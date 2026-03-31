@@ -111,6 +111,7 @@ test('trusted PR pilot router only runs self-hosted service-model proof for work
   assert.match(workflow, /name:\s+Pester service-model pilot on trusted PR label/);
   assert.match(workflow, /pull_request_target:/);
   assert.match(workflow, /types:\s*\[labeled, reopened, synchronize\]/);
+  assert.doesNotMatch(workflow, /paths-ignore:/);
   assert.match(workflow, /workflow_dispatch:/);
   assert.match(workflow, /labels -contains 'pester-service-model'/);
   assert.match(workflow, /PR_LABELS_JSON:\s+\$\{\{\s*toJson\(github\.event\.pull_request\.labels\.\*\.name\)\s*\}\}/);
