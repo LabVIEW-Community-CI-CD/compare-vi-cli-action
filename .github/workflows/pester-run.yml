@@ -11,6 +11,14 @@ on:
         required: false
         type: string
         default: ''
+      context_status:
+        required: false
+        type: string
+        default: 'unknown'
+      context_artifact_name:
+        required: false
+        type: string
+        default: 'pester-context'
       sample_id:
         required: false
         type: string
@@ -53,6 +61,16 @@ on:
         description: 'Optional repo-relative IncludePatterns selector'
         required: false
         default: ''
+        type: string
+      context_status:
+        description: 'Context receipt status'
+        required: false
+        default: 'unknown'
+        type: string
+      context_artifact_name:
+        description: 'Context receipt artifact name'
+        required: false
+        default: 'pester-context'
         type: string
       sample_id:
         description: 'Sampling correlation id (prevents cancels)'
@@ -106,7 +124,7 @@ jobs:
 
   pester:
     name: Pester (execution only)
-    if: ${{ inputs.readiness_status == 'ready' }}
+    if: ${{ inputs.context_status == 'ready' && inputs.readiness_status == 'ready' }}
     runs-on: [self-hosted, Windows, X64, comparevi, capability-ingress]
     needs: normalize
     env:
@@ -139,6 +157,31 @@ jobs:
           if (-not $env:WORKFLOW_TOKEN) { throw 'github.token is empty' }
           "GH_TOKEN=$env:WORKFLOW_TOKEN" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
           "GITHUB_TOKEN=$env:WORKFLOW_TOKEN" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Download context receipt artifact
+        uses: actions/download-artifact@v5
+        with:
+          name: ${{ inputs.context_artifact_name }}
+          path: tests/context
+
+      - name: Validate context receipt
+        id: context_receipt
+        shell: pwsh
+        run: |
+          $receiptPath = 'tests/context/pester-context.json'
+          if (-not (Test-Path -LiteralPath $receiptPath)) {
+            throw "Context receipt missing: $receiptPath"
+          }
+          $receipt = Get-Content -LiteralPath $receiptPath -Raw | ConvertFrom-Json -ErrorAction Stop
+          if ($receipt.schema -ne 'pester-context-receipt@v1') {
+            throw ("Unexpected context receipt schema: {0}" -f $receipt.schema)
+          }
+          if ($receipt.status -ne 'ready') {
+            throw ("Context receipt status is not ready: {0}" -f $receipt.status)
+          }
+          "path=$receiptPath" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "repository=$($receipt.repository)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "standing_priority_issue=$($receipt.standingPriority.issueNumber)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
 
       - name: Download readiness receipt artifact
         uses: actions/download-artifact@v5
@@ -306,6 +349,7 @@ jobs:
           if ($dispatcherExitCode -eq '') {
             $dispatcherExitCode = '-1'
           }
+          $contextReceiptPresent = Test-Path -LiteralPath '${{ steps.context_receipt.outputs.path }}'
           $readinessReceiptPresent = Test-Path -LiteralPath '${{ steps.readiness_receipt.outputs.path }}'
           if ((Test-Path -LiteralPath $summaryPath) -and $dispatcherExitCode -eq '0') {
             $status = 'completed'
@@ -315,6 +359,11 @@ jobs:
           $receipt = [ordered]@{
             schema             = 'pester-execution-receipt@v1'
             generatedAtUtc     = [DateTime]::UtcNow.ToString('o')
+            contextStatus      = '${{ inputs.context_status }}'
+            contextReceiptPath = '${{ steps.context_receipt.outputs.path }}'
+            contextReceiptPresent = $contextReceiptPresent
+            repository         = '${{ steps.context_receipt.outputs.repository }}'
+            standingPriorityIssue = '${{ steps.context_receipt.outputs.standing_priority_issue }}'
             readinessStatus    = '${{ inputs.readiness_status }}'
             readinessReceiptPath = '${{ steps.readiness_receipt.outputs.path }}'
             readinessReceiptPresent = $readinessReceiptPresent
@@ -358,7 +407,10 @@ jobs:
           $executionStatus = 'unknown'
           $receiptStatus = '${{ needs.pester.outputs.execution_receipt_status }}'
           $rawArtifactName = ''
-          if ('${{ inputs.readiness_status }}' -ne 'ready') {
+          if ('${{ inputs.context_status }}' -ne 'ready') {
+            $executionStatus = 'skipped'
+            $receiptStatus = 'context-blocked'
+          } elseif ('${{ inputs.readiness_status }}' -ne 'ready') {
             $executionStatus = 'skipped'
             if ([string]::IsNullOrWhiteSpace($receiptStatus)) { $receiptStatus = 'skipped' }
           } else {
@@ -398,6 +450,7 @@ jobs:
           $receipt = [ordered]@{
             schema             = 'pester-execution-receipt@v1'
             generatedAtUtc     = [DateTime]::UtcNow.ToString('o')
+            contextStatus      = '${{ inputs.context_status }}'
             readinessStatus    = '${{ inputs.readiness_status }}'
             executionJobResult = '${{ needs.pester.result }}'
             dispatcherExitCode = [int]$dispatcherExitCode

@@ -11,7 +11,7 @@ function readRepoFile(relativePath) {
   return readFileSync(path.join(repoRoot, relativePath), 'utf8');
 }
 
-test('pester gate pilot routes readiness, execution, and evidence through separate reusable workflows', () => {
+test('pester gate pilot routes context, readiness, execution, and evidence through separate reusable workflows', () => {
   const workflow = readRepoFile('.github/workflows/pester-gate.yml');
 
   assert.match(workflow, /name:\s+Pester gate \(service model pilot\)/);
@@ -22,16 +22,35 @@ test('pester gate pilot routes readiness, execution, and evidence through separa
   assert.match(workflow, /route_trust_mode:/);
   assert.match(workflow, /group:\s+pester-gate-\$\{\{\s*inputs\.sample_id \|\| github\.ref\s*\}\}/);
   assert.match(workflow, /jobs:\s*\n\s*skipped:\s*\n\s+if:\s+\$\{\{\s*!fromJSON\(inputs\.route_should_run \|\| 'true'\)\s*\}\}/);
-  assert.match(workflow, /\n\s*readiness:\s*\n\s+if:\s+\$\{\{\s*fromJSON\(inputs\.route_should_run \|\| 'true'\)\s*\}\}\s*\n\s+uses:\s+\.\s*\/\.github\/workflows\/selfhosted-readiness\.yml/);
-  assert.match(workflow, /\n\s*pester-run:\s*\n\s+needs:\s+readiness\s*\n\s+if:\s+\$\{\{\s*always\(\) && fromJSON\(inputs\.route_should_run \|\| 'true'\)\s*\}\}\s*\n\s+uses:\s+\.\s*\/\.github\/workflows\/pester-run\.yml/);
+  assert.match(workflow, /\n\s*context:\s*\n\s+if:\s+\$\{\{\s*fromJSON\(inputs\.route_should_run \|\| 'true'\)\s*\}\}\s*\n\s+uses:\s+\.\s*\/\.github\/workflows\/pester-context\.yml/);
+  assert.match(workflow, /\n\s*readiness:\s*\n\s+needs:\s+context\s*\n\s+if:\s+\$\{\{\s*always\(\) && fromJSON\(inputs\.route_should_run \|\| 'true'\) && needs\.context\.outputs\.receipt_status == 'ready'\s*\}\}\s*\n\s+uses:\s+\.\s*\/\.github\/workflows\/selfhosted-readiness\.yml/);
+  assert.match(workflow, /\n\s*pester-run:\s*\n\s+needs:\s+\[context, readiness\]\s*\n\s+if:\s+\$\{\{\s*always\(\) && fromJSON\(inputs\.route_should_run \|\| 'true'\)\s*\}\}\s*\n\s+uses:\s+\.\s*\/\.github\/workflows\/pester-run\.yml/);
+  assert.match(workflow, /context_status:\s+\$\{\{\s*needs\.context\.outputs\.receipt_status\s*\|\|\s*needs\.context\.result/);
+  assert.match(workflow, /context_artifact_name:\s+\$\{\{\s*needs\.context\.outputs\.receipt_artifact_name\s*\|\|\s*'pester-context'/);
   assert.match(workflow, /readiness_artifact_name:\s+\$\{\{\s*needs\.readiness\.outputs\.receipt_artifact_name\s*\|\|\s*'pester-readiness'/);
   assert.match(workflow, /readiness_status:\s+\$\{\{\s*needs\.readiness\.outputs\.receipt_status\s*\|\|\s*needs\.readiness\.result/);
   assert.match(workflow, /checkout_repository:\s+\$\{\{\s*inputs\.checkout_repository \|\| github\.repository\s*\}\}/);
   assert.match(workflow, /checkout_ref:\s+\$\{\{\s*inputs\.checkout_ref \|\| github\.sha\s*\}\}/);
-  assert.match(workflow, /\n\s*pester-evidence:\s*\n\s+needs:\s+\[readiness, pester-run\]\s*\n\s+if:\s+\$\{\{\s*always\(\) && fromJSON\(inputs\.route_should_run \|\| 'true'\)\s*\}\}\s*\n\s+uses:\s+\.\s*\/\.github\/workflows\/pester-evidence\.yml/);
+  assert.match(workflow, /\n\s*pester-evidence:\s*\n\s+needs:\s+\[context, readiness, pester-run\]\s*\n\s+if:\s+\$\{\{\s*always\(\) && fromJSON\(inputs\.route_should_run \|\| 'true'\)\s*\}\}\s*\n\s+uses:\s+\.\s*\/\.github\/workflows\/pester-evidence\.yml/);
+  assert.match(workflow, /context_status:\s+\$\{\{\s*needs\.context\.outputs\.receipt_status\s*\|\|\s*needs\.context\.result/);
   assert.match(workflow, /execution_job_result:\s+\$\{\{\s*needs\.pester-run\.outputs\.execution_status\s*\|\|\s*needs\.pester-run\.result/);
   assert.match(workflow, /execution_receipt_artifact_name:\s+\$\{\{\s*needs\.pester-run\.outputs\.execution_receipt_artifact_name/);
   assert.match(workflow, /### Pester gate \(service model pilot\)/);
+});
+
+test('pester context owns repo/control-plane receipts before host readiness begins', () => {
+  const workflow = readRepoFile('.github/workflows/pester-context.yml');
+
+  assert.match(workflow, /name:\s+Pester context/);
+  assert.match(workflow, /workflow_call:/);
+  assert.match(workflow, /receipt_status:/);
+  assert.match(workflow, /standing_priority_issue:/);
+  assert.match(workflow, /standing_priority_reason:/);
+  assert.match(workflow, /runs-on:\s+ubuntu-latest/);
+  assert.match(workflow, /Resolve standing-priority context/);
+  assert.match(workflow, /run-sync-standing-priority\.mjs --materialize-cache/);
+  assert.match(workflow, /pester-context-receipt@v1/);
+  assert.match(workflow, /Upload context receipt/);
 });
 
 test('selfhosted readiness owns host-plane certification and emits a receipt artifact', () => {
@@ -53,16 +72,19 @@ test('selfhosted readiness owns host-plane certification and emits a receipt art
   assert.match(workflow, /freshnessWindowSeconds = 900/);
 });
 
-test('pester run is execution-only and validates the readiness receipt before dispatch', () => {
+test('pester run is execution-only and validates context plus readiness receipts before dispatch', () => {
   const workflow = readRepoFile('.github/workflows/pester-run.yml');
 
   assert.match(workflow, /name:\s+Pester run/);
   assert.match(workflow, /name:\s+Pester \(execution only\)/);
-  assert.match(workflow, /if:\s+\$\{\{\s*inputs\.readiness_status == 'ready'\s*\}\}/);
+  assert.match(workflow, /if:\s+\$\{\{\s*inputs\.context_status == 'ready' && inputs\.readiness_status == 'ready'\s*\}\}/);
   assert.match(workflow, /execution_status:/);
   assert.match(workflow, /execution_receipt_artifact_name:/);
   assert.match(workflow, /repository:\s+\$\{\{\s*inputs\.checkout_repository \|\| github\.repository\s*\}\}/);
   assert.match(workflow, /ref:\s+\$\{\{\s*inputs\.checkout_ref \|\| github\.sha\s*\}\}/);
+  assert.match(workflow, /Download context receipt artifact/);
+  assert.match(workflow, /Validate context receipt/);
+  assert.match(workflow, /pester-context\.json/);
   assert.match(workflow, /Download readiness receipt artifact/);
   assert.match(workflow, /Validate readiness receipt/);
   assert.match(workflow, /selfhosted-readiness\.json/);
@@ -77,7 +99,7 @@ test('pester run is execution-only and validates the readiness receipt before di
   assert.doesNotMatch(workflow, /Invoke-DevDashboard\.ps1/);
 });
 
-test('pester evidence distinguishes readiness-blocked skips from seam defects', () => {
+test('pester evidence distinguishes context-blocked and readiness-blocked skips from seam defects', () => {
   const workflow = readRepoFile('.github/workflows/pester-evidence.yml');
 
   assert.match(workflow, /name:\s+Pester evidence/);
@@ -91,7 +113,10 @@ test('pester evidence distinguishes readiness-blocked skips from seam defects', 
   assert.match(workflow, /Ensure-SessionIndex\.ps1/);
   assert.match(workflow, /Invoke-DevDashboard\.ps1/);
   assert.match(workflow, /classification = 'seam-defect'/);
+  assert.match(workflow, /\$classification = 'context-blocked'/);
   assert.match(workflow, /\$classification = 'readiness-blocked'/);
+  assert.match(workflow, /\$contextStatus -ne 'ready'/);
+  assert.match(workflow, /\$executionReceiptStatus -eq 'context-blocked'/);
   assert.match(workflow, /\$readinessStatus -ne 'ready' -and \$executionJobResult -in @\('skipped','cancelled'\)/);
   assert.match(workflow, /raw-artifact-download=/);
   assert.match(workflow, /execution-receipt-seam-defect/);
@@ -103,9 +128,11 @@ test('knowledgebase documents the additive service model and keeps the monolith 
   const doc = readRepoFile('docs/knowledgebase/Pester-Service-Model.md');
 
   assert.match(doc, /legacy Pester control plane couples four concerns into one self-hosted transaction/i);
+  assert.match(doc, /pester-context\.yml/);
   assert.match(doc, /selfhosted-readiness\.yml/);
   assert.match(doc, /pester-run\.yml/);
   assert.match(doc, /pester-evidence\.yml/);
+  assert.match(doc, /Context certifies repo\/control-plane assumptions/i);
   assert.match(doc, /readiness receipt/i);
   assert.match(doc, /execution receipt/i);
   assert.match(doc, /existing required gate remains in place/i);

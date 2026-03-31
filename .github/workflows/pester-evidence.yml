@@ -15,6 +15,10 @@ on:
         required: false
         type: string
         default: ''
+      context_status:
+        required: false
+        type: string
+        default: 'unknown'
       readiness_status:
         required: false
         type: string
@@ -62,6 +66,11 @@ on:
         description: 'Dispatcher exit code from execution workflow'
         required: false
         default: ''
+        type: string
+      context_status:
+        description: 'Context receipt status'
+        required: false
+        default: 'unknown'
         type: string
       readiness_status:
         description: 'Readiness receipt status'
@@ -269,10 +278,14 @@ jobs:
           $summaryPath = Join-Path $resultsDir 'pester-summary.json'
           $classification = 'seam-defect'
           $reasons = New-Object System.Collections.Generic.List[string]
+          $contextStatus = '${{ inputs.context_status }}'
           $readinessStatus = '${{ inputs.readiness_status }}'
           $executionJobResult = '${{ inputs.execution_job_result }}'
           $executionReceiptPresent = '${{ steps.execution_receipt.outputs.present }}'
           $executionReceiptStatus = '${{ steps.execution_receipt.outputs.status }}'
+          if ($contextStatus -ne 'ready') {
+            $reasons.Add(("context-status={0}" -f $contextStatus)) | Out-Null
+          }
           if ($readinessStatus -ne 'ready') {
             $reasons.Add(("readiness-status={0}" -f $readinessStatus)) | Out-Null
           }
@@ -292,6 +305,8 @@ jobs:
           if ([string]::IsNullOrWhiteSpace($dispatcherExitCode)) { $dispatcherExitCode = '-1' }
           if ($executionReceiptPresent -ne 'true') {
             $reasons.Add('execution-receipt-missing') | Out-Null
+          } elseif (($contextStatus -ne 'ready' -and $executionJobResult -in @('skipped','cancelled')) -or $executionReceiptStatus -eq 'context-blocked') {
+            $classification = 'context-blocked'
           } elseif ($readinessStatus -ne 'ready' -and $executionJobResult -in @('skipped','cancelled')) {
             $classification = 'readiness-blocked'
           } elseif ($executionReceiptStatus -eq 'seam-defect') {
@@ -319,6 +334,7 @@ jobs:
           $receipt = [ordered]@{
             schema             = 'pester-evidence-classification@v1'
             generatedAtUtc     = [DateTime]::UtcNow.ToString('o')
+            contextStatus      = $contextStatus
             readinessStatus    = $readinessStatus
             executionJobResult = $executionJobResult
             rawArtifactDownload = if ('${{ steps.artifact_name.outputs.should_download }}' -eq 'true') { '${{ steps.download.outcome }}' } else { 'skipped' }

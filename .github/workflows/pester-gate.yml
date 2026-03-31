@@ -102,8 +102,17 @@ jobs:
             $lines -join "`n" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
           }
 
-  readiness:
+  context:
     if: ${{ fromJSON(inputs.route_should_run || 'true') }}
+    uses: ./.github/workflows/pester-context.yml
+    with:
+      sample_id: ${{ inputs.sample_id || '' }}
+      checkout_repository: ${{ inputs.checkout_repository || github.repository }}
+      checkout_ref: ${{ inputs.checkout_ref || github.sha }}
+
+  readiness:
+    needs: context
+    if: ${{ always() && fromJSON(inputs.route_should_run || 'true') && needs.context.outputs.receipt_status == 'ready' }}
     uses: ./.github/workflows/selfhosted-readiness.yml
     with:
       sample_id: ${{ inputs.sample_id || '' }}
@@ -111,25 +120,28 @@ jobs:
       checkout_ref: ${{ inputs.checkout_ref || github.sha }}
 
   pester-run:
-    needs: readiness
+    needs: [context, readiness]
     if: ${{ always() && fromJSON(inputs.route_should_run || 'true') }}
     uses: ./.github/workflows/pester-run.yml
     with:
       include_integration: ${{ inputs.include_integration || 'false' }}
       include_patterns: ${{ inputs.include_patterns || '' }}
       sample_id: ${{ inputs.sample_id || '' }}
+      context_status: ${{ needs.context.outputs.receipt_status || needs.context.result || 'unknown' }}
+      context_artifact_name: ${{ needs.context.outputs.receipt_artifact_name || 'pester-context' }}
       readiness_status: ${{ needs.readiness.outputs.receipt_status || needs.readiness.result || 'unknown' }}
       readiness_artifact_name: ${{ needs.readiness.outputs.receipt_artifact_name || 'pester-readiness' }}
       checkout_repository: ${{ inputs.checkout_repository || github.repository }}
       checkout_ref: ${{ inputs.checkout_ref || github.sha }}
 
   pester-evidence:
-    needs: [readiness, pester-run]
+    needs: [context, readiness, pester-run]
     if: ${{ always() && fromJSON(inputs.route_should_run || 'true') }}
     uses: ./.github/workflows/pester-evidence.yml
     with:
       raw_artifact_name: ${{ needs.pester-run.outputs.raw_artifact_name }}
       execution_receipt_artifact_name: ${{ needs.pester-run.outputs.execution_receipt_artifact_name || 'pester-execution-contract' }}
       dispatcher_exit_code: ${{ needs.pester-run.outputs.dispatcher_exit_code }}
+      context_status: ${{ needs.context.outputs.receipt_status || needs.context.result || 'unknown' }}
       readiness_status: ${{ needs.readiness.outputs.receipt_status || needs.readiness.result || 'unknown' }}
       execution_job_result: ${{ needs.pester-run.outputs.execution_status || needs.pester-run.result }}

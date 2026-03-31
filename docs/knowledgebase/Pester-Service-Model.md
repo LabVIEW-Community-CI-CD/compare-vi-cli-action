@@ -11,8 +11,10 @@ That coupling is what makes the monolithic self-hosted seam expensive to reprodu
 
 ## Pilot Split
 
-The additive pilot introduces four workflow surfaces:
+The additive pilot introduces five workflow surfaces:
 
+- `.github/workflows/pester-context.yml`
+  - repo/control-plane receipts for repository slug, token-backed standing-priority sync, and context classification
 - `.github/workflows/pester-gate.yml`
   - top-level router for the pilot service model
 - `.github/workflows/pester-service-model-on-label.yml`
@@ -26,12 +28,15 @@ The additive pilot introduces four workflow surfaces:
 
 ## Design Rules
 
+- Context certifies repo/control-plane assumptions. It does not probe host readiness or execute tests.
 - Readiness certifies the environment. It does not execute the test pack.
+- Readiness consumes context. It does not discover standing-priority state itself.
+- Selection is still internal to execution in the current pilot baseline; pulling it into its own receipt is the next planned decomposition slice.
 - Readiness emits a bounded-freshness receipt artifact that execution must download and validate before dispatch.
-- Execution consumes readiness. It does not bootstrap Docker runtimes or install core toolchains.
+- Execution consumes context and readiness. It does not bootstrap Docker runtimes, install core toolchains, or discover standing-priority state.
 - Execution writes an execution receipt before uploading raw artifacts so evidence can classify the real seam outcome.
 - Execution must also emit a skip-safe execution contract from an always-on finalize path so reusable-workflow outputs do not collapse when the execution job never starts.
-- Evidence consumes raw execution output plus the execution receipt. It classifies `seam-defect` explicitly when execution never yields a valid summary or never yields a valid execution receipt.
+- Evidence consumes raw execution output plus the execution receipt. It classifies `context-blocked`, `readiness-blocked`, and `seam-defect` explicitly instead of collapsing them into one execution symptom.
 - The existing required gate remains in place until the pilot proves equivalent or better behavior.
 - Trusted PR proving must stay on `pull_request_target` with same-owner gating. Cross-owner fork heads are not allowed to drive self-hosted execution.
 
