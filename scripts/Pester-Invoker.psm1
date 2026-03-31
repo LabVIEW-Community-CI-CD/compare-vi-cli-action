@@ -29,7 +29,7 @@ function Write-InvokerEvent {
     if ($RunId) { $payload.runId = $RunId }
     if ($Seed)  { $payload.seed  = $Seed }
     if ($Data) { foreach ($k in $Data.Keys) { $payload[$k] = $Data[$k] } }
-    ($payload | ConvertTo-Json -Compress) | Add-Content -Path $LogPath
+    ($payload | ConvertTo-Json -Depth 8 -Compress) | Add-Content -Path $LogPath
   } catch { Write-Warning ("[pester-invoker] failed to write crumb: {0}" -f $_.Exception.Message) }
 }
 
