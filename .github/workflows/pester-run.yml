@@ -131,15 +131,6 @@ jobs:
         shell: pwsh
         run: node tools/npm/cli.mjs ci
 
-      - name: Export workflow token for priority sync
-        shell: pwsh
-        env:
-          WORKFLOW_TOKEN: ${{ github.token }}
-        run: |
-          if (-not $env:WORKFLOW_TOKEN) { throw 'github.token is empty' }
-          "GH_TOKEN=$env:WORKFLOW_TOKEN" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
-          "GITHUB_TOKEN=$env:WORKFLOW_TOKEN" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
-
       - name: Download context receipt artifact
         uses: actions/download-artifact@v5
         with:
@@ -289,6 +280,8 @@ jobs:
         continue-on-error: true
         shell: pwsh
         run: |
+          $previousErrorActionPreference = $ErrorActionPreference
+          $ErrorActionPreference = 'Continue'
           $logPath = 'tests/results/pester-dispatcher.log'
           $logDir = Split-Path -Parent $logPath
           if (-not (Test-Path $logDir)) { New-Item -ItemType Directory -Force -Path $logDir | Out-Null }
@@ -326,8 +319,12 @@ jobs:
           $exitCode = 0
           try {
             & $dispatcherPath @bound 2>&1 | Tee-Object -FilePath $logPath
-            $exitCode = $LASTEXITCODE
+            $exitCode = if ($null -ne $LASTEXITCODE) { [int]$LASTEXITCODE } else { 0 }
+          } catch {
+            $_ | Out-String | Tee-Object -FilePath $logPath -Append | Write-Host
+            $exitCode = if ($null -ne $LASTEXITCODE -and [int]$LASTEXITCODE -ne 0) { [int]$LASTEXITCODE } else { 1 }
           } finally {
+            $ErrorActionPreference = $previousErrorActionPreference
             if ($heartbeatJob) {
               Stop-Job -Id $heartbeatJob.Id | Out-Null
               Remove-Job -Id $heartbeatJob.Id -Force | Out-Null
@@ -343,7 +340,21 @@ jobs:
             $env:GITHUB_OUTPUT = [System.IO.Path]::GetFullPath($fallbackOutput)
           }
           "exit_code=$exitCode" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          if ($exitCode -ne 0) {
+            Write-Warning ("Dispatcher exited with code {0}" -f $exitCode)
+          }
           $global:LASTEXITCODE = 0
+
+      - name: Postprocess execution results
+        id: postprocess
+        if: always()
+        shell: pwsh
+        run: |
+          $toolPath = Join-Path (Get-Location) 'tools/Invoke-PesterExecutionPostprocess.ps1'
+          if (-not (Test-Path -LiteralPath $toolPath -PathType Leaf)) {
+            throw "Postprocess tool not found at $toolPath"
+          }
+          pwsh -NoLogo -NoProfile -File $toolPath -ResultsDir 'tests/results'
 
       - name: Release session lock
         if: always()
@@ -360,15 +371,29 @@ jobs:
             New-Item -ItemType Directory -Path $resultsDir -Force | Out-Null
           }
           $summaryPath = Join-Path $resultsDir 'pester-summary.json'
+          $postprocessPath = Join-Path $resultsDir 'pester-execution-postprocess.json'
           $dispatcherExitCode = '${{ steps.dispatcher.outputs.exit_code }}'
           $status = 'seam-defect'
+          $postprocessStatus = ''
+          $resultsXmlStatus = ''
           if ($dispatcherExitCode -eq '') {
             $dispatcherExitCode = '-1'
           }
           $contextReceiptPresent = Test-Path -LiteralPath '${{ steps.context_receipt.outputs.path }}'
           $readinessReceiptPresent = Test-Path -LiteralPath '${{ steps.readiness_receipt.outputs.path }}'
           $selectionReceiptPresent = Test-Path -LiteralPath '${{ steps.selection_receipt.outputs.path }}'
-          if ((Test-Path -LiteralPath $summaryPath) -and $dispatcherExitCode -eq '0') {
+          if (Test-Path -LiteralPath $postprocessPath) {
+            try {
+              $postprocess = Get-Content -LiteralPath $postprocessPath -Raw | ConvertFrom-Json -ErrorAction Stop
+              $postprocessStatus = [string]$postprocess.status
+              $resultsXmlStatus = [string]$postprocess.resultsXmlStatus
+            } catch {
+              Write-Warning ("Failed to parse postprocess report: {0}" -f $_.Exception.Message)
+            }
+          }
+          if ($postprocessStatus -in @('results-xml-truncated', 'invalid-results-xml', 'missing-results-xml')) {
+            $status = $postprocessStatus
+          } elseif ((Test-Path -LiteralPath $summaryPath) -and $dispatcherExitCode -eq '0') {
             $status = 'completed'
           } elseif (Test-Path -LiteralPath $summaryPath) {
             $status = 'test-failures'
@@ -392,6 +417,8 @@ jobs:
             selectionIntegrationMode = '${{ steps.selection_receipt.outputs.integration_mode }}'
             selectionFixtureRequired = '${{ steps.selection_receipt.outputs.fixture_required }}'
             dispatcherExitCode = [int]$dispatcherExitCode
+            postprocessStatus  = $postprocessStatus
+            resultsXmlStatus   = $resultsXmlStatus
             summaryPresent     = Test-Path -LiteralPath $summaryPath
             status             = $status
             rawArtifactName    = 'pester-run-raw'
@@ -438,6 +465,9 @@ jobs:
           } elseif ('${{ inputs.selection_status }}' -ne 'ready') {
             $executionStatus = 'skipped'
             if ([string]::IsNullOrWhiteSpace($receiptStatus)) { $receiptStatus = 'selection-blocked' }
+          } elseif ($receiptStatus -in @('results-xml-truncated', 'invalid-results-xml', 'missing-results-xml')) {
+            $executionStatus = $receiptStatus
+            $rawArtifactName = 'pester-run-raw'
           } else {
             switch ('${{ needs.pester.result }}') {
               'success' {

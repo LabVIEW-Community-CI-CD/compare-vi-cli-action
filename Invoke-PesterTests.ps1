@@ -2662,20 +2662,53 @@ if (-not (Test-Path -LiteralPath $xmlPath -PathType Leaf)) {
 
 # Parse NUnit XML results
 Write-Host "Parsing test results..." -ForegroundColor Yellow
+$executionPostprocessStatus = 'seam-defect'
+$resultXmlStatus = 'missing'
+$resultXmlSummarySource = $null
+$resultXmlCloseTagPresent = $false
+$resultXmlParseError = $null
+$resultXmlSizeBytes = 0
 try {
-  [xml]$doc = Get-Content -LiteralPath $xmlPath -Raw -ErrorAction Stop
-  $rootNode = $doc.'test-results'
-  
-  if (-not $rootNode) {
-    Write-Error "Invalid NUnit XML format in results file"
+  $postprocessToolPath = Join-Path $PSScriptRoot 'tools/Invoke-PesterExecutionPostprocess.ps1'
+  if (-not (Test-Path -LiteralPath $postprocessToolPath -PathType Leaf)) {
+    throw "Invoke-PesterExecutionPostprocess.ps1 not found: $postprocessToolPath"
+  }
+  & $postprocessToolPath -ResultsDir $resultsDir -JsonSummaryPath $JsonSummaryPath -XmlStabilizationTimeoutSeconds 3 -XmlPollIntervalMilliseconds 200 | Out-Host
+  if ($LASTEXITCODE -ne 0) {
+    throw "Invoke-PesterExecutionPostprocess.ps1 failed with exit code $LASTEXITCODE."
+  }
+  $postprocessReportPath = Join-Path $resultsDir 'pester-execution-postprocess.json'
+  if (-not (Test-Path -LiteralPath $postprocessReportPath -PathType Leaf)) {
+    throw "Execution postprocess report not found: $postprocessReportPath"
+  }
+  $postprocessReport = Get-Content -LiteralPath $postprocessReportPath -Raw | ConvertFrom-Json -ErrorAction Stop
+
+  $executionPostprocessStatus = [string]$postprocessReport.status
+  $resultXmlStatus = [string]$postprocessReport.resultsXmlStatus
+  $resultXmlSummarySource = [string]$postprocessReport.resultsXmlSummarySource
+  $resultXmlCloseTagPresent = [bool]$postprocessReport.resultsXmlCloseTagPresent
+  $resultXmlParseError = [string]$postprocessReport.parseError
+  $resultXmlSizeBytes = [int64]$postprocessReport.resultsXmlSizeBytes
+
+  if ($executionPostprocessStatus -in @('missing-results-xml', 'seam-defect')) {
+    $detail = if ([string]::IsNullOrWhiteSpace($resultXmlParseError)) { $executionPostprocessStatus } else { "{0}: {1}" -f $executionPostprocessStatus, $resultXmlParseError }
+    Write-Error ("Failed to parse test results: {0}" -f $detail)
     exit 1
   }
-  
-  [int]$total = $rootNode.total
-  [int]$failed = $rootNode.failures
-  [int]$errors = $rootNode.errors
-  [int]$skipped = $rootNode.'not-run'
+
+  [int]$total = [int]$postprocessReport.total
+  [int]$failed = [int]$postprocessReport.failed
+  [int]$errors = [int]$postprocessReport.errors
+  [int]$skipped = [int]$postprocessReport.skipped
   $passed = $total - $failed - $errors
+
+  if ($executionPostprocessStatus -ne 'complete') {
+    Write-Warning ("Pester execution postprocess status={0}; resultsXmlStatus={1}; summarySource={2}; closeTagPresent={3}; parseError={4}" -f $executionPostprocessStatus, $resultXmlStatus, $resultXmlSummarySource, $resultXmlCloseTagPresent, $resultXmlParseError)
+    if (($failed + $errors) -eq 0) {
+      Write-Error 'Incomplete Pester results XML reported zero failures and zero errors; refusing to certify a pass from partial XML.'
+      exit 1
+    }
+  }
 
   # Discovery failure adjustment: if discovery failures detected and no existing failures/errors recorded, promote to errors
   if ($discoveryFailureCount -gt 0 -and $failed -eq 0 -and $errors -eq 0) {
@@ -3122,6 +3155,14 @@ try {
     schemaVersion      = $SchemaSummaryVersion
     timedOut           = $script:timedOut
     discoveryFailures  = $discoveryFailureCount
+    executionPostprocessStatus = $executionPostprocessStatus
+    resultsXmlStatus   = $resultXmlStatus
+    resultsXmlSummarySource = $resultXmlSummarySource
+    resultsXmlCloseTagPresent = [bool]$resultXmlCloseTagPresent
+    resultsXmlSizeBytes = $resultXmlSizeBytes
+  }
+  if (-not [string]::IsNullOrWhiteSpace($resultXmlParseError)) {
+    Add-Member -InputObject $jsonObj -Name resultsXmlParseError -MemberType NoteProperty -Value $resultXmlParseError
   }
 
   if ($labviewPidTrackerLoaded) {
