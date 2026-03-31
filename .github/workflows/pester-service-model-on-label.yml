@@ -97,26 +97,12 @@ jobs:
 
   pilot:
     needs: trust-context
-    if: ${{ fromJSON(needs.trust-context.outputs.should_run || 'false') }}
     uses: ./.github/workflows/pester-gate.yml
     with:
+      route_should_run: ${{ needs.trust-context.outputs.should_run || 'false' }}
+      route_reason: ${{ needs.trust-context.outputs.reason || '' }}
+      route_trust_mode: ${{ needs.trust-context.outputs.trust_mode || '' }}
       include_integration: ${{ 'true' }}
       sample_id: ${{ github.event.inputs.sample_id || '' }}
       checkout_repository: ${{ needs.trust-context.outputs.checkout_repository }}
       checkout_ref: ${{ needs.trust-context.outputs.checkout_ref }}
-
-  skipped:
-    needs: trust-context
-    if: ${{ !fromJSON(needs.trust-context.outputs.should_run || 'false') }}
-    runs-on: ubuntu-latest
-    steps:
-      - name: Append skip summary
-        shell: pwsh
-        run: |
-          if ($env:GITHUB_STEP_SUMMARY) {
-            $lines = @('### Pester service-model pilot', '')
-            $lines += ('- Status: skipped')
-            $lines += ('- Reason: {0}' -f '${{ needs.trust-context.outputs.reason }}')
-            $lines += ('- Trust mode: {0}' -f '${{ needs.trust-context.outputs.trust_mode }}')
-            $lines -join "`n" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
-          }
