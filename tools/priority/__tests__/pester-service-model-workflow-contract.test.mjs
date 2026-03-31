@@ -20,6 +20,7 @@ test('pester gate pilot routes readiness, execution, and evidence through separa
   assert.match(workflow, /route_should_run:/);
   assert.match(workflow, /route_reason:/);
   assert.match(workflow, /route_trust_mode:/);
+  assert.match(workflow, /group:\s+pester-gate-\$\{\{\s*inputs\.sample_id \|\| github\.ref\s*\}\}/);
   assert.match(workflow, /jobs:\s*\n\s*skipped:\s*\n\s+if:\s+\$\{\{\s*!fromJSON\(inputs\.route_should_run \|\| 'true'\)\s*\}\}/);
   assert.match(workflow, /\n\s*readiness:\s*\n\s+if:\s+\$\{\{\s*fromJSON\(inputs\.route_should_run \|\| 'true'\)\s*\}\}\s*\n\s+uses:\s+\.\s*\/\.github\/workflows\/selfhosted-readiness\.yml/);
   assert.match(workflow, /\n\s*pester-run:\s*\n\s+needs:\s+readiness\s*\n\s+if:\s+\$\{\{\s*always\(\) && fromJSON\(inputs\.route_should_run \|\| 'true'\)\s*\}\}\s*\n\s+uses:\s+\.\s*\/\.github\/workflows\/pester-run\.yml/);
@@ -117,6 +118,7 @@ test('trusted PR pilot router only runs self-hosted service-model proof for work
   assert.match(workflow, /pull_request_target:/);
   assert.match(workflow, /types:\s*\[labeled, reopened, synchronize\]/);
   assert.doesNotMatch(workflow, /paths-ignore:/);
+  assert.match(workflow, /group:\s+trusted-pilot-router-\$\{\{\s*github\.event\.pull_request\.number \|\| github\.event\.inputs\.sample_id \|\| github\.ref\s*\}\}/);
   assert.match(workflow, /workflow_dispatch:/);
   assert.match(workflow, /labels -contains 'pester-service-model'/);
   assert.match(workflow, /PR_LABELS_JSON:\s+\$\{\{\s*toJson\(github\.event\.pull_request\.labels\.\*\.name\)\s*\}\}/);
