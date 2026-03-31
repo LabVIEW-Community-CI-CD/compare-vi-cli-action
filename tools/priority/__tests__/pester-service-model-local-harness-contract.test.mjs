@@ -21,6 +21,7 @@ test('package.json exposes the local execution harness as a first-class entrypoi
 
 test('local execution harness owns lock lifecycle, preflight, dispatch, and receipt generation', () => {
   const harness = readRepoFile('tools/Run-PesterExecutionOnly.Local.ps1');
+  const invoker = readRepoFile('scripts/Pester-Invoker.psm1');
 
   assert.match(harness, /\[string\]\$SessionLockRoot/);
   assert.match(harness, /\$resolvedSessionLockRoot = if \(\[string\]::IsNullOrWhiteSpace\(\$SessionLockRoot\)\)/);
@@ -39,6 +40,23 @@ test('local execution harness owns lock lifecycle, preflight, dispatch, and rece
   assert.match(harness, /results-xml-truncated/);
   assert.match(harness, /summaryPresent/);
   assert.match(harness, /sessionLockRoot = ConvertTo-PortablePath \$resolvedSessionLockRoot/);
+  assert.match(invoker, /ConvertTo-Json -Depth 8 -Compress/);
+});
+
+test('dispatcher path delegates summary, artifact, and session-index side effects to the execution finalize helper', () => {
+  const dispatcher = readRepoFile('Invoke-PesterTests.ps1');
+  const finalize = readRepoFile('tools/Invoke-PesterExecutionFinalize.ps1');
+
+  assert.match(dispatcher, /Invoke-PesterExecutionFinalize\.ps1/);
+  assert.match(dispatcher, /pester-execution-finalize-context@v1/);
+  assert.match(dispatcher, /Invoke-ExecutionFinalizeHelper\s+-SummaryText\s+\$summary\s+-SummaryPayload\s+\$jsonObj\s+-ArtifactTrail\s+\$script:artifactTrail/);
+  assert.match(dispatcher, /Invoke-ExecutionFinalizeHelper\s+-ReuseExistingContext/);
+  assert.doesNotMatch(dispatcher, /Write-ArtifactManifest\s+-Directory/);
+  assert.doesNotMatch(dispatcher, /Write-SessionIndex\s+-ResultsDirectory/);
+  assert.match(finalize, /pester-artifacts\.json/);
+  assert.match(finalize, /session-index\.json/);
+  assert.match(finalize, /compare-report\.html/);
+  assert.match(finalize, /results-index\.html/);
 });
 
 test('knowledgebase documents the local harness as the workflow-shell-free execution entrypoint', () => {
