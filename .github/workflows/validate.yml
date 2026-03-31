@@ -1535,22 +1535,26 @@ jobs:
           'docker-lane'
         )
         $requiredHealthReceipts = @()
-        pwsh -NoLogo -NoProfile -File tools/Resolve-SelfHostedWindowsLanePlan.ps1 `
-          -Repository '${{ github.repository }}' `
-          -RequiredLabels $requiredLabels `
-          -ExecutionModel 'self-hosted-windows-docker-lane' `
-          -RunnerImage 'self-hosted-windows-docker-lane' `
-          -ExpectedContext 'desktop-windows' `
-          -ExpectedOs 'windows' `
-          -RequiredHealthReceipts $requiredHealthReceipts `
-          -Notes @(
+        $plannerArgs = @{
+          Repository = '${{ github.repository }}'
+          RequiredLabels = $requiredLabels
+          ExecutionModel = 'self-hosted-windows-docker-lane'
+          RunnerImage = 'self-hosted-windows-docker-lane'
+          ExpectedContext = 'desktop-windows'
+          ExpectedOs = 'windows'
+          Notes = @(
             'Availability means an online, idle repository runner advertises the ingress plus docker-lane labels.',
             'The lane may mutate Docker Desktop into the Windows engine and then restores the starting context after proof capture.'
-          ) `
-          -Token $env:GITHUB_TOKEN `
-          -OutputJsonPath $planPath `
-          -GitHubOutputPath $env:GITHUB_OUTPUT `
-          -StepSummaryPath $env:GITHUB_STEP_SUMMARY
+          )
+          Token = $env:GITHUB_TOKEN
+          OutputJsonPath = $planPath
+          GitHubOutputPath = $env:GITHUB_OUTPUT
+          StepSummaryPath = $env:GITHUB_STEP_SUMMARY
+        }
+        if ($requiredHealthReceipts.Count -gt 0) {
+          $plannerArgs.RequiredHealthReceipts = $requiredHealthReceipts
+        }
+        & tools/Resolve-SelfHostedWindowsLanePlan.ps1 @plannerArgs
 
     - name: Append VI history Windows runner plan
       shell: pwsh
