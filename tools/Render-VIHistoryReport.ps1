@@ -1288,6 +1288,7 @@ $decisionReviewPriority = if ($signalComparisonEntries.Count -gt 0) {
 } else {
   'no-diff'
 }
+$latestSignalComparisonEntry = if ($signalComparisonEntries.Count -gt 0) { $signalComparisonEntries[0] } else { $null }
 $decisionLatestStatus = 'n/a'
 if ($latestComparisonEntry) {
   $latestResultNode = $latestComparisonEntry.result
@@ -1310,6 +1311,11 @@ if ($sortedComparisons.Count -gt 0) {
   $summaryLines.Add(('- Review priority: `{0}`' -f $decisionReviewPriority))
   if ($latestComparisonEntry) {
     $summaryLines.Add(('- Latest pair: `pair {0}` is `{1}`' -f (Coalesce $latestComparisonEntry.index 'n/a'), $decisionLatestStatus))
+  }
+  if ($latestSignalComparisonEntry) {
+    $latestSignalBaseRef = [string](Coalesce (Coalesce $latestSignalComparisonEntry.base.short $latestSignalComparisonEntry.base.full) 'n/a')
+    $latestSignalHeadRef = [string](Coalesce (Coalesce $latestSignalComparisonEntry.head.short $latestSignalComparisonEntry.head.full) 'n/a')
+    $summaryLines.Add(('- Review first: `pair {0}` (`{1}` -> `{2}`)' -f (Coalesce $latestSignalComparisonEntry.index 'n/a'), $latestSignalBaseRef, $latestSignalHeadRef))
   }
   if ($signalComparisonEntries.Count -gt 0) {
     $summaryLines.Add(('- Signal pairs: `{0}`' -f ([string]::Join(', ', @($signalComparisonEntries | ForEach-Object { [string](Coalesce $_.index 'n/a') })))))
@@ -1665,6 +1671,11 @@ if ($emitHtml -and $HtmlPath) {
     if ($latestComparisonEntry) {
       [void]$htmlBuilder.AppendLine(('    <li><strong>Latest pair</strong><span><code>pair {0}</code> is <code>{1}</code></span></li>' -f (ConvertTo-HtmlSafe (Coalesce $latestComparisonEntry.index 'n/a')), (ConvertTo-HtmlSafe $decisionLatestStatus)))
     }
+    if ($latestSignalComparisonEntry) {
+      $latestSignalBaseRef = [string](Coalesce (Coalesce $latestSignalComparisonEntry.base.short $latestSignalComparisonEntry.base.full) 'n/a')
+      $latestSignalHeadRef = [string](Coalesce (Coalesce $latestSignalComparisonEntry.head.short $latestSignalComparisonEntry.head.full) 'n/a')
+      [void]$htmlBuilder.AppendLine(('    <li><strong>Review first</strong><span><code>pair {0}</code> (<code>{1}</code> -&gt; <code>{2}</code>)</span></li>' -f (ConvertTo-HtmlSafe (Coalesce $latestSignalComparisonEntry.index 'n/a')), (ConvertTo-HtmlSafe $latestSignalBaseRef), (ConvertTo-HtmlSafe $latestSignalHeadRef)))
+    }
     if ($signalComparisonEntries.Count -gt 0) {
       [void]$htmlBuilder.AppendLine(('    <li><strong>Signal pairs</strong><span><code>{0}</code></span></li>' -f (ConvertTo-HtmlSafe ([string]::Join(', ', @($signalComparisonEntries | ForEach-Object { [string](Coalesce $_.index 'n/a') }))))))
     } else {
@@ -1963,6 +1974,11 @@ $historySummary = [ordered]@{
     latestPair = [ordered]@{
       index = if ($latestComparisonEntry) { [int](Coalesce $latestComparisonEntry.index 0) } else { 0 }
       status = [string]$decisionLatestStatus
+    }
+    latestSignalPair = [ordered]@{
+      index = if ($latestSignalComparisonEntry) { [int](Coalesce $latestSignalComparisonEntry.index 0) } else { 0 }
+      baseRef = if ($latestSignalComparisonEntry) { [string](Coalesce (Coalesce $latestSignalComparisonEntry.base.short $latestSignalComparisonEntry.base.full) '') } else { '' }
+      headRef = if ($latestSignalComparisonEntry) { [string](Coalesce (Coalesce $latestSignalComparisonEntry.head.short $latestSignalComparisonEntry.head.full) '') } else { '' }
     }
     signalPairs = @($signalComparisonEntries | ForEach-Object { [int](Coalesce $_.index 0) })
     collapsedPairs = @($collapsedComparisonEntries | ForEach-Object { [int](Coalesce $_.index 0) })

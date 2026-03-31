@@ -1450,6 +1450,7 @@ exit 0
       @($historySummary.decisionGuidance.collapsedPairs) | Should -Be @(1)
       $historySummary.decisionGuidance.latestPair.index | Should -Be 1
       $historySummary.decisionGuidance.latestPair.status | Should -Be 'collapsed-noise'
+      $historySummary.decisionGuidance.latestSignalPair.index | Should -Be 0
       @($historySummary.decisionGuidance.PSObject.Properties.Name) | Should -Contain 'contextBuckets'
 
       $historyMd = Get-Content -LiteralPath (Join-Path $rd 'history-report.md') -Raw
@@ -1464,6 +1465,7 @@ exit 0
       $historyMd | Should -Match '## Decision guidance'
       $historyMd | Should -Match 'Review priority'
       $historyMd | Should -Match 'Latest pair'
+      $historyMd | Should -Not -Match 'Review first'
       $historyMd | Should -Match '## Commit pairs'
       $historyMd | Should -Match 'collapsed noise'
       $historyMd | Should -Match 'Touch history'
@@ -1483,6 +1485,7 @@ exit 0
       $historyHtml | Should -Match '<h2>Decision guidance</h2>'
       $historyHtml | Should -Match 'Review priority'
       $historyHtml | Should -Match 'Latest pair'
+      $historyHtml | Should -Not -Match 'Review first'
       $historyHtml | Should -Match '<h2>Commit pairs</h2>'
       $historyHtml | Should -Match 'Collapsed noise'
       $historyHtml | Should -Match 'Touch history'
