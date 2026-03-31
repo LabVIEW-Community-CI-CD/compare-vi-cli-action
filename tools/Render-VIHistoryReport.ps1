@@ -1288,6 +1288,17 @@ $decisionReviewPriority = if ($signalComparisonEntries.Count -gt 0) {
 } else {
   'no-diff'
 }
+$decisionReviewSequence = @(
+  $signalComparisonEntries | ForEach-Object {
+    [ordered]@{
+      index = [int](Coalesce $_.index 0)
+      baseRef = [string](Coalesce (Coalesce $_.base.short $_.base.full) '')
+      headRef = [string](Coalesce (Coalesce $_.head.short $_.head.full) '')
+      baseSubject = [string](Coalesce $_.base.subject '')
+      headSubject = [string](Coalesce $_.head.subject '')
+    }
+  }
+)
 $latestSignalComparisonEntry = if ($signalComparisonEntries.Count -gt 0) { $signalComparisonEntries[0] } else { $null }
 $decisionLatestStatus = 'n/a'
 if ($latestComparisonEntry) {
@@ -1316,6 +1327,14 @@ if ($sortedComparisons.Count -gt 0) {
     $latestSignalBaseRef = [string](Coalesce (Coalesce $latestSignalComparisonEntry.base.short $latestSignalComparisonEntry.base.full) 'n/a')
     $latestSignalHeadRef = [string](Coalesce (Coalesce $latestSignalComparisonEntry.head.short $latestSignalComparisonEntry.head.full) 'n/a')
     $summaryLines.Add(('- Review first: `pair {0}` (`{1}` -> `{2}`)' -f (Coalesce $latestSignalComparisonEntry.index 'n/a'), $latestSignalBaseRef, $latestSignalHeadRef))
+  }
+  if ($decisionReviewSequence.Count -gt 0) {
+    $reviewSequenceLabels = @(
+      $decisionReviewSequence | ForEach-Object {
+        'pair {0} ({1} -> {2})' -f $_.index, (Coalesce $_.baseSubject 'n/a'), (Coalesce $_.headSubject 'n/a')
+      }
+    )
+    $summaryLines.Add(('- Review sequence: `{0}`' -f ([string]::Join('; ', $reviewSequenceLabels))))
   }
   if ($signalComparisonEntries.Count -gt 0) {
     $summaryLines.Add(('- Signal pairs: `{0}`' -f ([string]::Join(', ', @($signalComparisonEntries | ForEach-Object { [string](Coalesce $_.index 'n/a') })))))
@@ -1676,6 +1695,14 @@ if ($emitHtml -and $HtmlPath) {
       $latestSignalHeadRef = [string](Coalesce (Coalesce $latestSignalComparisonEntry.head.short $latestSignalComparisonEntry.head.full) 'n/a')
       [void]$htmlBuilder.AppendLine(('    <li><strong>Review first</strong><span><code>pair {0}</code> (<code>{1}</code> -&gt; <code>{2}</code>)</span></li>' -f (ConvertTo-HtmlSafe (Coalesce $latestSignalComparisonEntry.index 'n/a')), (ConvertTo-HtmlSafe $latestSignalBaseRef), (ConvertTo-HtmlSafe $latestSignalHeadRef)))
     }
+    if ($decisionReviewSequence.Count -gt 0) {
+      $reviewSequenceLabels = @(
+        $decisionReviewSequence | ForEach-Object {
+          'pair {0} ({1} -> {2})' -f $_.index, (Coalesce $_.baseSubject 'n/a'), (Coalesce $_.headSubject 'n/a')
+        }
+      )
+      [void]$htmlBuilder.AppendLine(('    <li><strong>Review sequence</strong><span><code>{0}</code></span></li>' -f (ConvertTo-HtmlSafe ([string]::Join('; ', $reviewSequenceLabels)))))
+    }
     if ($signalComparisonEntries.Count -gt 0) {
       [void]$htmlBuilder.AppendLine(('    <li><strong>Signal pairs</strong><span><code>{0}</code></span></li>' -f (ConvertTo-HtmlSafe ([string]::Join(', ', @($signalComparisonEntries | ForEach-Object { [string](Coalesce $_.index 'n/a') }))))))
     } else {
@@ -1979,7 +2006,20 @@ $historySummary = [ordered]@{
       index = if ($latestSignalComparisonEntry) { [int](Coalesce $latestSignalComparisonEntry.index 0) } else { 0 }
       baseRef = if ($latestSignalComparisonEntry) { [string](Coalesce (Coalesce $latestSignalComparisonEntry.base.short $latestSignalComparisonEntry.base.full) '') } else { '' }
       headRef = if ($latestSignalComparisonEntry) { [string](Coalesce (Coalesce $latestSignalComparisonEntry.head.short $latestSignalComparisonEntry.head.full) '') } else { '' }
+      baseSubject = if ($latestSignalComparisonEntry) { [string](Coalesce $latestSignalComparisonEntry.base.subject '') } else { '' }
+      headSubject = if ($latestSignalComparisonEntry) { [string](Coalesce $latestSignalComparisonEntry.head.subject '') } else { '' }
     }
+    reviewSequence = @(
+      $decisionReviewSequence | ForEach-Object {
+        [ordered]@{
+          index = [int](Coalesce $_.index 0)
+          baseRef = [string](Coalesce $_.baseRef '')
+          headRef = [string](Coalesce $_.headRef '')
+          baseSubject = [string](Coalesce $_.baseSubject '')
+          headSubject = [string](Coalesce $_.headSubject '')
+        }
+      }
+    )
     signalPairs = @($signalComparisonEntries | ForEach-Object { [int](Coalesce $_.index 0) })
     collapsedPairs = @($collapsedComparisonEntries | ForEach-Object { [int](Coalesce $_.index 0) })
     focusBuckets = @($decisionFocusBuckets.ToArray())

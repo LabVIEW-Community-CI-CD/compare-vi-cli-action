@@ -156,6 +156,7 @@
         "reviewPriority",
         "latestPair",
         "latestSignalPair",
+        "reviewSequence",
         "signalPairs",
         "collapsedPairs",
         "focusBuckets",
@@ -187,7 +188,9 @@
           "required": [
             "index",
             "baseRef",
-            "headRef"
+            "headRef",
+            "baseSubject",
+            "headSubject"
           ],
           "properties": {
             "index": {
@@ -199,9 +202,46 @@
             },
             "headRef": {
               "type": "string"
+            },
+            "baseSubject": {
+              "type": "string"
+            },
+            "headSubject": {
+              "type": "string"
             }
           },
           "additionalProperties": false
+        },
+        "reviewSequence": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "index",
+              "baseRef",
+              "headRef",
+              "baseSubject",
+              "headSubject"
+            ],
+            "properties": {
+              "index": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "baseRef": {
+                "type": "string"
+              },
+              "headRef": {
+                "type": "string"
+              },
+              "baseSubject": {
+                "type": "string"
+              },
+              "headSubject": {
+                "type": "string"
+              }
+            }
+          }
         },
         "signalPairs": {
           "type": "array",
