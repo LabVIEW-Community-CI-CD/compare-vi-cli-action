@@ -71,7 +71,7 @@ test('pester run is execution-only and validates the readiness receipt before di
   assert.doesNotMatch(workflow, /Invoke-DevDashboard\.ps1/);
 });
 
-test('pester evidence classifies seam defects explicitly from raw execution outputs', () => {
+test('pester evidence distinguishes readiness-blocked skips from seam defects', () => {
   const workflow = readRepoFile('.github/workflows/pester-evidence.yml');
 
   assert.match(workflow, /name:\s+Pester evidence/);
@@ -85,6 +85,8 @@ test('pester evidence classifies seam defects explicitly from raw execution outp
   assert.match(workflow, /Ensure-SessionIndex\.ps1/);
   assert.match(workflow, /Invoke-DevDashboard\.ps1/);
   assert.match(workflow, /classification = 'seam-defect'/);
+  assert.match(workflow, /\$classification = 'readiness-blocked'/);
+  assert.match(workflow, /\$readinessStatus -ne 'ready' -and \$executionJobResult -in @\('skipped','cancelled'\)/);
   assert.match(workflow, /raw-artifact-download=/);
   assert.match(workflow, /execution-receipt-seam-defect/);
   assert.match(workflow, /Upload evidence artifact/);
