@@ -216,6 +216,10 @@ Describe 'Render-VIHistoryReport.ps1' -Tag 'Unit' {
         $markdown | Should -Match '\| Coverage Class \| `catalog-partial` \|'
         $markdown | Should -Match '\| Mode Sensitivity \| `single-mode-observed` \|'
         $markdown | Should -Match '\| Outcome Labels \| `clean`, `signal-diff` \|'
+        $markdown | Should -Match '## Decision guidance'
+        $markdown | Should -Match 'Review first'
+        $markdown | Should -Match 'Review sequence'
+        $markdown | Should -Match 'pair 2 \(Base commit -> Head commit\)'
         $markdown | Should -Match '\| Mode \| Processed \| Diffs \| Signal \| Collapsed Noise \| Missing \| Categories \| Buckets \| Flags \|'
         $markdown | Should -Match '\| Mode \| Pair \| Lineage \| Base \| Head \| Diff \| Duration \(s\) \| Categories \| Buckets \| Report \| Highlights \|'
         $markdown | Should -Match 'Touch history'
@@ -234,6 +238,9 @@ Describe 'Render-VIHistoryReport.ps1' -Tag 'Unit' {
         $html | Should -Match 'single-mode-observed'
         $html | Should -Match 'Outcome Labels'
         $html | Should -Match '<code>clean</code>, <code>signal-diff</code>'
+        $html | Should -Match 'Review first'
+        $html | Should -Match 'Review sequence'
+        $html | Should -Match 'pair 2 \(Base commit -&gt; Head commit\)'
         $html | Should -Match '<th>Signal</th>'
         $html | Should -Match '<th>Collapsed Noise</th>'
         $html | Should -Match '<th>Lineage</th>'
@@ -264,6 +271,13 @@ Describe 'Render-VIHistoryReport.ps1' -Tag 'Unit' {
         $historySummary.target.sourceBranchRef | Should -Be 'feature/history-source'
         $historySummary.target.branchBudget.maxCommitCount | Should -Be 64
         $historySummary.target.branchBudget.commitCount | Should -Be 3
+        $historySummary.decisionGuidance.latestSignalPair.index | Should -Be 2
+        $historySummary.decisionGuidance.latestSignalPair.baseSubject | Should -Be 'Base commit'
+        $historySummary.decisionGuidance.latestSignalPair.headSubject | Should -Be 'Head commit'
+        @($historySummary.decisionGuidance.reviewSequence).Count | Should -Be 1
+        $historySummary.decisionGuidance.reviewSequence[0].index | Should -Be 2
+        $historySummary.decisionGuidance.reviewSequence[0].baseSubject | Should -Be 'Base commit'
+        $historySummary.decisionGuidance.reviewSequence[0].headSubject | Should -Be 'Head commit'
     }
 
     It 'preserves branch budget numeric fields when the source object is a hashtable' {
