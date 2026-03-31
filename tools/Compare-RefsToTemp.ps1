@@ -28,12 +28,6 @@ $ErrorActionPreference = 'Stop'
 try { git --version | Out-Null } catch { throw 'git is required on PATH to fetch file content at refs.' }
 
 $repoRoot = (Get-Location).Path
-try {
-  $categoryModule = Join-Path $repoRoot 'tools' 'VICategoryBuckets.psm1'
-  if (Test-Path -LiteralPath $categoryModule -PathType Leaf) {
-    Import-Module $categoryModule -Force
-  }
-} catch {}
 
 function Resolve-CompareVIScriptsRoot {
   param([string]$PrimaryRoot)
@@ -54,6 +48,21 @@ function Resolve-CompareVIScriptsRoot {
   }
   return $PrimaryRoot
 }
+
+try {
+  $categoryModuleCandidates = New-Object System.Collections.Generic.List[string]
+  $categoryModuleCandidates.Add((Join-Path $repoRoot 'tools' 'VICategoryBuckets.psm1')) | Out-Null
+  $resolvedScriptsRoot = Resolve-CompareVIScriptsRoot -PrimaryRoot $repoRoot
+  if (-not [string]::IsNullOrWhiteSpace($resolvedScriptsRoot)) {
+    $categoryModuleCandidates.Add((Join-Path $resolvedScriptsRoot 'tools' 'VICategoryBuckets.psm1')) | Out-Null
+  }
+  foreach ($candidate in @($categoryModuleCandidates | Select-Object -Unique)) {
+    if (Test-Path -LiteralPath $candidate -PathType Leaf) {
+      Import-Module $candidate -Force
+      break
+    }
+  }
+} catch {}
 
 function Split-ArgString {
   param([string]$Value)
@@ -164,9 +173,10 @@ function Parse-DiffHeadings {
       $raw = $match.Groups['text'].Value
       if ([string]::IsNullOrWhiteSpace($raw)) { continue }
 
-      $decoded = [System.Net.WebUtility]::HtmlDecode($raw.Trim())
+      $decoded = Normalize-ComparisonReportText -Value $raw
       $decoded = ($decoded -replace '^\s*\d+[\.\)]\s*', '')
       if ([string]::IsNullOrWhiteSpace($decoded)) { continue }
+      if (Test-IsComparisonIdentityLabel -Value $decoded) { continue }
       if (-not $headings.Contains($decoded)) {
         $headings.Add($decoded) | Out-Null
       }
@@ -174,6 +184,25 @@ function Parse-DiffHeadings {
   }
 
   return @($headings.ToArray())
+}
+
+function Normalize-ComparisonReportText {
+  param([string]$Value)
+
+  if ([string]::IsNullOrWhiteSpace($Value)) { return '' }
+
+  $decoded = [System.Net.WebUtility]::HtmlDecode($Value)
+  $withoutTags = [regex]::Replace($decoded, '<[^>]+>', ' ')
+  return ([regex]::Replace($withoutTags, '\s+', ' ')).Trim()
+}
+
+function Test-IsComparisonIdentityLabel {
+  param([string]$Value)
+
+  $normalized = Normalize-ComparisonReportText -Value $Value
+  if ([string]::IsNullOrWhiteSpace($normalized)) { return $false }
+
+  return ($normalized -match '^\s*First\s+VI:\s*.+?\s+Second\s+VI:\s*.+?\s*$')
 }
 
 function Parse-DiffDetails {
@@ -186,7 +215,8 @@ function Parse-DiffDetails {
   foreach ($match in [System.Text.RegularExpressions.Regex]::Matches($Html, $pattern, 'IgnoreCase')) {
     $raw = $match.Groups['text'].Value
     if ([string]::IsNullOrWhiteSpace($raw)) { continue }
-    $decoded = [System.Net.WebUtility]::HtmlDecode($raw.Trim())
+    $decoded = Normalize-ComparisonReportText -Value $raw
+    if (Test-IsComparisonIdentityLabel -Value $decoded) { continue }
     if ($decoded) {
       $details.Add($decoded) | Out-Null
     }
@@ -254,6 +284,61 @@ function Infer-DiffCategoriesFromDetails {
   return @($inferred.ToArray())
 }
 
+function Normalize-ReportCategories {
+  param([System.Collections.IEnumerable]$Categories)
+
+  if (-not $Categories -or -not (Get-Command -Name Get-VICategoryBuckets -ErrorAction SilentlyContinue)) {
+    return @(
+      $Categories |
+        Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) } |
+        Select-Object -Unique
+    )
+  }
+
+  $categoryInfo = Get-VICategoryBuckets -Names @($Categories)
+  if ($null -eq $categoryInfo -or -not $categoryInfo.Details) {
+    return @(
+      $Categories |
+        Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) } |
+        Select-Object -Unique
+    )
+  }
+
+  $details = @($categoryInfo.Details)
+  if ($details.Count -gt 1) {
+    $specificDetails = @($details | Where-Object { [string]$_.slug -ne 'cosmetic' })
+    if ($specificDetails.Count -gt 0) {
+      $details = $specificDetails
+    }
+  }
+
+  return @(
+    $details |
+      ForEach-Object {
+        switch ([string]$_.slug) {
+          'block-diagram' { 'Block Diagram' }
+          'block-diagram-functional' { 'Block Diagram Functional' }
+          'block-diagram-cosmetic' { 'Block Diagram Cosmetic' }
+          'connector-pane' { 'Connector Pane' }
+          'front-panel' { 'Front Panel' }
+          'front-panel-position-size' { 'Front Panel Position/Size' }
+          'control-changes' { 'Front Panel Controls' }
+          'window' { 'Window Properties' }
+          'attributes' { 'VI Attribute' }
+          'vi-attribute' { 'VI Attribute' }
+          'documentation' { 'Documentation' }
+          'execution' { 'Execution Settings' }
+          'icon' { 'Icon' }
+          'unspecified' { 'Unspecified' }
+          'cosmetic' { 'Cosmetic' }
+          default { if ([string]::IsNullOrWhiteSpace([string]$_.label)) { [string]$_.slug } else { [string]$_.label } }
+        }
+      } |
+      Where-Object { -not [string]::IsNullOrWhiteSpace($_) } |
+      Select-Object -Unique
+  )
+}
+
 function Get-ReportCategoryMetadata {
   param([string]$ReportPath)
 
@@ -314,6 +399,12 @@ function Get-ReportCategoryMetadata {
         $categories.Add($name) | Out-Null
       }
     }
+  }
+
+  $normalizedCategories = @(Normalize-ReportCategories -Categories @($categories.ToArray()))
+  $categories = New-Object System.Collections.Generic.List[string]
+  foreach ($name in $normalizedCategories) {
+    $categories.Add([string]$name) | Out-Null
   }
 
   $categoryDetails = @()

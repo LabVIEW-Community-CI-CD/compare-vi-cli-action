@@ -61,6 +61,18 @@ Canonical required-check lists for `develop` and `release/*` must remain in sync
     `release/*`; `priority:policy` resolves it to the current live GitHub
     ruleset)
 
+For `develop`, the required set is intentionally limited to the smallest merge-safety
+surface that still preserves trunk truth:
+
+- `lint`
+- `fixtures`
+- `Policy Guard (Upstream) / policy-guard`
+- `vi-history-scenarios-linux`
+- `commit-integrity`
+
+Other Validate or platform lanes can still run and remain useful evidence, but they
+must not be treated as queue-required unless they prove merge safety for `develop`.
+
 The workflow context `Promotion Contract / promotion-contract` remains an operational evidence check, but it is not a
 branch-protection required status on `develop` or `release/*` because the workflow is intentionally path-scoped for
 pull requests.

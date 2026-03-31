@@ -463,7 +463,8 @@ For each cut:
 - Branch protection requires a linear history: use the **Squash and merge** button (or rebase-and-merge) so no merge
   commits land on `develop`/`main`.
 - Keep PRs focused and include the standing issue reference (`#<number>`) in the commit subject and PR description.
-- Ensure required checks (`validate`, `fixtures`, `session-index`) are green before merging; rerun as needed.
+- Ensure required checks (`lint`, `fixtures`, `Policy Guard (Upstream) / policy-guard`,
+  `vi-history-scenarios-linux`, `commit-integrity`) are green before merging; rerun as needed.
 - `Validate` now computes a `validate-scope-plan` artifact before the heavy lanes fan out.
   Standard `pull_request` and `merge_group` runs classify changed paths with an allow-list into:
   `docs-metadata-only`, `tests-only`, `tools-policy-only`, `ci-control-plane`, `mixed-lightweight`, `compare-engine-history`,
@@ -477,14 +478,12 @@ For each cut:
   `comparevi-history-bundle-certification` follows the same routing.
   `vi-history-scenarios-*` runs for `compare-engine-history`, `docker-vi-history`, `mixed-runtime`, `unclassified`, and
   explicit manual dispatches; the final VI-history plan still honors `history_scenario_set`.
-- Hosted Windows mirror proof now lives in `Validate` as the non-required `vi-history-scenarios-windows` lane.
-  That lane runs on GitHub-hosted `windows-2022`, hydrates
-  `nationalinstruments/labview:2026q1-windows` with no repository runner dependency, and is expected to
-  take materially longer to pull than the Linux lane.
-- If the hosted Windows runner cannot expose a Docker Windows daemon, the lane records
-  `windows_host_preflight_status = unavailable` and skips the heavy compare instead of poisoning
-  the current queue item with a non-required proof failure.
-  Agents can dispatch the hosted lane while continuing with the manual Linux or Windows Docker Desktop/WSL2 lanes locally.
+- Windows mirror proof now lives in `Validate` as the non-required
+  `vi-history-scenarios-windows` lane on the self-hosted compare ingress host.
+  That lane validates the 64-bit Windows Docker image locally instead of burning
+  GitHub-hosted Windows image-pull time.
+- `vi-history-scenarios-windows-lv32` runs in parallel and acts as the native 32-bit
+  reference for that Windows Docker proof, so 32-bit and 64-bit feedback arrive together.
 - `node tools/npm/run-script.mjs priority:lane:concurrency:plan` now reads the host-plane report, host RAM budget,
   and optional Docker runtime snapshot to recommend a safe concurrent hosted/manual bundle before those lanes are
   dispatched.
@@ -495,6 +494,9 @@ For each cut:
   the local CLI/orchestrator path, and `ready_for_review` is reserved for final hosted validation on the current head.
 - `agent-review-policy` is the hosted concentrator for local review evidence and promotion validation. It should not be
   used to acquire a second GitHub-side Copilot review after `ready_for_review`.
+- `session-index`, `issue-snapshot`, `semver`, `agent-review-policy`, and `hook-parity`
+  remain valuable supporting lanes, but they are not part of the minimal merge-queue
+  required-check surface for `develop`.
 - Run `node tools/npm/run-script.mjs priority:policy` (or `node tools/npm/run-script.mjs priority:policy:sync`) if you
   need to audit merge settings locally; the command also runs during `priority:handoff-tests` and fails when
   repo/branch policy drifts.

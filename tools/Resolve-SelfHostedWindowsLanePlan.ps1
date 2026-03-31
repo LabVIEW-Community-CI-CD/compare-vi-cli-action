@@ -1,12 +1,12 @@
 #Requires -Version 7.0
 <#
 .SYNOPSIS
-  Resolves the availability plan for a self-hosted Windows LV32 lane.
+  Resolves the availability plan for a self-hosted Windows specialized lane.
 
 .DESCRIPTION
   Emits a deterministic planning artifact for a repository runner that must
-  advertise the required ingress plus LV32 capability labels. The helper uses
-  the repository runner inventory API or an injected inventory fixture.
+  advertise the required ingress plus optional capability labels. The helper
+  uses the repository runner inventory API or an injected inventory fixture.
 #>
 [CmdletBinding()]
 param(
@@ -19,6 +19,15 @@ param(
     'capability-ingress',
     'labview-2026',
     'lv32'
+  ),
+  [string]$ExecutionModel = 'self-hosted-windows-lv32',
+  [string]$RunnerImage = 'self-hosted-windows-lv32',
+  [string]$ExpectedContext = 'headless-labview-32',
+  [string]$ExpectedOs = 'windows',
+  [string[]]$RequiredHealthReceipts = @('labview-2026-host-plane-report'),
+  [string[]]$Notes = @(
+    'Availability means an online, idle repository runner advertises every required label.',
+    'The lane must skip rather than queue indefinitely when no matching runner is available.'
   ),
   [string]$Token = $env:GITHUB_TOKEN,
   [string]$OutputJsonPath = 'tests/results/_agent/vi-history-dispatch/validate-vi-history-windows-lv32-plan.json',
@@ -183,15 +192,12 @@ $summary = [ordered]@{
   skipReason = ''
   failureClass = 'none'
   failureMessage = ''
-  executionModel = 'self-hosted-windows-lv32'
-  runnerImage = 'self-hosted-windows-lv32'
-  expectedContext = 'headless-labview-32'
-  expectedOs = 'windows'
-  requiredHealthReceipts = @('labview-2026-host-plane-report')
-  notes = @(
-    'Availability means an online, idle repository runner advertises every required label.',
-    'The lane must skip rather than queue indefinitely when no matching runner is available.'
-  )
+  executionModel = [string]$ExecutionModel
+  runnerImage = [string]$RunnerImage
+  expectedContext = [string]$ExpectedContext
+  expectedOs = [string]$ExpectedOs
+  requiredHealthReceipts = @($RequiredHealthReceipts)
+  notes = @($Notes)
 }
 
 try {
@@ -277,7 +283,7 @@ try {
   } else {
     $summary.available = $false
     $summary.status = 'missing-label'
-    $summary.skipReason = 'no online self-hosted Windows LV32 runner matched the required capability labels'
+    $summary.skipReason = 'no online self-hosted Windows runner matched the required capability labels'
   }
 } catch {
   $summary.available = $false
@@ -315,7 +321,7 @@ if (-not [string]::IsNullOrWhiteSpace($StepSummaryPath)) {
     'none'
   }
   $summaryLines = @(
-    '### Self-Hosted Windows LV32 Lane Plan',
+    '### Self-Hosted Windows Specialized Lane Plan',
     '',
     ('- status: `{0}`' -f [string]$summary.status),
     ('- available: `{0}`' -f ([string]([bool]$summary.available)).ToLowerInvariant()),
