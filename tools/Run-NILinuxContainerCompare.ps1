@@ -155,7 +155,7 @@ function Resolve-DockerCommandSource {
   $candidates = if ($IsWindows) {
     @('docker.exe', 'docker.cmd', 'docker.ps1', 'docker.bat', 'docker')
   } else {
-    @('docker', 'docker.sh')
+    @('docker', 'docker.sh', 'docker.exe', 'docker.ps1', 'docker.cmd')
   }
   foreach ($entry in $pathEntries) {
     if ([string]::IsNullOrWhiteSpace($entry)) { continue }
@@ -171,6 +171,24 @@ function Resolve-DockerCommandSource {
     throw 'Unable to resolve docker command source path.'
   }
   return [string]$command.Source
+}
+
+function Invoke-DirectDockerCommand {
+  param([Parameter(Mandatory)][string[]]$DockerArgs)
+
+  $dockerCommandSource = Resolve-DockerCommandSource
+  $dockerCommandExtension = [System.IO.Path]::GetExtension($dockerCommandSource)
+  $stdout = @()
+  if ([System.StringComparer]::OrdinalIgnoreCase.Equals($dockerCommandExtension, '.ps1')) {
+    $stdout = @(& pwsh -NoLogo -NoProfile -File $dockerCommandSource @DockerArgs)
+  } else {
+    $stdout = @(& $dockerCommandSource @DockerArgs)
+  }
+
+  return [pscustomobject]@{
+    ExitCode = [int]$LASTEXITCODE
+    StdOut = @($stdout)
+  }
 }
 
 function Get-EffectiveCompareFlags {
@@ -377,8 +395,8 @@ function Resolve-OutputReportPath {
 
 function Test-DockerImageExists {
   param([Parameter(Mandatory)][string]$Tag)
-  & docker image inspect $Tag *> $null
-  return ($LASTEXITCODE -eq 0)
+  $inspectResult = Invoke-DirectDockerCommand -DockerArgs @('image', 'inspect', $Tag) 2>$null
+  return ($inspectResult.ExitCode -eq 0)
 }
 
 function Get-OrAddMountPath {
@@ -403,6 +421,44 @@ function Convert-HostFileToContainerPath {
   $hostDir = Split-Path -Parent $HostFilePath
   $containerDir = Get-OrAddMountPath -Map $MountMap -Index $MountIndex -HostDirectory $hostDir
   return (Join-Path $containerDir (Split-Path -Leaf $HostFilePath)).Replace('\', '/')
+}
+
+function Resolve-DockerBindMountHostPath {
+  param(
+    [Parameter(Mandatory)][string]$HostPath,
+    [AllowEmptyString()][string]$DockerCommandSource
+  )
+
+  $resolvedHostPath = [System.IO.Path]::GetFullPath($HostPath)
+  if ([string]::IsNullOrWhiteSpace($DockerCommandSource)) {
+    return $resolvedHostPath
+  }
+
+  $dockerCommandExtension = [System.IO.Path]::GetExtension($DockerCommandSource)
+  if (-not [System.StringComparer]::OrdinalIgnoreCase.Equals($dockerCommandExtension, '.exe')) {
+    return $resolvedHostPath
+  }
+
+  if (-not $resolvedHostPath.StartsWith('/')) {
+    return $resolvedHostPath
+  }
+
+  $wslCommand = Get-Command -Name 'wsl.exe' -ErrorAction SilentlyContinue | Select-Object -First 1
+  if ($null -eq $wslCommand -or [string]::IsNullOrWhiteSpace([string]$wslCommand.Source)) {
+    return $resolvedHostPath
+  }
+
+  $translatedOutput = & $wslCommand.Source wslpath -w $resolvedHostPath 2>$null
+  if ($LASTEXITCODE -ne 0) {
+    return $resolvedHostPath
+  }
+
+  $translatedPath = [string](@($translatedOutput) | Select-Object -Last 1)
+  if ([string]::IsNullOrWhiteSpace($translatedPath)) {
+    return $resolvedHostPath
+  }
+
+  return $translatedPath.Trim()
 }
 
 function Test-HostPathWithinRoot {
@@ -460,10 +516,11 @@ function Convert-HostPathToExistingContainerPath {
 function Get-DockerContainerRecord {
   param([Parameter(Mandatory)][string]$ContainerName)
 
-  $inspectOutput = & docker inspect $ContainerName 2>$null
-  if ($LASTEXITCODE -ne 0) {
+  $inspectResult = Invoke-DirectDockerCommand -DockerArgs @('inspect', $ContainerName) 2>$null
+  if ($inspectResult.ExitCode -ne 0) {
     return $null
   }
+  $inspectOutput = @($inspectResult.StdOut)
 
   try {
     $records = $inspectOutput | ConvertFrom-Json -Depth 12 -ErrorAction Stop
@@ -1739,8 +1796,8 @@ function Invoke-DockerExecWithTimeout {
     while (-not $process.HasExited) {
       if ((Get-Date) -ge $deadline) {
         try { Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue } catch {}
-        try { & docker exec $ContainerName sh -lc 'pkill -f LabVIEWCLI || true' *> $null } catch {}
-        try { & docker stop --time 1 $ContainerName *> $null } catch {}
+        try { Invoke-DirectDockerCommand -DockerArgs @('exec', $ContainerName, 'sh', '-lc', 'pkill -f LabVIEWCLI || true') *> $null } catch {}
+        try { Invoke-DirectDockerCommand -DockerArgs @('stop', '--time', '1', $ContainerName) *> $null } catch {}
         $capturedOutput = Complete-DockerProcessInvocation -Invocation $invocation
         return [pscustomobject]@{
           TimedOut = $true
@@ -2467,6 +2524,7 @@ try {
     $containerBaseVi = ''
     $containerHeadVi = ''
     $containerReportPath = ''
+    $dockerCommandSource = Resolve-DockerCommandSource
     if ($useExistingContainer) {
       $reuseRepoHostPathResolved = if ([string]::IsNullOrWhiteSpace($ReuseRepoHostPath)) {
         if ($viHistoryEnabled -and -not [string]::IsNullOrWhiteSpace([string]$resolvedRuntimeBootstrap.viHistory.repoHostPath)) {
@@ -2661,11 +2719,13 @@ try {
     }
     if (-not $useExistingContainer) {
       foreach ($entry in ($mounts.GetEnumerator() | Sort-Object Name)) {
-        $volumeSpec = '{0}:{1}' -f $entry.Name, $entry.Value
+        $mountHostPath = Resolve-DockerBindMountHostPath -HostPath ([string]$entry.Name) -DockerCommandSource $dockerCommandSource
+        $volumeSpec = '{0}:{1}' -f $mountHostPath, $entry.Value
         $dockerArgs += @('-v', $volumeSpec)
       }
       foreach ($runtimeMount in $resolvedRuntimeInjectionMounts) {
-        $dockerArgs += @('-v', ('{0}:{1}' -f $runtimeMount.hostPath, $runtimeMount.containerPath))
+        $runtimeMountHostPath = Resolve-DockerBindMountHostPath -HostPath ([string]$runtimeMount.hostPath) -DockerCommandSource $dockerCommandSource
+        $dockerArgs += @('-v', ('{0}:{1}' -f $runtimeMountHostPath, $runtimeMount.containerPath))
       }
     }
     if (-not [string]::IsNullOrWhiteSpace($containerBaseVi)) {

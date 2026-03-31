@@ -113,6 +113,38 @@ function Split-OutputLines {
   return @($Text -split "(`r`n|`n|`r)" | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
 }
 
+function Resolve-DockerCommandSource {
+  $override = $env:DOCKER_COMMAND_OVERRIDE
+  if (-not [string]::IsNullOrWhiteSpace($override) -and (Test-Path -LiteralPath $override -PathType Leaf)) {
+    return [System.IO.Path]::GetFullPath($override)
+  }
+
+  $pathSeparator = [System.IO.Path]::PathSeparator
+  $pathEntries = @($env:PATH -split [regex]::Escape([string]$pathSeparator))
+  $candidates = if ($IsWindows) {
+    @('docker.exe', 'docker.cmd', 'docker.ps1', 'docker.bat', 'docker')
+  } else {
+    @('docker', 'docker.sh', 'docker.exe', 'docker.ps1', 'docker.cmd')
+  }
+
+  foreach ($entry in $pathEntries) {
+    if ([string]::IsNullOrWhiteSpace($entry)) { continue }
+    foreach ($name in $candidates) {
+      $candidatePath = Join-Path $entry $name
+      if (Test-Path -LiteralPath $candidatePath -PathType Leaf) {
+        return [System.IO.Path]::GetFullPath($candidatePath)
+      }
+    }
+  }
+
+  $command = Get-Command -Name 'docker' -ErrorAction SilentlyContinue | Select-Object -First 1
+  if ($null -eq $command -or [string]::IsNullOrWhiteSpace([string]$command.Source)) {
+    return $null
+  }
+
+  return [System.IO.Path]::GetFullPath([string]$command.Source)
+}
+
 function Invoke-ProcessWithTimeout {
   [CmdletBinding()]
   param(
@@ -123,16 +155,31 @@ function Invoke-ProcessWithTimeout {
 
   $safeTimeout = [math]::Max(5, [int]$TimeoutSeconds)
   $resolvedFilePath = $FilePath
+  $effectiveArguments = @($Arguments)
+  if ([string]::Equals($FilePath, 'docker', [System.StringComparison]::OrdinalIgnoreCase)) {
+    $dockerCommandSource = Resolve-DockerCommandSource
+    if (-not [string]::IsNullOrWhiteSpace($dockerCommandSource)) {
+      $dockerCommandExtension = [System.IO.Path]::GetExtension($dockerCommandSource)
+      if ([System.StringComparer]::OrdinalIgnoreCase.Equals($dockerCommandExtension, '.ps1')) {
+        $resolvedFilePath = (Get-Command -Name 'pwsh' -ErrorAction Stop | Select-Object -First 1).Source
+        $effectiveArguments = @('-NoLogo', '-NoProfile', '-File', $dockerCommandSource) + @($Arguments)
+      } else {
+        $resolvedFilePath = $dockerCommandSource
+      }
+    }
+  }
   try {
-    $resolvedCommand = Get-Command -Name $FilePath -CommandType Application -ErrorAction Stop | Select-Object -First 1
-    if ($resolvedCommand -and $resolvedCommand.Source) {
-      $resolvedFilePath = [string]$resolvedCommand.Source
-    } elseif ($resolvedCommand -and $resolvedCommand.Path) {
-      $resolvedFilePath = [string]$resolvedCommand.Path
+    if ([string]::Equals($resolvedFilePath, $FilePath, [System.StringComparison]::Ordinal)) {
+      $resolvedCommand = Get-Command -Name $FilePath -CommandType Application -ErrorAction Stop | Select-Object -First 1
+      if ($resolvedCommand -and $resolvedCommand.Source) {
+        $resolvedFilePath = [string]$resolvedCommand.Source
+      } elseif ($resolvedCommand -and $resolvedCommand.Path) {
+        $resolvedFilePath = [string]$resolvedCommand.Path
+      }
     }
   } catch {}
 
-  $argText = if ($Arguments -and $Arguments.Count -gt 0) { [string]::Join(' ', $Arguments) } else { '' }
+  $argText = if ($effectiveArguments -and $effectiveArguments.Count -gt 0) { [string]::Join(' ', $effectiveArguments) } else { '' }
   $commandText = if ([string]::IsNullOrWhiteSpace($argText)) { $resolvedFilePath } else { "$resolvedFilePath $argText" }
 
   $result = [ordered]@{
@@ -150,7 +197,7 @@ function Invoke-ProcessWithTimeout {
   $psi.RedirectStandardOutput = $true
   $psi.RedirectStandardError = $true
   $psi.CreateNoWindow = $true
-  foreach ($arg in @($Arguments)) {
+  foreach ($arg in @($effectiveArguments)) {
     [void]$psi.ArgumentList.Add([string]$arg)
   }
 
