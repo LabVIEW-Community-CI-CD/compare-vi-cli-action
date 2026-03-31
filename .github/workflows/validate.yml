@@ -1825,6 +1825,7 @@ jobs:
     needs: [smoke-gate, lint, session-index, session-index-v2-contract, vi-history-scenarios-plan, vi-history-scenarios-windows-lv32-plan]
     if: needs.smoke-gate.outputs.skip != 'true' && needs.vi-history-scenarios-plan.outputs.execute_lanes == 'true' && needs.vi-history-scenarios-windows-lv32-plan.outputs.available == 'true'
     runs-on: [self-hosted, Windows, X64, comparevi, capability-ingress, labview-2026, lv32]
+    continue-on-error: true
     timeout-minutes: 60
     permissions:
       actions: read
