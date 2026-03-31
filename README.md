@@ -149,7 +149,11 @@ renders, `history-report-html`). Downstream workflows and reusable snippets can
 consume those keys to surface the Markdown/HTML report or to dispatch follow-up
 automation without spelunking the artifacts. When the renderer is unavailable,
 `Compare-VIHistory.ps1` writes a lightweight fallback report so the Markdown
-output key always resolves to a readable summary.
+output key always resolves to a readable summary. The stable
+`history-summary-json` facade and rendered history report now also surface the
+decision statement, the newest meaningful pair, and pair chronology (refs,
+subjects, and commit dates) so reviewers can answer what changed, when it
+changed, and whether it matters without opening raw manifests first.
 
 Provide the optional `notify_issue` input when dispatching the workflow to post
 the same summary table to a GitHub issue for stakeholders.

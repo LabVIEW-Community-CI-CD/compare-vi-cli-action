@@ -153,6 +153,7 @@
     "decisionGuidance": {
       "type": "object",
       "required": [
+        "decisionStatement",
         "reviewPriority",
         "latestPair",
         "latestSignalPair",
@@ -163,6 +164,9 @@
         "contextBuckets"
       ],
       "properties": {
+        "decisionStatement": {
+          "type": "string"
+        },
         "reviewPriority": {
           "type": "string"
         },
@@ -170,7 +174,13 @@
           "type": "object",
           "required": [
             "index",
-            "status"
+            "status",
+            "baseRef",
+            "headRef",
+            "baseSubject",
+            "headSubject",
+            "baseDate",
+            "headDate"
           ],
           "properties": {
             "index": {
@@ -178,6 +188,24 @@
               "minimum": 0
             },
             "status": {
+              "type": "string"
+            },
+            "baseRef": {
+              "type": "string"
+            },
+            "headRef": {
+              "type": "string"
+            },
+            "baseSubject": {
+              "type": "string"
+            },
+            "headSubject": {
+              "type": "string"
+            },
+            "baseDate": {
+              "type": "string"
+            },
+            "headDate": {
               "type": "string"
             }
           },
@@ -190,7 +218,9 @@
             "baseRef",
             "headRef",
             "baseSubject",
-            "headSubject"
+            "headSubject",
+            "baseDate",
+            "headDate"
           ],
           "properties": {
             "index": {
@@ -208,6 +238,12 @@
             },
             "headSubject": {
               "type": "string"
+            },
+            "baseDate": {
+              "type": "string"
+            },
+            "headDate": {
+              "type": "string"
             }
           },
           "additionalProperties": false
@@ -221,7 +257,9 @@
               "baseRef",
               "headRef",
               "baseSubject",
-              "headSubject"
+              "headSubject",
+              "baseDate",
+              "headDate"
             ],
             "properties": {
               "index": {
@@ -238,6 +276,12 @@
                 "type": "string"
               },
               "headSubject": {
+                "type": "string"
+              },
+              "baseDate": {
+                "type": "string"
+              },
+              "headDate": {
                 "type": "string"
               }
             }

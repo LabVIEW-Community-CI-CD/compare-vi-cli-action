@@ -220,6 +220,9 @@ gh workflow run vi-compare-refs.yml `
   `Invoke-CompareVIHistoryFacade`. When HTML rendering is skipped or fails, the Markdown path still points at the
   fallback report so consumers always have a summary to ingest. A compressed `category-counts-json` blob is also
   published so downstream automation can react to runs dominated by cosmetic noise without re-reading the manifests.
+  The facade's `decisionGuidance` block now carries a human-readable `decisionStatement`, the newest surfaced pair,
+  and the review sequence with refs, subjects, and commit dates so downstream consumers can answer what changed, when,
+  and whether it matters from one stabilized payload.
 - History summary JSON (`tests/results/pr-vi-history/vi-history-summary.json`) now adds:
   - `targets[].reportImages` for per-target extraction metadata.
   - `pairTimeline[]` with additive per-pair contract fields:
