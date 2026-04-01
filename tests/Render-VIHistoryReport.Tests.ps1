@@ -380,4 +380,30 @@ Describe 'Render-VIHistoryReport.ps1' -Tag 'Unit' {
         $facade.status | Should -Be 'ok'
         $facade.reason | Should -Be 'within-limit'
     }
+
+    It 'renders the checked-in offline corpus suite without an explicit history context' {
+        $manifestPath = Join-Path $script:repoRoot 'fixtures' 'cross-repo' 'labview-icon-editor' 'settings-init' 'manifest.json'
+        $resultsRoot = Join-Path $TestDrive 'history-results-offline-corpus'
+        $markdownPath = Join-Path $resultsRoot 'history-report.md'
+        $htmlPath = Join-Path $resultsRoot 'history-report.html'
+        $stepSummaryPath = Join-Path $resultsRoot 'history-summary.md'
+
+        & $script:scriptPath `
+            -ManifestPath $manifestPath `
+            -OutputDir $resultsRoot `
+            -MarkdownPath $markdownPath `
+            -EmitHtml `
+            -HtmlPath $htmlPath `
+            -StepSummaryPath $stepSummaryPath | Out-Null
+
+        Test-Path -LiteralPath $markdownPath | Should -BeTrue
+        Test-Path -LiteralPath $htmlPath | Should -BeTrue
+        Test-Path -LiteralPath $stepSummaryPath | Should -BeTrue
+
+        $markdown = Get-Content -LiteralPath $markdownPath -Raw
+        $markdown | Should -Match '## Observed interpretation'
+        $markdown | Should -Match '\| Coverage Class \| `[^`]+` \|'
+        $markdown | Should -Match '\| Mode Sensitivity \| `single-mode-observed` \|'
+        $markdown | Should -Match '\| Outcome Labels \| `clean`, `signal-diff` \|'
+    }
 }
