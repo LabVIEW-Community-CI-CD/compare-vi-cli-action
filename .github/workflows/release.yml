@@ -787,10 +787,13 @@ jobs:
         id: downstream_proving_policy
         if: always()
         shell: bash
+        env:
+          RELEASE_SOURCE_SHA: ${{ steps.release_source.outputs.source_sha }}
+          CURRENT_DEVELOP_SHA: ${{ steps.current_develop.outputs.develop_sha }}
         run: |
           set -euo pipefail
-          source_sha="${{ steps.release_source.outputs.source_sha }}"
-          develop_sha="${{ steps.current_develop.outputs.develop_sha }}"
+          source_sha="${RELEASE_SOURCE_SHA}"
+          develop_sha="${CURRENT_DEVELOP_SHA}"
           mode="advisory-replay"
           reason="release-publication-mode-not-publish"
 
