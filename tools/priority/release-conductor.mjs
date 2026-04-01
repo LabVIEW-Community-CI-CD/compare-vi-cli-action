@@ -1048,6 +1048,40 @@ export async function runReleaseConductor(options = {}) {
           if (pushResult.status === 0) {
             tagPushed = true;
             proposalOnly = false;
+            publicationReplay.requested = true;
+            publicationReplay.modeInputValue = RELEASE_PUBLICATION_MODE_PUBLISH;
+            const dispatchResult = runCommandFn(
+              'gh',
+              [
+                'workflow',
+                'run',
+                RELEASE_PUBLICATION_WORKFLOW,
+                '--ref',
+                RELEASE_PUBLICATION_WORKFLOW_REF,
+                '-f',
+                `${RELEASE_PUBLICATION_TAG_INPUT}=${targetTag}`,
+                '-f',
+                `${RELEASE_PUBLICATION_MODE_INPUT}=${RELEASE_PUBLICATION_MODE_PUBLISH}`
+              ],
+              {
+                cwd: repoRoot,
+                allowFailure: true
+              }
+            );
+            if (dispatchResult.status === 0) {
+              publicationReplay.dispatched = true;
+              publicationReplay.status = 'dispatched';
+            } else {
+              publicationReplay.status = 'dispatch-failed';
+              publicationReplay.error =
+                asOptional(dispatchResult.stderr) ??
+                asOptional(dispatchResult.stdout) ??
+                'release workflow dispatch failed';
+              blockers.push({
+                code: 'release-replay-dispatch-failed',
+                message: `Release publication replay dispatch failed for ${targetTag}: ${publicationReplay.error}`
+              });
+            }
           } else {
             tagPushError = asOptional(pushResult.stderr) ?? asOptional(pushResult.stdout) ?? 'tag push failed';
             blockers.push({

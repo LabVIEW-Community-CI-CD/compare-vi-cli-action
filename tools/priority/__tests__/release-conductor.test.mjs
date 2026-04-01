@@ -470,8 +470,32 @@ test('runReleaseConductor creates and publishes a signed tag when apply is enabl
   assert.equal(report.release.tagPushed, true);
   assert.equal(report.release.tagPushRemote.remoteName, 'upstream');
   assert.equal(report.release.signingMaterial.backend, 'ssh');
+  assert.equal(report.release.publicationReplay.requested, true);
+  assert.equal(report.release.publicationReplay.status, 'dispatched');
+  assert.equal(report.release.publicationReplay.dispatched, true);
+  assert.equal(report.release.publicationReplay.ref, 'develop');
+  assert.equal(report.release.publicationReplay.tagInputName, 'release_tag');
+  assert.equal(report.release.publicationReplay.tagInputValue, 'v0.8.0');
+  assert.equal(report.release.publicationReplay.modeInputName, 'publication_mode');
+  assert.equal(report.release.publicationReplay.modeInputValue, 'publish');
   assert.ok(commandCalls.some((entry) => entry.command === 'git' && entry.args[0] === 'tag'));
   assert.ok(commandCalls.some((entry) => entry.command === 'git' && entry.args[0] === 'push'));
+  assert.equal(
+    commandCalls.some(
+      (entry) =>
+        entry.command === 'gh' &&
+        entry.args[0] === 'workflow' &&
+        entry.args[1] === 'run' &&
+        entry.args[2] === 'release.yml' &&
+        entry.args[3] === '--ref' &&
+        entry.args[4] === 'develop' &&
+        entry.args[5] === '-f' &&
+        entry.args[6] === 'release_tag=v0.8.0' &&
+        entry.args[7] === '-f' &&
+        entry.args[8] === 'publication_mode=publish'
+    ),
+    true
+  );
 });
 
 test('runReleaseConductor allows apply when queue pause is only a generic success-rate throttle', async () => {
