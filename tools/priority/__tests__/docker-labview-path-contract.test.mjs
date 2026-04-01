@@ -142,11 +142,11 @@ test('windows hosted parity no longer includes hosted LVCompare babysitting debt
   const workflow = readRepoFile('.github/workflows/windows-hosted-parity.yml');
 
   assert.match(workflow, /name:\s*Windows Hosted NI Proof \(Manual\)/);
-  assert.match(workflow, /runs-on:\s*windows-2022/);
+  assert.match(workflow, /uses:\s+\.\s*\/\.github\/workflows\/windows-ni-proof-reusable\.yml/);
   assert.doesNotMatch(workflow, /Verify LVCompare and idle LabVIEW state \(notice-only on hosted\)/);
   assert.doesNotMatch(workflow, /LVCompare\.exe not found at canonical path/);
-  assert.match(workflow, /Prepare NI Windows image and hosted runtime/);
-  assert.match(workflow, /Run-NIWindowsContainerCompare\.ps1/);
+  assert.match(workflow, /results_root:\s*tests\/results\/windows-hosted-parity/);
+  assert.match(workflow, /artifact_name:\s*windows-hosted-ni-proof/);
 });
 
 test('docker desktop fast-loop only accepts lane-specific LabVIEW path contracts', () => {

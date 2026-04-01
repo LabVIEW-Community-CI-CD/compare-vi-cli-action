@@ -117,11 +117,59 @@ test('gate evaluators classify pass/fail deterministically', () => {
         triggerSignals: {
           releaseBranchPullRequest: true
         }
-      }
+      },
+      candidates: [
+        {
+          headRefName: 'release/v0.8.1',
+          baseRefName: 'main',
+          eligible: true,
+          isInMergeQueue: false
+        }
+      ]
     }
   });
   assert.equal(activeReleaseQueue.status, 'fail');
   assert.ok(activeReleaseQueue.reasons.includes('release-queue-activity-active'));
+
+  const selfReleaseOnlyQueue = evaluateQueueHealthGate(
+    {
+      exists: true,
+      error: null,
+      payload: {
+        paused: false,
+        controls: {
+          pausedByVariable: false,
+          queueAutopilotPaused: false
+        },
+        throughputController: { mode: 'guarded' },
+        burst: {
+          active: true,
+          triggerSignals: {
+            releaseBranchPullRequest: true
+          }
+        },
+        candidates: [
+          {
+            headRefName: 'release/v0.8.0',
+            baseRefName: 'main',
+            eligible: false,
+            isInMergeQueue: false
+          },
+          {
+            headRefName: 'release/v0.7.9',
+            baseRefName: 'main',
+            eligible: false,
+            isInMergeQueue: false
+          }
+        ]
+      }
+    },
+    {
+      currentReleaseBranch: 'release/v0.8.0'
+    }
+  );
+  assert.equal(selfReleaseOnlyQueue.status, 'pass');
+  assert.deepEqual(selfReleaseOnlyQueue.reasons, []);
 
   const policyPass = evaluatePolicySnapshotGate({
     exists: true,
@@ -632,6 +680,14 @@ test('runReleaseConductor blocks apply when queue pause reflects active release 
               releaseBranchPullRequest: true
             }
           },
+          candidates: [
+            {
+              headRefName: 'release/v0.7.9',
+              baseRefName: 'main',
+              eligible: true,
+              isInMergeQueue: false
+            }
+          ],
           retryHistory: {}
         }
       };
@@ -678,6 +734,125 @@ test('runReleaseConductor blocks apply when queue pause reflects active release 
   assert.equal(report.gates.queueHealth.status, 'fail');
   assert.ok(report.gates.queueHealth.reasons.includes('release-queue-activity-active'));
   assert.ok(report.decision.blockers.some((entry) => entry.code === 'queue-health-failed'));
+});
+
+test('runReleaseConductor allows apply when only the current release branch and stale blocked release PRs are present', async () => {
+  const readJsonOptionalFn = async (filePath) => {
+    const normalized = String(filePath);
+    if (normalized.includes('queue-supervisor-report.json')) {
+      return {
+        exists: true,
+        error: null,
+        path: filePath,
+        payload: {
+          paused: false,
+          controls: {
+            pausedByVariable: false,
+            queueAutopilotPaused: false
+          },
+          throughputController: { mode: 'guarded' },
+          burst: {
+            active: true,
+            triggerSignals: {
+              releaseBranchPullRequest: true
+            }
+          },
+          candidates: [
+            {
+              headRefName: 'release/v0.8.0',
+              baseRefName: 'main',
+              eligible: false,
+              isInMergeQueue: false,
+              checks: { ok: false }
+            },
+            {
+              headRefName: 'release/v0.7.9',
+              baseRefName: 'main',
+              eligible: false,
+              isInMergeQueue: false,
+              checks: { ok: false }
+            }
+          ],
+          retryHistory: {}
+        }
+      };
+    }
+    return {
+      exists: true,
+      error: null,
+      path: filePath,
+      payload: {
+        schema: 'priority/policy-live-state@v1',
+        generatedAt: '2026-03-06T10:00:00Z',
+        state: {}
+      }
+    };
+  };
+
+  const runGhJsonFn = (args) => {
+    if (args[0] === 'api') {
+      return makeWorkflowRunsResponse(String(args[1]));
+    }
+    throw new Error(`unexpected gh args: ${args.join(' ')}`);
+  };
+
+  const commandCalls = [];
+  const runCommandFn = (command, args) => {
+    commandCalls.push({ command, args });
+    if (command === 'git' && args[0] === 'config') {
+      if (args[2] === 'user.signingkey') {
+        return { status: 0, stdout: '/tmp/release-signing.pub', stderr: '' };
+      }
+      if (args[2] === 'gpg.format') {
+        return { status: 0, stdout: 'ssh', stderr: '' };
+      }
+      if (args[2] === 'remote.upstream.url') {
+        return { status: 0, stdout: 'https://github.com/owner/repo.git', stderr: '' };
+      }
+      return { status: 1, stdout: '', stderr: 'missing config' };
+    }
+    if (command === 'git' && args[0] === 'tag') {
+      return { status: 0, stdout: '', stderr: '' };
+    }
+    if (command === 'git' && args[0] === 'push') {
+      return { status: 0, stdout: '', stderr: '' };
+    }
+    return { status: 0, stdout: '', stderr: '' };
+  };
+
+  const { report, exitCode } = await runReleaseConductor({
+    repoRoot: process.cwd(),
+    now: new Date('2026-03-06T12:00:00.000Z'),
+    args: {
+      apply: true,
+      dryRun: false,
+      repairExistingTag: false,
+      reportPath: 'tests/results/_agent/release/release-conductor-report.json',
+      queueReportPath: 'tests/results/_agent/queue/queue-supervisor-report.json',
+      policySnapshotPath: 'tests/results/_agent/policy/policy-state-snapshot.json',
+      repo: 'owner/repo',
+      stream: 'comparevi-cli',
+      channel: 'stable',
+      version: '0.8.0',
+      quarantineStaleHours: 24,
+      help: false
+    },
+    environment: {
+      GITHUB_REPOSITORY: 'owner/repo',
+      RELEASE_CONDUCTOR_ENABLED: '1'
+    },
+    runGhJsonFn,
+    runCommandFn,
+    readJsonOptionalFn,
+    writeReportFn: async (reportPath) => reportPath
+  });
+
+  assert.equal(exitCode, 0);
+  assert.equal(report.gates.queueHealth.status, 'pass');
+  assert.deepEqual(report.gates.queueHealth.reasons, []);
+  assert.equal(report.release.proposalOnly, false);
+  assert.ok(commandCalls.some((entry) => entry.command === 'git' && entry.args[0] === 'tag'));
+  assert.ok(commandCalls.some((entry) => entry.command === 'git' && entry.args[0] === 'push'));
 });
 
 test('runReleaseConductor blocks apply when authoritative tag already exists and repair mode is not requested', async () => {

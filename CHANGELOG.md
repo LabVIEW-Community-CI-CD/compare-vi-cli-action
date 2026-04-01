@@ -7,6 +7,42 @@ The format is based on Keep a Changelog, and this project adheres to Semantic Ve
 
 ## [Unreleased]
 
+## [v0.6.11] - 2026-04-01
+
+### Fixed
+
+- Repaired VI-history native path handling on the Windows NI proof surface, so
+  the released backend now preserves the intended repository-relative VI target
+  across ref extraction, history comparison, and report rendering instead of
+  collapsing to a host-native path that the proof lane cannot certify.
+
+### Changed
+
+- Built the `v0.6.11` release line on top of `v0.6.10`, preserving the stable
+  Windows NI / LabVIEW Docker proof authority and release-control-plane repairs
+  while adding the backend fix required for the released VI-history consumer
+  proof.
+
+## [v0.6.10] - 2026-04-01
+
+### Changed
+
+- Promoted the Windows NI proof authority path and the local-proof autonomy
+  program onto the stable release line, so the hosted Windows image-backed
+  proof now owns VI-binary CI truth while local iteration can choose the next
+  truthful proof surface before escalating.
+- Carried the stable release-control-plane repairs onto the promoted baseline:
+  generic queue stabilization no longer blocks stable release conduction,
+  green-dwell is removed, first-time signed tag publication can replay
+  authoritatively, and release scorecard defers exact-SHA downstream proving
+  until `develop` realigns with the published source.
+
+### Added
+
+- The layered Pester service-model control plane, release-evidence packet, and
+  Windows shared-surface contracts are now part of the released baseline
+  instead of living only on the integration rail.
+
 ## [v0.6.9] - 2026-03-30
 
 ### Fixed
