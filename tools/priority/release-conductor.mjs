@@ -240,45 +240,45 @@ export function evaluateQueueHealthGate(queueReportEnvelope) {
 
   const queueReport = queueReportEnvelope.payload;
   const paused = Boolean(queueReport?.paused);
+  const controls =
+    queueReport?.controls && typeof queueReport.controls === 'object' ? queueReport.controls : {};
+  const burst =
+    queueReport?.burst && typeof queueReport.burst === 'object' ? queueReport.burst : {};
+  const triggerSignals =
+    burst?.triggerSignals && typeof burst.triggerSignals === 'object' ? burst.triggerSignals : {};
   const controllerMode =
     queueReport?.throughputController?.mode ??
     queueReport?.adaptiveInflight?.mode ??
     null;
   const pausedReasons = Array.isArray(queueReport?.pausedReasons) ? queueReport.pausedReasons : [];
-  const runtimeTotals =
-    queueReport?.runtimeFleet && typeof queueReport.runtimeFleet === 'object' ? queueReport.runtimeFleet.totals : null;
-  const mergeQueueOccupancy =
-    queueReport?.queueInventory?.mergeQueueOccupancy ??
-    queueReport?.summary?.mergeQueueOccupancy ??
-    null;
-  const readyQueuedCount =
-    queueReport?.queueInventory?.readyQueuedCount ??
-    queueReport?.summary?.readyQueuedCount ??
-    null;
-  const quarantinedCount = queueReport?.summary?.quarantinedCount ?? null;
-  const idleSuccessRatePause =
+  const successRateThrottlePause =
     paused &&
     controllerMode === 'stabilize' &&
     pausedReasons.length > 0 &&
-    pausedReasons.every((reason) => reason === 'success-rate-below-threshold') &&
-    Number(mergeQueueOccupancy ?? 0) === 0 &&
-    Number(readyQueuedCount ?? 0) === 0 &&
-    Number(runtimeTotals?.queued ?? 0) === 0 &&
-    Number(runtimeTotals?.inProgress ?? 0) === 0 &&
-    Number(runtimeTotals?.stalled ?? 0) === 0 &&
-    Number(quarantinedCount ?? 0) === 0;
+    pausedReasons.every((reason) => reason === 'success-rate-below-threshold');
+  const explicitOperatorPause =
+    Boolean(controls?.pausedByVariable) ||
+    Boolean(controls?.queueAutopilotPaused) ||
+    controllerMode === 'pause';
+  const activeReleaseQueueActivity =
+    Boolean(burst?.active) &&
+    (Boolean(triggerSignals?.releaseWindow) ||
+      Boolean(triggerSignals?.releaseBranchPullRequest) ||
+      Boolean(triggerSignals?.releaseBurstLabel));
 
   const reasons = [];
-  if (idleSuccessRatePause) {
-    reasons.push('release-safe-idle-queue-pause');
+  if (successRateThrottlePause && !explicitOperatorPause && !activeReleaseQueueActivity) {
+    reasons.push('release-safe-generic-stabilize-pause');
   }
-  if (paused) reasons.push('queue-paused');
-  if (controllerMode === 'stabilize') reasons.push('queue-stabilize-mode');
+  if (explicitOperatorPause) reasons.push('release-queue-explicit-pause');
+  if (activeReleaseQueueActivity) reasons.push('release-queue-activity-active');
+  if (paused && !successRateThrottlePause && !explicitOperatorPause) reasons.push('queue-paused');
+  if (controllerMode === 'stabilize' && !successRateThrottlePause) reasons.push('queue-stabilize-mode');
 
-  if (idleSuccessRatePause) {
+  if (successRateThrottlePause && !explicitOperatorPause && !activeReleaseQueueActivity) {
     return {
       status: 'pass',
-      reasons: ['release-safe-idle-queue-pause'],
+      reasons: ['release-safe-generic-stabilize-pause'],
       paused,
       controllerMode
     };
@@ -385,6 +385,20 @@ function isQueueReportUnavailableGate(gate) {
   }
   const reasons = Array.isArray(gate?.reasons) ? gate.reasons : [];
   return reasons.length > 0 && reasons.every((reason) => reason === 'queue-report-unavailable');
+}
+
+function describeQueueHealthBlocker(gate) {
+  const reasons = Array.isArray(gate?.reasons) ? gate.reasons : [];
+  if (reasons.includes('release-queue-explicit-pause')) {
+    return 'Queue supervisor reported an explicit release queue pause.';
+  }
+  if (reasons.includes('release-queue-activity-active')) {
+    return 'Queue supervisor reported active release queue activity.';
+  }
+  if (reasons.includes('queue-report-unavailable')) {
+    return 'Queue supervisor evidence is unavailable.';
+  }
+  return 'Queue supervisor reported release-relevant queue risk.';
 }
 
 function pushUniqueDecisionEntry(entries, entry) {
@@ -710,7 +724,7 @@ export async function runReleaseConductor(options = {}) {
     } else {
       blockers.push({
         code: 'queue-health-failed',
-        message: 'Queue supervisor reported paused/stabilize state.'
+        message: describeQueueHealthBlocker(queueHealthGate)
       });
     }
   }

@@ -59,17 +59,21 @@ test('gate evaluators classify pass/fail deterministically', () => {
     payload: {
       paused: true,
       pausedReasons: ['success-rate-below-threshold'],
-      throughputController: { mode: 'stabilize' },
-      runtimeFleet: {
-        totals: {
-          queued: 0,
-          inProgress: 0,
-          stalled: 0
-        }
+      controls: {
+        pausedByVariable: false,
+        queueAutopilotPaused: false
       },
+      throughputController: { mode: 'stabilize' },
       queueInventory: {
-        mergeQueueOccupancy: 0,
+        mergeQueueOccupancy: 2,
         readyQueuedCount: 0
+      },
+      burst: {
+        active: false,
+        backoffActive: true,
+        triggerSignals: {
+          releaseBranchPullRequest: true
+        }
       },
       summary: {
         quarantinedCount: 0
@@ -79,7 +83,45 @@ test('gate evaluators classify pass/fail deterministically', () => {
   assert.equal(queueIdlePass.status, 'pass');
   assert.equal(queueIdlePass.paused, true);
   assert.equal(queueIdlePass.controllerMode, 'stabilize');
-  assert.deepEqual(queueIdlePass.reasons, ['release-safe-idle-queue-pause']);
+  assert.deepEqual(queueIdlePass.reasons, ['release-safe-generic-stabilize-pause']);
+
+  const explicitReleasePause = evaluateQueueHealthGate({
+    exists: true,
+    error: null,
+    payload: {
+      paused: true,
+      pausedReasons: ['success-rate-below-threshold'],
+      controls: {
+        pausedByVariable: true,
+        queueAutopilotPaused: false
+      },
+      throughputController: { mode: 'stabilize' }
+    }
+  });
+  assert.equal(explicitReleasePause.status, 'fail');
+  assert.ok(explicitReleasePause.reasons.includes('release-queue-explicit-pause'));
+
+  const activeReleaseQueue = evaluateQueueHealthGate({
+    exists: true,
+    error: null,
+    payload: {
+      paused: true,
+      pausedReasons: ['success-rate-below-threshold'],
+      controls: {
+        pausedByVariable: false,
+        queueAutopilotPaused: false
+      },
+      throughputController: { mode: 'stabilize' },
+      burst: {
+        active: true,
+        triggerSignals: {
+          releaseBranchPullRequest: true
+        }
+      }
+    }
+  });
+  assert.equal(activeReleaseQueue.status, 'fail');
+  assert.ok(activeReleaseQueue.reasons.includes('release-queue-activity-active'));
 
   const policyPass = evaluatePolicySnapshotGate({
     exists: true,
@@ -432,7 +474,7 @@ test('runReleaseConductor creates and publishes a signed tag when apply is enabl
   assert.ok(commandCalls.some((entry) => entry.command === 'git' && entry.args[0] === 'push'));
 });
 
-test('runReleaseConductor allows apply when queue pause is only an idle success-rate throttle', async () => {
+test('runReleaseConductor allows apply when queue pause is only a generic success-rate throttle', async () => {
   const readJsonOptionalFn = async (filePath) => {
     const normalized = String(filePath);
     if (normalized.includes('queue-supervisor-report.json')) {
@@ -443,17 +485,21 @@ test('runReleaseConductor allows apply when queue pause is only an idle success-
         payload: {
           paused: true,
           pausedReasons: ['success-rate-below-threshold'],
-          throughputController: { mode: 'stabilize' },
-          runtimeFleet: {
-            totals: {
-              queued: 0,
-              inProgress: 0,
-              stalled: 0
-            }
+          controls: {
+            pausedByVariable: false,
+            queueAutopilotPaused: false
           },
+          throughputController: { mode: 'stabilize' },
           queueInventory: {
-            mergeQueueOccupancy: 0,
+            mergeQueueOccupancy: 2,
             readyQueuedCount: 0
+          },
+          burst: {
+            active: false,
+            backoffActive: true,
+            triggerSignals: {
+              releaseBranchPullRequest: true
+            }
           },
           summary: {
             quarantinedCount: 0
@@ -534,10 +580,80 @@ test('runReleaseConductor allows apply when queue pause is only an idle success-
 
   assert.equal(exitCode, 0);
   assert.equal(report.gates.queueHealth.status, 'pass');
-  assert.deepEqual(report.gates.queueHealth.reasons, ['release-safe-idle-queue-pause']);
+  assert.deepEqual(report.gates.queueHealth.reasons, ['release-safe-generic-stabilize-pause']);
   assert.equal(report.release.proposalOnly, false);
   assert.ok(commandCalls.some((entry) => entry.command === 'git' && entry.args[0] === 'tag'));
   assert.ok(commandCalls.some((entry) => entry.command === 'git' && entry.args[0] === 'push'));
+});
+
+test('runReleaseConductor blocks apply when queue pause reflects active release queue activity', async () => {
+  const readJsonOptionalFn = async (filePath) => {
+    const normalized = String(filePath);
+    if (normalized.includes('queue-supervisor-report.json')) {
+      return {
+        exists: true,
+        error: null,
+        path: filePath,
+        payload: {
+          paused: true,
+          pausedReasons: ['success-rate-below-threshold'],
+          controls: {
+            pausedByVariable: false,
+            queueAutopilotPaused: false
+          },
+          throughputController: { mode: 'stabilize' },
+          burst: {
+            active: true,
+            triggerSignals: {
+              releaseBranchPullRequest: true
+            }
+          },
+          retryHistory: {}
+        }
+      };
+    }
+    return {
+      exists: true,
+      error: null,
+      path: filePath,
+      payload: {
+        schema: 'priority/policy-live-state@v1',
+        generatedAt: '2026-03-06T10:00:00Z',
+        state: {}
+      }
+    };
+  };
+
+  const { report, exitCode } = await runReleaseConductor({
+    repoRoot: process.cwd(),
+    now: new Date('2026-03-06T12:00:00.000Z'),
+    args: {
+      apply: true,
+      dryRun: false,
+      repairExistingTag: false,
+      reportPath: 'tests/results/_agent/release/release-conductor-report.json',
+      queueReportPath: 'tests/results/_agent/queue/queue-supervisor-report.json',
+      policySnapshotPath: 'tests/results/_agent/policy/policy-state-snapshot.json',
+      repo: 'owner/repo',
+      stream: 'comparevi-cli',
+      channel: 'stable',
+      version: '0.8.0',
+      quarantineStaleHours: 24,
+      help: false
+    },
+    environment: {
+      GITHUB_REPOSITORY: 'owner/repo',
+      RELEASE_CONDUCTOR_ENABLED: '1'
+    },
+    runCommandFn: () => ({ status: 0, stdout: '', stderr: '' }),
+    readJsonOptionalFn,
+    writeReportFn: async (reportPath) => reportPath
+  });
+
+  assert.equal(exitCode, 1);
+  assert.equal(report.gates.queueHealth.status, 'fail');
+  assert.ok(report.gates.queueHealth.reasons.includes('release-queue-activity-active'));
+  assert.ok(report.decision.blockers.some((entry) => entry.code === 'queue-health-failed'));
 });
 
 test('runReleaseConductor blocks apply when authoritative tag already exists and repair mode is not requested', async () => {
