@@ -3,7 +3,7 @@
 ## Document Control
 
 - System: VI History local proof control plane
-- Version: `v0.1.2`
+- Version: `v0.1.5`
 - Status: Active
 
 ## Verification Matrix
@@ -19,6 +19,9 @@
 | `TEST-VHLP-007` shared local-program selector coverage | Assurance/Contract | High | Verifies the shared program selector can choose VI History requirement work explicitly and merge the shared Windows Docker Desktop + NI image escalation across sibling packets |
 | `TEST-VHLP-008` clone-backed live-history candidate governance coverage | Assurance/Contract | High | Verifies the packet names `ni/labview-icon-editor` plus `Tooling/deployment/VIP_Pre-Uninstall Custom Action.vi` as the governed clone-backed live-history candidate |
 | `TEST-VHLP-009` live-history candidate readiness coverage | Assurance/Contract | High | Verifies local VI History CI validates clone presence, target path presence, and git history, then emits a bounded clone-preparation escalation when the candidate is unavailable |
+| `TEST-VHLP-010` explicit Windows replay next-step coverage | Assurance/Contract | High | Verifies local VI History CI emits `vi-history-windows-workflow-replay` as the next step when the shared Windows surface and live-history candidate are ready, instead of launching the replay lane during packet selection |
+| `TEST-VHLP-011` bounded Windows replay lifecycle coverage | Contract/Replay | High | Verifies the governed Windows workflow replay lane terminates or fails closed within bounded helper-process timeouts and still emits a replay receipt on timeout |
+| `TEST-VHLP-012` replay receipt consumption coverage | Assurance/Contract | High | Verifies local VI History CI treats an existing passing `vi-history-scenarios-windows` replay receipt as satisfied local replay proof and advances beyond replay re-selection |
 
 ## Entry Criteria
 
@@ -45,3 +48,6 @@
 | Shared local-program selector coverage | Shared local CI emits `comparevi-local-program-next-step.json`, selects VI History explicitly when it owns the next requirement, and merges the shared Windows surface handoff across packets | `tools/priority/__tests__/comparevi-local-program-ci.test.mjs`, `tools/priority/comparevi-local-program-ci.mjs`, `docs/schemas/comparevi-local-program-next-step-v1.schema.json`, `TEST-VHLP-007` |
 | Clone-backed live-history candidate governance coverage | The governed candidate manifest names `ni/labview-icon-editor` and `Tooling/deployment/VIP_Pre-Uninstall Custom Action.vi` explicitly | `tools/priority/__tests__/vi-history-local-proof-contract.test.mjs`, `tools/priority/vi-history-live-candidate.json`, `TEST-VHLP-008` |
 | Live-history candidate readiness coverage | Local VI History CI emits `vi-history-live-candidate-readiness.json` and escalates clone preparation when the governed target is unavailable | `tools/priority/__tests__/vi-history-local-ci.test.mjs`, `tools/priority/vi-history-local-ci.mjs`, `docs/schemas/vi-history-live-candidate-v1.schema.json`, `docs/schemas/vi-history-live-candidate-readiness-v1.schema.json`, `TEST-VHLP-009` |
+| Explicit Windows replay next-step coverage | Local VI History CI emits `vi-history-local-next-step.json` pointing at `priority:workflow:replay:windows:vi-history` when the packet is ready for live replay, instead of invoking the replay lane during selector execution | `tools/priority/__tests__/vi-history-local-ci.test.mjs`, `tools/priority/__tests__/vi-history-local-proof-contract.test.mjs`, `tools/priority/vi-history-local-ci.mjs`, `TEST-VHLP-010` |
+| Bounded Windows replay lifecycle coverage | `windows-workflow-replay-lane.mjs` enforces bounded helper-process timeouts and still writes `windows-workflow-replay-lane@v1` when a timeout occurs | `tools/priority/__tests__/windows-workflow-replay-lane.test.mjs`, `tools/priority/windows-workflow-replay-lane.mjs`, `TEST-VHLP-011` |
+| Replay receipt consumption coverage | `vi-history-local-ci.mjs` consumes a passing `vi-history-scenarios-windows` replay receipt and stops re-emitting the same replay escalation as the next step | `tools/priority/__tests__/vi-history-local-ci.test.mjs`, `tools/priority/vi-history-local-ci.mjs`, `TEST-VHLP-012` |

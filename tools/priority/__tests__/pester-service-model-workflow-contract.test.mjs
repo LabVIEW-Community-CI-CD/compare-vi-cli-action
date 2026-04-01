@@ -219,6 +219,7 @@ test('pester evidence distinguishes context-blocked, selection-blocked, and read
 
 test('knowledgebase documents the additive service model and keeps the monolith as the current baseline', () => {
   const doc = readRepoFile('docs/knowledgebase/Pester-Service-Model.md');
+  const gateWorkflow = readRepoFile('.github/workflows/vi-binary-gate.yml');
 
   assert.match(doc, /legacy Pester control plane couples four concerns into one self-hosted transaction/i);
   assert.match(doc, /pester-context\.yml/);
@@ -236,6 +237,11 @@ test('knowledgebase documents the additive service model and keeps the monolith 
   assert.match(doc, /release-evidence-provenance\.json/i);
   assert.match(doc, /promotion-dossier-provenance\.json/i);
   assert.match(doc, /existing required gate remains in place/i);
+  assert.match(doc, /Windows image-backed binary-handling CI surfaces/i);
+  assert.match(doc, /Pester is secondary harness and evidence truth/i);
+  assert.match(doc, /windows-ni-proof-reusable\.yml/);
+  assert.match(gateWorkflow, /uses:\s+\.\s*\/\.github\/workflows\/windows-ni-proof-reusable\.yml/);
+  assert.doesNotMatch(gateWorkflow, /pester-reusable\.yml/);
 });
 
 test('trusted PR pilot router only runs self-hosted service-model proof for workflow dispatch or same-owner labeled PR heads', () => {

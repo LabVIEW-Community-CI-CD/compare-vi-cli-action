@@ -1,0 +1,195 @@
+name: Windows NI proof (reusable)
+
+on:
+  workflow_call:
+    inputs:
+      base_vi:
+        required: true
+        type: string
+      head_vi:
+        required: true
+        type: string
+      sample_id:
+        required: false
+        type: string
+        default: ''
+      results_root:
+        required: false
+        type: string
+        default: tests/results/windows-ni-proof
+      artifact_name:
+        required: false
+        type: string
+        default: windows-ni-proof
+      image:
+        required: false
+        type: string
+        default: nationalinstruments/labview:2026q1-windows
+      labview_path:
+        required: false
+        type: string
+        default: C:\Program Files\National Instruments\LabVIEW 2026\LabVIEW.exe
+      report_type:
+        required: false
+        type: string
+        default: html
+      timeout_seconds:
+        required: false
+        type: number
+        default: 600
+      run_binary_invariants:
+        required: false
+        type: boolean
+        default: false
+
+concurrency:
+  group: ${{ github.workflow }}-windows-ni-proof-${{ inputs.sample_id || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  windows-ni-proof:
+    runs-on: windows-2022
+    timeout-minutes: 50
+    permissions:
+      contents: read
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      NI_WINDOWS_IMAGE: ${{ inputs.image }}
+      NI_WINDOWS_LABVIEW_PATH: ${{ inputs.labview_path }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          repository: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name || github.repository }}
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+
+      - name: Validate VI binary-handling invariants
+        if: ${{ inputs.run_binary_invariants }}
+        run: |
+          $resultsRoot = '${{ inputs.results_root }}'
+          New-Item -ItemType Directory -Path $resultsRoot -Force | Out-Null
+          $reportPath = Join-Path $resultsRoot 'vi-binary-handling-invariants.json'
+          pwsh -NoLogo -NoProfile -File tools/Test-VIBinaryHandlingInvariants.ps1 `
+            -OutputJsonPath $reportPath `
+            -StepSummaryPath $env:GITHUB_STEP_SUMMARY
+
+      - name: Prepare NI Windows image and hosted runtime
+        id: windows-preflight
+        run: |
+          $resultsRoot = '${{ inputs.results_root }}'
+          New-Item -ItemType Directory -Path $resultsRoot -Force | Out-Null
+          $summaryPath = Join-Path $resultsRoot 'windows-ni-2026q1-host-preflight.json'
+          pwsh -NoLogo -NoProfile -File tools/Test-WindowsNI2026q1HostPreflight.ps1 `
+            -Image $env:NI_WINDOWS_IMAGE `
+            -ResultsDir $resultsRoot `
+            -ExecutionSurface 'github-hosted-windows' `
+            -OutputJsonPath $summaryPath `
+            -GitHubOutputPath $env:GITHUB_OUTPUT `
+            -StepSummaryPath $env:GITHUB_STEP_SUMMARY
+
+      - name: Run NI Windows create comparison report
+        id: windows-compare
+        if: steps.windows-preflight.outputs.windows_host_preflight_status == 'ready'
+        run: |
+          $resultsRoot = '${{ inputs.results_root }}'
+          New-Item -ItemType Directory -Path $resultsRoot -Force | Out-Null
+          $reportPath = Join-Path $resultsRoot ('windows-compare-report.{0}' -f '${{ inputs.report_type }}')
+          "windows_compare_report=$reportPath" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          $runtimeSnapshot = Join-Path $resultsRoot 'runtime-manager-compare-windows.json'
+          pwsh -NoLogo -NoProfile -File tools/Run-NIWindowsContainerCompare.ps1 `
+            -BaseVi '${{ inputs.base_vi }}' `
+            -HeadVi '${{ inputs.head_vi }}' `
+            -Image $env:NI_WINDOWS_IMAGE `
+            -LabVIEWPath $env:NI_WINDOWS_LABVIEW_PATH `
+            -ReportType '${{ inputs.report_type }}' `
+            -ReportPath $reportPath `
+            -TimeoutSeconds ${{ inputs.timeout_seconds }} `
+            -RuntimeEngineReadyTimeoutSeconds 180 `
+            -RuntimeEngineReadyPollSeconds 5 `
+            -RuntimeSnapshotPath $runtimeSnapshot
+          $compareExit = $LASTEXITCODE
+
+          $capturePath = Join-Path $resultsRoot 'ni-windows-container-capture.json'
+          if (Test-Path -LiteralPath $capturePath -PathType Leaf) {
+            "windows_compare_capture=$capturePath" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+            $capture = Get-Content -LiteralPath $capturePath -Raw | ConvertFrom-Json -Depth 12
+            $gateOutcome = if ($capture.PSObject.Properties['gateOutcome']) { [string]$capture.gateOutcome } else { '' }
+            $resultClass = if ($capture.PSObject.Properties['resultClass']) { [string]$capture.resultClass } else { '' }
+            Write-Host ("[windows-ni-proof] exit={0} gateOutcome={1} resultClass={2}" -f $compareExit, $gateOutcome, $resultClass)
+            if ($compareExit -ne 0 -and $gateOutcome -ne 'pass') {
+              exit $compareExit
+            }
+          } elseif ($compareExit -ne 0) {
+            throw ("Windows compare failed (exit={0}) and capture file was not found at {1}" -f $compareExit, $capturePath)
+          }
+
+      - name: Validate Windows comparison report artifact contract
+        if: always()
+        run: |
+          $resultsRoot = '${{ inputs.results_root }}'
+          $reportPath = '${{ steps.windows-compare.outputs.windows_compare_report }}'
+          if ([string]::IsNullOrWhiteSpace($reportPath)) {
+            $reportPath = Join-Path $resultsRoot ('windows-compare-report.{0}' -f '${{ inputs.report_type }}')
+          }
+          $capturePath = '${{ steps.windows-compare.outputs.windows_compare_capture }}'
+          if ([string]::IsNullOrWhiteSpace($capturePath)) {
+            $capturePath = Join-Path $resultsRoot 'ni-windows-container-capture.json'
+          }
+          $summaryPath = Join-Path $resultsRoot 'windows-compare-artifact-summary.json'
+          $captureResultClass = ''
+          $captureGateOutcome = ''
+          $captureExists = Test-Path -LiteralPath $capturePath -PathType Leaf
+          if ($captureExists) {
+            $capture = Get-Content -LiteralPath $capturePath -Raw | ConvertFrom-Json -Depth 12
+            if ($capture.PSObject.Properties['resultClass']) {
+              $captureResultClass = [string]$capture.resultClass
+            }
+            if ($capture.PSObject.Properties['gateOutcome']) {
+              $captureGateOutcome = [string]$capture.gateOutcome
+            }
+          }
+
+          $reportExists = Test-Path -LiteralPath $reportPath -PathType Leaf
+          $compareSucceeded = '${{ steps.windows-compare.conclusion }}' -eq 'success'
+
+          $payload = [ordered]@{
+            schema = 'vi-history/windows-compare-artifact-summary@v1'
+            generatedAt = (Get-Date).ToUniversalTime().ToString('o')
+            compareStepConclusion = '${{ steps.windows-compare.conclusion }}'
+            reportPath = $reportPath
+            reportExists = [bool]$reportExists
+            capturePath = $capturePath
+            captureExists = [bool]$captureExists
+            captureResultClass = $captureResultClass
+            captureGateOutcome = $captureGateOutcome
+          }
+          $payload | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $summaryPath -Encoding utf8
+
+          $requireReport = $compareSucceeded -and [string]::Equals($captureResultClass, 'success-diff', [System.StringComparison]::OrdinalIgnoreCase)
+          if ($requireReport -and -not $reportExists) {
+            throw ("Windows compare classified success-diff but report file was not found: {0}" -f $reportPath)
+          }
+          if ($compareSucceeded -and -not $reportExists -and -not $requireReport) {
+            Write-Host ("::warning::Windows compare succeeded without diff classification ({0}); no report file was generated at {1}." -f $captureResultClass, $reportPath)
+          }
+          if (-not $reportExists) {
+            Write-Host ("::warning::Windows comparison report not found at {0}" -f $reportPath)
+          }
+
+      - name: Upload Windows NI proof artifacts
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ inputs.artifact_name }}
+          path: |
+            ${{ inputs.results_root }}/vi-binary-handling-invariants.json
+            ${{ inputs.results_root }}/windows-compare-report.${{ inputs.report_type }}
+            ${{ inputs.results_root }}/windows-compare-artifact-summary.json
+            ${{ inputs.results_root }}/windows-ni-2026q1-host-preflight.json
+            ${{ inputs.results_root }}/ni-windows-container-capture.json
+            ${{ inputs.results_root }}/ni-windows-container-stdout.txt
+            ${{ inputs.results_root }}/ni-windows-container-stderr.txt
+            ${{ inputs.results_root }}/container-export/**
+            ${{ inputs.results_root }}/runtime-manager-compare-windows.json
+          if-no-files-found: warn

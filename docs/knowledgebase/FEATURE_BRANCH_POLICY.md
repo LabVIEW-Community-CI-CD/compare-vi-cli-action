@@ -85,7 +85,7 @@ promotion behavior, not the branch-class source of truth.
 | Manifest identity | Scope                | Highlights                                                                                   |
 |-------------------|----------------------|----------------------------------------------------------------------------------------------|
 | `develop` (live id may drift) | `refs/heads/develop` | Merge queue enabled (`merge_method=SQUASH`, `grouping=ALLGREEN`, build queue <=20 entries, 1-minute quiet window). Required checks: `lint`, `fixtures`, `Policy Guard (Upstream) / policy-guard`, `vi-history-scenarios-linux`, `commit-integrity`. Non-required hosted proof lanes may run alongside the queue contract, including `session-index`, `issue-snapshot`, `semver`, `agent-review-policy`, `hook-parity`, and `vi-history-scenarios-windows` on GitHub-hosted `windows-2022`. Copilot review settings are no longer enforced through policy; draft/ready review semantics are repo-owned and validated by `agent-review-policy`. |
-| `main` (`tools/priority/policy.json` key `8614140`) | `refs/heads/main`    | Merge queue enabled (`merge_method=SQUASH`, `grouping=ALLGREEN`, build queue <=5 entries, 1-minute quiet window). Required checks: `lint`, `pester`, `vi-binary-check`, `vi-compare`, `Policy Guard (Upstream) / policy-guard`, `commit-integrity`. Required approving reviews: `0`. |
+| `main` (`tools/priority/policy.json` key `8614140`) | `refs/heads/main`    | Merge queue enabled (`merge_method=SQUASH`, `grouping=ALLGREEN`, build queue <=5 entries, 1-minute quiet window). Required checks: `lint`, `pester`, `vi-binary-check`, `vi-compare`, `Policy Guard (Upstream) / policy-guard`, `commit-integrity`. `vi-binary-check` is the Windows NI proof gate; `pester` remains a separate harness/evidence gate. Required approving reviews: `0`. |
 | `release` (`tools/priority/policy.json` key `8614172`) | `refs/heads/release/*` | No merge queue; protects against force-push/deletion. Required checks: `lint`, `pester / normalize`, `smoke-gate`, `Policy Guard (Upstream) / policy-guard`, `commit-integrity`. Required approving reviews: `0`. |
 
 `node tools/npm/run-script.mjs priority:policy` queries these rulesets and fails if the live configuration drifts from
@@ -285,6 +285,10 @@ checked into `tools/priority/policy.json` so `priority:policy` stays authoritati
   - `min_entries_to_merge_wait_minutes=1`
   - `check_response_timeout_minutes=60`
 - **Required checks**: `lint`, `pester`, `vi-binary-check`, `vi-compare`, `Policy Guard (Upstream) / policy-guard`, `commit-integrity`.
+- **Windows NI proof authority**: `vi-binary-check` now routes through the
+  shared Windows NI proof workflow and is the authoritative blocking proof for
+  Windows image-backed binary handling on `main`; it is no longer a thin
+  `pester-reusable` wrapper.
 - **Workflow triggers**: Ensure those required checks run on both `pull_request` and `merge_group` so queued entries can merge.
 - **Approval policy**: 0 required reviews; stale review dismissal and thread resolution are not enforced.
 - **Quick verification**:

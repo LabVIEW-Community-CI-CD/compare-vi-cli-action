@@ -3,7 +3,7 @@
 ## Document Control
 
 - System: Windows Docker shared local proof surface
-- Version: `v0.2.1`
+- Version: `v0.2.2`
 - Owner: `#2069`
 - Status: Active
 
@@ -15,8 +15,9 @@
   chosen.
 - In scope:
   Bounded readiness probes, deterministic host bootstrap and preflight,
-  OneDrive-safe local path hygiene, local assurance CI, and shared local proof
-  program integration.
+  OneDrive-safe local path hygiene, local assurance CI, shared local proof
+  program integration, and authoritative CI proof ownership for Windows
+  image-backed binary-handling surfaces.
 - Out of scope:
   Product-layer Pester execution, VI History replay semantics, and hosted trust
   routing.
@@ -42,3 +43,4 @@
 | REQ-WDSS-006 | The shared Windows surface packet shall participate in the shared local proof program selector so it can be chosen explicitly beside Pester and VI History. | Once the Windows surface becomes a first-class packet, the autonomy loop should be able to reason about it directly rather than only through merged packet advisories. | `priority:program:local-ci` consumes the shared-surface next-step artifact, can select a shared-surface requirement ahead of sibling packet escalations, and merges common `windows-docker-desktop-ni-image` handoffs across all packets. | `TEST-WDSS-006` |
 | REQ-WDSS-007 | When a reachable Windows host bridge exists behind a Unix or WSL coordinator, the shared Windows surface packet shall use that governed bridge to execute Windows-local probe and preflight work before emitting a host-unavailable escalation. | A WSL-based operator should not stop at a human handoff if the actual Windows Docker Desktop + NI image surface is already reachable from the same session. | `windows-host-bridge.mjs` resolves the reachable Windows PowerShell and Node surfaces, the shared-surface local CI uses that bridge to run `Invoke-PesterWindowsContainerSurfaceProbe.ps1` and `Test-WindowsNI2026q1HostPreflight.ps1`, and host-unavailable escalation is only emitted when that bridge is absent or the Windows surface still reports non-ready. | `TEST-WDSS-007` |
 | REQ-WDSS-008 | When the coordinator is running from a UNC-backed WSL or other non-bindable Windows path, the shared Windows Docker surface shall stage container-bound inputs and output targets into a governed Windows-local mount root and synchronize artifacts back to the requested repo paths. | Windows Docker bind mounts do not reliably accept UNC-backed WSL paths, so local proof needs an explicit staging contract instead of rediscovering mount-spec failures at runtime. | `Run-NIWindowsContainerCompare.ps1` detects UNC-backed container-bound inputs or report paths, emits staging metadata in `ni-windows-container-capture.json`, uses a Windows-local stage root for Docker bind mounts, synchronizes report artifacts back to the requested repo paths, and records cleanup status. | `TEST-WDSS-008` |
+| REQ-WDSS-009 | CI gates for Windows image-backed binary-handling surfaces shall use the shared Windows NI image proof as the blocking execution truth; supporting static invariants may run beside that proof, but the gate shall not route through `pester-reusable.yml` as its authoritative executor. | The image-backed surface is closer to product truth than a generic Pester harness, so CI should block on the Windows NI proof path and treat Pester as secondary harness truth for this class of surface. | `.github/workflows/vi-binary-gate.yml` calls `.github/workflows/windows-ni-proof-reusable.yml`, that reusable workflow runs `Test-VIBinaryHandlingInvariants.ps1`, `Test-WindowsNI2026q1HostPreflight.ps1`, and `Run-NIWindowsContainerCompare.ps1`, and neither workflow routes the gate through `.github/workflows/pester-reusable.yml`. | `TEST-WDSS-009` |

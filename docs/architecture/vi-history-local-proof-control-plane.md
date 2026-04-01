@@ -36,5 +36,15 @@ be exercised before another hosted run is chosen.
 - The local VI History packet should reuse the shared
   `windows-docker-desktop-ni-image` proof surface when the current host cannot
   satisfy the Windows replay lane.
+- The local VI History packet should keep live Windows workflow replay as an
+  explicit next-step escalation once the shared Windows surface and clone-backed
+  candidate are ready, rather than invoking the replay lane implicitly during
+  packet selection.
+- The governed Windows workflow replay lane should own bounded helper-process
+  timeouts so the autonomy loop cannot be left hanging after a live replay
+  attempt.
+- A passing governed Windows workflow replay receipt should be consumable by
+  the local autonomy surface so the loop advances instead of requesting the
+  same replay step repeatedly.
 - Local proof should prefer declared profiles and wrappers over free-form helper
   invocation.

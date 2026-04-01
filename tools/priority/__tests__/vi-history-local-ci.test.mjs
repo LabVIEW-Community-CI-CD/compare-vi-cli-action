@@ -6,7 +6,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { applyAutonomyPolicy, deriveEscalations, determinePhase, parseCsv, parseRequirementNumber, rankProofRegressions, rankRequirementGaps, runLiveHistoryCandidateProof, selectNextStep } from '../vi-history-local-ci.mjs';
+import { applyAutonomyPolicy, deriveEscalations, determinePhase, parseCsv, parseRequirementNumber, rankProofRegressions, rankRequirementGaps, runLiveHistoryCandidateProof, runWindowsWorkflowReplayProof, selectNextStep } from '../vi-history-local-ci.mjs';
 
 test('parseRequirementNumber extracts numeric VI History local-proof ids', () => {
   assert.equal(parseRequirementNumber('REQ-VHLP-001'), 1);
@@ -130,6 +130,30 @@ test('deriveEscalations emits a shared Windows-surface escalation for VI History
   assert.equal(escalations[0].required_surface, 'windows-docker-desktop-ni-image');
 });
 
+test('deriveEscalations emits an explicit Windows workflow replay next step when the shared surface is already ready', () => {
+  const escalations = deriveEscalations([
+    {
+      id: 'windows-workflow-replay',
+      owner_requirement: 'REQ-VHLP-001',
+      status: 'advisory',
+      blocking: false,
+      summary: 'The governed VI History Windows workflow replay lane is ready and must be invoked explicitly as the next live-proof step.',
+      current_surface_status: 'ready-for-explicit-replay',
+      current_host_platform: 'Windows',
+      receipt_path: 'tests/results/docker-tools-parity/workflow-replay/vi-history-scenarios-windows-receipt.json',
+      reason: 'Local VI History CI keeps live Windows workflow replay as an explicit next step instead of running it implicitly during packet selection.',
+      recommended_commands: [
+        'npm run priority:workflow:replay:windows:vi-history'
+      ]
+    }
+  ]);
+
+  assert.equal(escalations.length, 1);
+  assert.equal(escalations[0].governing_requirement, 'REQ-VHLP-010');
+  assert.equal(escalations[0].blocked_requirement, 'REQ-VHLP-001');
+  assert.equal(escalations[0].required_surface, 'vi-history-windows-workflow-replay');
+});
+
 test('deriveEscalations emits a clone-backed live-history escalation for VI History', () => {
   const escalations = deriveEscalations([
     {
@@ -189,6 +213,35 @@ test('runLiveHistoryCandidateProof validates a clone-backed target with real git
   assert.equal(check.status, 'pass');
   assert.equal(check.id, 'live-history-candidate');
   assert.match(check.summary, /ready for local iteration/i);
+});
+
+test('runWindowsWorkflowReplayProof consumes an existing passing replay receipt instead of re-requesting replay', async () => {
+  const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'vi-history-replay-pass-'));
+  const receiptPath = path.join(tempRoot, 'tests', 'results', 'docker-tools-parity', 'workflow-replay', 'vi-history-scenarios-windows-receipt.json');
+  fs.mkdirSync(path.dirname(receiptPath), { recursive: true });
+  fs.writeFileSync(receiptPath, JSON.stringify({
+    schema: 'windows-workflow-replay-lane@v1',
+    schemaVersion: '1.0.0',
+    replay: { mode: 'vi-history-scenarios-windows' },
+    result: { status: 'passed', errorMessage: null },
+  }, null, 2), 'utf8');
+
+  const check = await runWindowsWorkflowReplayProof(tempRoot, path.join(tempRoot, 'results'), {
+    runSharedWindowsSurfaceProofFn: async () => ({
+      status: 'pass',
+      blocking: false,
+      current_surface_status: 'ready',
+      current_host_platform: 'Windows',
+      coordinator_host_platform: 'Unix',
+      bridge_mode: 'wsl-windows',
+      receipt_path: 'tests/results/_agent/windows-docker-shared-surface/local-ci/windows-surface/pester-windows-container-surface.json',
+      reason: 'ready',
+    }),
+  });
+
+  assert.equal(check.status, 'pass');
+  assert.equal(check.current_surface_status, 'passed');
+  assert.match(check.summary, /already passed/i);
 });
 
 test('selectNextStep prefers requirements before VI History escalations', () => {

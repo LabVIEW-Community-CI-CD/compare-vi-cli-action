@@ -48,6 +48,9 @@ test('Windows shared-surface packet traces requirements, tests, and shared-progr
   assert.match(srs, /REQ-WDSS-008/);
   assert.match(srs, /UNC-backed WSL/i);
   assert.match(srs, /Windows-local mount root/i);
+  assert.match(srs, /REQ-WDSS-009/);
+  assert.match(srs, /blocking execution truth/i);
+  assert.match(srs, /pester-reusable\.yml/);
 
   assert.match(rtm, /REQ-WDSS-003/);
   assert.match(rtm, /TEST-WDSS-003/);
@@ -57,6 +60,8 @@ test('Windows shared-surface packet traces requirements, tests, and shared-progr
   assert.match(rtm, /TEST-WDSS-007/);
   assert.match(rtm, /REQ-WDSS-008/);
   assert.match(rtm, /TEST-WDSS-008/);
+  assert.match(rtm, /REQ-WDSS-009/);
+  assert.match(rtm, /TEST-WDSS-009/);
 
   assert.match(plan, /TEST-WDSS-001/);
   assert.match(plan, /TEST-WDSS-002/);
@@ -67,6 +72,8 @@ test('Windows shared-surface packet traces requirements, tests, and shared-progr
   assert.match(plan, /reachable Windows host bridge/i);
   assert.match(plan, /TEST-WDSS-008/);
   assert.match(plan, /UNC-backed WSL staging coverage/i);
+  assert.match(plan, /TEST-WDSS-009/);
+  assert.match(plan, /authoritative CI gate coverage/i);
 
   assert.match(doc, /priority:windows-surface:local-ci/);
   assert.match(doc, /tests:windows-surface:probe/);
@@ -76,6 +83,9 @@ test('Windows shared-surface packet traces requirements, tests, and shared-progr
   assert.match(doc, /ExecutionPolicy Bypass/i);
   assert.match(doc, /stage container-bound inputs and output targets/i);
   assert.match(doc, /ni-windows-container-capture\.json/);
+  assert.match(doc, /authoritative[\s\S]*execution-truth plane/i);
+  assert.match(doc, /windows-ni-proof-reusable\.yml/);
+  assert.match(doc, /Test-VIBinaryHandlingInvariants\.ps1/);
 
   assert.match(arch, /Readiness probe surface/);
   assert.match(arch, /Path-hygiene surface/);
@@ -83,6 +93,8 @@ test('Windows shared-surface packet traces requirements, tests, and shared-progr
   assert.match(arch, /Bridge surface/);
   assert.match(arch, /Windows-local staging surface/);
   assert.match(arch, /UNC-backed WSL repo paths should never be passed straight to Docker bind\s+mounts/i);
+  assert.match(arch, /Hosted CI authority surface/);
+  assert.match(arch, /windows-ni-proof-reusable\.yml/);
 
   assert.match(programDoc, /Windows Docker Shared Surface/i);
 
@@ -97,4 +109,8 @@ test('Windows shared-surface packet traces requirements, tests, and shared-progr
   assert.match(compareScript, /Test-PathRequiresWindowsDockerLocalStage/);
   assert.match(compareScript, /outputSyncStatus/);
   assert.match(compareScript, /cleanupStatus/);
+
+  const invariantsScript = readRepoFile('tools/Test-VIBinaryHandlingInvariants.ps1');
+  assert.match(invariantsScript, /comparevi\/vi-binary-handling-invariants@v1/);
+  assert.match(invariantsScript, /no-textual-vi-reads/);
 });

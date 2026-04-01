@@ -3,7 +3,7 @@
 ## Document Control
 
 - System: Windows Docker shared local proof surface
-- Version: `v0.2.1`
+- Version: `v0.2.2`
 - Status: Active
 
 ## Verification Matrix
@@ -18,6 +18,7 @@
 | `TEST-WDSS-006` shared local-program selector coverage | Assurance/Contract | High | Verifies the shared surface participates explicitly in the program selector beside Pester and VI History |
 | `TEST-WDSS-007` reachable Windows host bridge coverage | Assurance/Contract | High | Verifies a Unix or WSL coordinator uses a reachable Windows host bridge for probe and preflight work before emitting host-unavailable escalation |
 | `TEST-WDSS-008` UNC-backed WSL staging coverage | Runtime/Windows Docker | High | Verifies UNC-backed WSL inputs and report paths are staged into a Windows-local mount root, synchronized back, and cleaned up after compare execution |
+| `TEST-WDSS-009` authoritative CI gate coverage | Workflow/Contract | High | Verifies Windows image-backed CI gates route through the shared Windows NI proof workflow and not through the generic Pester reusable workflow |
 
 ## Entry Criteria
 
@@ -42,3 +43,4 @@
 | Shared local-program selector coverage | Program CI consumes the shared-surface next-step artifact beside Pester and VI History | `tools/priority/__tests__/comparevi-local-program-ci.test.mjs`, `tools/priority/__tests__/windows-docker-shared-surface-contract.test.mjs`, `TEST-WDSS-006` |
 | Reachable Windows host bridge coverage | Shared-surface local CI can consume a reachable Windows host bridge from a Unix or WSL coordinator and only escalates when that bridge is absent or still non-ready | `tools/priority/__tests__/windows-host-bridge.test.mjs`, `tools/priority/__tests__/windows-docker-shared-surface-contract.test.mjs`, `TEST-WDSS-007` |
 | UNC-backed WSL staging coverage | `Run-NIWindowsContainerCompare.ps1` stages UNC-backed or otherwise non-bindable Windows paths into a local Windows mount root, syncs artifacts back, and records staging status in capture output | `tests/Run-NIWindowsContainerCompare.Tests.ps1`, `tools/priority/__tests__/windows-docker-shared-surface-contract.test.mjs`, `tools/priority/__tests__/vi-history-local-proof-contract.test.mjs`, `TEST-WDSS-008` |
+| Authoritative CI gate coverage | `vi-binary-gate.yml` routes the blocking binary-handling gate through `windows-ni-proof-reusable.yml`, which runs static invariants plus the hosted Windows NI preflight and compare proof without delegating authority to `pester-reusable.yml` | `tools/priority/__tests__/windows-ni-proof-workflow-contract.test.mjs`, `tools/priority/__tests__/windows-docker-shared-surface-contract.test.mjs`, `tests/ViBinaryHandling.Tests.ps1`, `TEST-WDSS-009` |
