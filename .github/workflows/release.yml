@@ -791,6 +791,7 @@ jobs:
           RELEASE_SOURCE_SHA: ${{ steps.release_source.outputs.source_sha }}
           CURRENT_DEVELOP_SHA: ${{ steps.current_develop.outputs.develop_sha }}
         run: |
+          # shellcheck disable=SC2016
           set -euo pipefail
           source_sha="${RELEASE_SOURCE_SHA}"
           develop_sha="${CURRENT_DEVELOP_SHA}"
