@@ -1,0 +1,67 @@
+version: 1
+id: pester-service-model-control-plane
+description: >
+  Dedicated local CI audit surface for the Pester service-model subsystem. This
+  bundle captures the layered workflows, execution helpers, assurance packet,
+  and the local autonomy loop that ranks the next requirement to tackle.
+include:
+  - package.json
+  - tools/priority/pester-service-model-autonomy-policy.json
+  - .github/workflows/pester-context.yml
+  - .github/workflows/pester-gate.yml
+  - .github/workflows/pester-run.yml
+  - .github/workflows/pester-evidence.yml
+  - .github/workflows/pester-service-model-on-label.yml
+  - .github/workflows/pester-selection.yml
+  - .github/workflows/pester-service-model-quality.yml
+  - .github/workflows/pester-service-model-release-evidence.yml
+  - .github/workflows/selfhosted-readiness.yml
+  - docs/knowledgebase/Pester-Service-Model.md
+  - docs/knowledgebase/Local-Proof-Autonomy-Program.md
+  - docs/architecture/pester-service-model-control-plane.md
+  - docs/pester-service-model-promotion-comparison.json
+  - docs/requirements-pester-service-model-srs.md
+  - docs/rtm-pester-service-model.csv
+  - docs/schemas/pester-derived-provenance-v1.schema.json
+  - docs/schemas/pester-service-model-local-ci-report-v1.schema.json
+  - docs/schemas/pester-service-model-next-step-v1.schema.json
+  - docs/schemas/comparevi-local-program-ci-report-v1.schema.json
+  - docs/schemas/comparevi-local-program-next-step-v1.schema.json
+  - docs/schemas/pester-promotion-comparison-v1.schema.json
+  - docs/testing/pester-service-model-test-plan.md
+  - docs/pester-service-model-quality-report.md
+  - tools/priority/pester-service-model-local-ci.mjs
+  - tools/priority/windows-host-bridge.mjs
+  - tools/priority/comparevi-local-program-ci.mjs
+  - tools/priority/pester-service-model-provenance.mjs
+  - tools/priority/__tests__/comparevi-local-program-ci.test.mjs
+  - tools/priority/__tests__/pester-service-model-local-ci.test.mjs
+  - tools/priority/__tests__/pester-service-model-local-harness-contract.test.mjs
+  - tools/priority/__tests__/pester-service-model-release-evidence-provenance.test.mjs
+  - tools/priority/__tests__/pester-service-model-workflow-contract.test.mjs
+  - tools/priority/__tests__/windows-host-bridge.test.mjs
+  - tools/Write-PesterTotals.ps1
+  - tools/Invoke-PesterEvidenceClassification.ps1
+  - tools/Invoke-PesterEvidenceProvenance.ps1
+  - tools/Invoke-PesterWindowsContainerSurfaceProbe.ps1
+  - tools/Replay-PesterServiceModelArtifacts.Local.ps1
+  - Invoke-PesterTests.ps1
+  - tools/PesterPathHygiene.ps1
+  - tools/Invoke-PesterExecutionFinalize.ps1
+  - tools/Invoke-PesterExecutionPostprocess.ps1
+  - tools/Run-PesterExecutionOnly.Local.ps1
+  - tests/PesterPathHygiene.Tests.ps1
+  - tests/Run-PesterExecutionOnly.Local.PathHygiene.Tests.ps1
+  - tests/Invoke-PesterEvidenceClassification.Tests.ps1
+  - tests/Invoke-PesterEvidenceProvenance.Tests.ps1
+  - tests/Invoke-PesterWindowsContainerSurfaceProbe.Tests.ps1
+  - tests/Replay-PesterServiceModelRepresentativeArtifact.Tests.ps1
+  - tests/Replay-PesterServiceModelArtifacts.Local.Tests.ps1
+  - tests/fixtures/pester-service-model/legacy-results-xml-truncated/pester-run-receipt.json
+  - tests/fixtures/pester-service-model/legacy-results-xml-truncated/raw/pester-results.xml
+  - tests/fixtures/pester-service-model/legacy-results-xml-truncated/raw/pester-summary.json
+  - tests/fixtures/pester-service-model/legacy-results-xml-truncated/raw/dispatcher-events.ndjson
+  - tests/fixtures/pester-service-model/legacy-results-xml-truncated/raw/pester-failures.json
+  - scripts/Write-PesterSummaryToStepSummary.ps1
+  - tools/Write-PesterTopFailures.ps1
+  - tools/Print-PesterTopFailures.ps1

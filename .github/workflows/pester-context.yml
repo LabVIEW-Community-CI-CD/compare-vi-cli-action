@@ -1,0 +1,186 @@
+name: Pester context
+
+on:
+  workflow_call:
+    inputs:
+      sample_id:
+        required: false
+        type: string
+      checkout_repository:
+        required: false
+        type: string
+      checkout_ref:
+        required: false
+        type: string
+    outputs:
+      receipt_status:
+        description: 'Overall context status for the repo/control-plane layer'
+        value: ${{ jobs.context.outputs.receipt_status }}
+      receipt_artifact_name:
+        description: 'Artifact name containing the context receipt bundle'
+        value: ${{ jobs.context.outputs.receipt_artifact_name }}
+      repository:
+        description: 'Repository slug resolved for context classification'
+        value: ${{ jobs.context.outputs.repository }}
+      standing_priority_issue:
+        description: 'Standing-priority issue number when context is ready'
+        value: ${{ jobs.context.outputs.standing_priority_issue }}
+      standing_priority_reason:
+        description: 'Reason emitted by the context classifier'
+        value: ${{ jobs.context.outputs.standing_priority_reason }}
+  workflow_dispatch:
+    inputs:
+      sample_id:
+        description: 'Sampling correlation id (prevents cancels)'
+        required: false
+        default: ''
+        type: string
+      checkout_repository:
+        description: 'Repository to checkout for context resolution'
+        required: false
+        default: ''
+        type: string
+      checkout_ref:
+        description: 'Git ref or SHA to checkout for context resolution'
+        required: false
+        default: ''
+        type: string
+
+concurrency:
+  group: pester-context-${{ github.event.inputs.sample_id || inputs.sample_id || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  context:
+    runs-on: ubuntu-latest
+    outputs:
+      receipt_status: ${{ steps.receipt.outputs.status }}
+      receipt_artifact_name: ${{ steps.receipt.outputs.artifact_name }}
+      repository: ${{ steps.receipt.outputs.repository }}
+      standing_priority_issue: ${{ steps.receipt.outputs.standing_priority_issue }}
+      standing_priority_reason: ${{ steps.receipt.outputs.reason }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          repository: ${{ inputs.checkout_repository || github.repository }}
+          ref: ${{ inputs.checkout_ref || github.sha }}
+
+      - name: Install Node dependencies
+        shell: pwsh
+        run: node tools/npm/cli.mjs ci
+
+      - name: Validate repository context
+        shell: pwsh
+        run: |
+          $repository = '${{ inputs.checkout_repository || github.repository }}'
+          if ([string]::IsNullOrWhiteSpace($repository)) {
+            throw 'Repository context is empty.'
+          }
+
+      - name: Export workflow token for context sync
+        shell: pwsh
+        env:
+          WORKFLOW_TOKEN: ${{ github.token }}
+        run: |
+          if (-not $env:WORKFLOW_TOKEN) { throw 'github.token is empty' }
+          "GH_TOKEN=$env:WORKFLOW_TOKEN" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "GITHUB_TOKEN=$env:WORKFLOW_TOKEN" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Resolve standing-priority context
+        id: standing_context
+        continue-on-error: true
+        shell: pwsh
+        run: node tools/priority/run-sync-standing-priority.mjs --materialize-cache
+
+      - name: Write context receipt
+        id: receipt
+        if: always()
+        shell: pwsh
+        run: |
+          $outDir = 'tests/results/pester-context'
+          New-Item -ItemType Directory -Force -Path $outDir | Out-Null
+
+          $issueDir = 'tests/results/_agent/issue'
+          $routerPath = Join-Path $issueDir 'router.json'
+          $noStandingPath = Join-Path $issueDir 'no-standing-priority.json'
+          $repository = '${{ inputs.checkout_repository || github.repository }}'
+          if ([string]::IsNullOrWhiteSpace($repository)) {
+            $repository = $env:GITHUB_REPOSITORY
+          }
+
+          $status = 'blocked'
+          $reason = 'context-sync-missing'
+          $standingIssue = ''
+          $issueSummaryPath = $null
+          $syncOutcome = '${{ steps.standing_context.outcome }}'
+
+          if (Test-Path -LiteralPath $noStandingPath) {
+            $report = Get-Content -LiteralPath $noStandingPath -Raw | ConvertFrom-Json -ErrorAction Stop
+            $status = 'blocked'
+            $reason = if ($report.reason) { [string]$report.reason } elseif ($report.message) { [string]$report.message } else { 'standing-priority-missing' }
+          } elseif (Test-Path -LiteralPath $routerPath) {
+            $router = Get-Content -LiteralPath $routerPath -Raw | ConvertFrom-Json -ErrorAction Stop
+            $issueValue = 0
+            if ([int]::TryParse([string]$router.issue, [ref]$issueValue) -and $issueValue -gt 0) {
+              $standingIssue = [string]$issueValue
+              $issueSummaryPath = Join-Path $issueDir ("{0}.json" -f $standingIssue)
+              if (Test-Path -LiteralPath $issueSummaryPath) {
+                $issueSummary = Get-Content -LiteralPath $issueSummaryPath -Raw | ConvertFrom-Json -ErrorAction Stop
+                if ($issueSummary.schema -eq 'standing-priority/issue@v1') {
+                  $status = 'ready'
+                  $reason = 'standing-priority-available'
+                  if ($issueSummary.url -match 'https://github.com/(?<slug>[^/]+/[^/]+)/issues/') {
+                    $repository = $matches.slug
+                  }
+                } else {
+                  $status = 'warning'
+                  $reason = ("unexpected-issue-schema:{0}" -f $issueSummary.schema)
+                }
+              } else {
+                $status = if ($syncOutcome -eq 'success') { 'warning' } else { 'blocked' }
+                $reason = if ($syncOutcome -eq 'success') { 'standing-priority-summary-missing' } else { 'context-sync-failed' }
+              }
+            } else {
+              $status = if ($syncOutcome -eq 'success') { 'warning' } else { 'blocked' }
+              $reason = if ($syncOutcome -eq 'success') { 'standing-priority-router-missing-issue' } else { 'context-sync-failed' }
+            }
+          } elseif ($syncOutcome -eq 'success') {
+            $status = 'warning'
+            $reason = 'standing-priority-router-missing'
+          } else {
+            $status = 'blocked'
+            $reason = 'context-sync-failed'
+          }
+
+          $receipt = [ordered]@{
+            schema         = 'pester-context-receipt@v1'
+            generatedAtUtc = [DateTime]::UtcNow.ToString('o')
+            status         = $status
+            repository     = $repository
+            sampleId       = '${{ inputs.sample_id || github.event.inputs.sample_id || '' }}'
+            standingPriority = [ordered]@{
+              issueNumber      = if ($standingIssue) { [int]$standingIssue } else { $null }
+              reason           = $reason
+              routerPath       = if (Test-Path -LiteralPath $routerPath) { 'tests/results/_agent/issue/router.json' } else { $null }
+              issueSummaryPath = if ($issueSummaryPath -and (Test-Path -LiteralPath $issueSummaryPath)) { "tests/results/_agent/issue/$standingIssue.json" } else { $null }
+              noStandingPath   = if (Test-Path -LiteralPath $noStandingPath) { 'tests/results/_agent/issue/no-standing-priority.json' } else { $null }
+            }
+            sync = [ordered]@{
+              outcome = $syncOutcome
+            }
+          }
+          $receiptPath = Join-Path $outDir 'pester-context.json'
+          $receipt | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $receiptPath -Encoding UTF8
+          "status=$status" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "artifact_name=pester-context" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "repository=$repository" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "standing_priority_issue=$standingIssue" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "reason=$reason" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+
+      - name: Upload context receipt
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: pester-context
+          path: tests/results/pester-context
+          if-no-files-found: error

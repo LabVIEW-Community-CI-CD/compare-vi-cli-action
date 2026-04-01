@@ -95,6 +95,10 @@ if ($Args[0] -eq 'context' -and $Args.Count -ge 3 -and $Args[1] -eq 'use') {
 }
 
 if ($Args[0] -eq 'info') {
+  $infoSleep = [Environment]::GetEnvironmentVariable('DOCKER_STUB_INFO_SLEEP_SECONDS')
+  if (-not [string]::IsNullOrWhiteSpace($infoSleep)) {
+    Start-Sleep -Seconds ([int]$infoSleep)
+  }
   if ([Environment]::GetEnvironmentVariable('DOCKER_STUB_FORCE_INFO_FAILURE') -eq '1') {
     [Console]::Error.WriteLine('docker info failed')
     exit 1
@@ -129,6 +133,10 @@ if ($Args[0] -eq 'manifest' -and $Args.Count -ge 3 -and $Args[1] -eq 'inspect') 
 }
 
 if ($Args[0] -eq 'image' -and $Args.Count -ge 3 -and $Args[1] -eq 'inspect') {
+  $inspectSleep = [Environment]::GetEnvironmentVariable('DOCKER_STUB_INSPECT_SLEEP_SECONDS')
+  if (-not [string]::IsNullOrWhiteSpace($inspectSleep)) {
+    Start-Sleep -Seconds ([int]$inspectSleep)
+  }
   $image = [string]$Args[2]
   $requirePullWindows = ([Environment]::GetEnvironmentVariable('DOCKER_STUB_REQUIRE_PULL_WINDOWS') -eq '1')
   $requirePullLinux = ([Environment]::GetEnvironmentVariable('DOCKER_STUB_REQUIRE_PULL_LINUX') -eq '1')
@@ -154,6 +162,11 @@ if ($Args[0] -eq 'image' -and $Args.Count -ge 3 -and $Args[1] -eq 'inspect') {
 
 if ($Args[0] -eq 'pull' -and $Args.Count -ge 2) {
   $image = [string]$Args[1]
+  $pullSleepVar = if (Is-WindowsImage -Image $image) { 'DOCKER_STUB_PULL_SLEEP_WINDOWS' } else { 'DOCKER_STUB_PULL_SLEEP_LINUX' }
+  $pullSleep = [Environment]::GetEnvironmentVariable($pullSleepVar)
+  if (-not [string]::IsNullOrWhiteSpace($pullSleep)) {
+    Start-Sleep -Seconds ([int]$pullSleep)
+  }
   if (([Environment]::GetEnvironmentVariable('DOCKER_STUB_PULL_FAIL_WINDOWS') -eq '1') -and (Is-WindowsImage -Image $image)) {
     [Console]::Error.WriteLine(("pull denied for {0}" -f $image))
     exit 1
@@ -173,6 +186,18 @@ if ($Args[0] -eq 'pull' -and $Args.Count -ge 2) {
 
 if ($Args[0] -eq 'run') {
   $joined = ($Args -join ' ')
+  if ($joined -match '(?i)windows') {
+    $runSleep = [Environment]::GetEnvironmentVariable('DOCKER_STUB_RUN_SLEEP_WINDOWS')
+    if (-not [string]::IsNullOrWhiteSpace($runSleep)) {
+      Start-Sleep -Seconds ([int]$runSleep)
+    }
+  }
+  if ($joined -match '(?i)linux') {
+    $runSleep = [Environment]::GetEnvironmentVariable('DOCKER_STUB_RUN_SLEEP_LINUX')
+    if (-not [string]::IsNullOrWhiteSpace($runSleep)) {
+      Start-Sleep -Seconds ([int]$runSleep)
+    }
+  }
   $runFailWindows = ([Environment]::GetEnvironmentVariable('DOCKER_STUB_RUN_FAIL_WINDOWS') -eq '1')
   $runFailLinux = ([Environment]::GetEnvironmentVariable('DOCKER_STUB_RUN_FAIL_LINUX') -eq '1')
   if ($runFailWindows -and $joined -match '(?i)windows') {
@@ -198,6 +223,7 @@ exit 0
       Set-Content -LiteralPath (Join-Path $binDir 'docker.cmd') -Value $dockerCmd -Encoding ascii
 
       $env:PATH = "{0};{1}" -f $binDir, $env:PATH
+      $env:DOCKER_COMMAND_OVERRIDE = (Join-Path $binDir 'docker.ps1')
     }
   }
 
@@ -214,6 +240,13 @@ exit 0
       DOCKER_STUB_PULL_FAIL_LINUX = $env:DOCKER_STUB_PULL_FAIL_LINUX
       DOCKER_STUB_RUN_FAIL_WINDOWS = $env:DOCKER_STUB_RUN_FAIL_WINDOWS
       DOCKER_STUB_RUN_FAIL_LINUX = $env:DOCKER_STUB_RUN_FAIL_LINUX
+      DOCKER_STUB_INFO_SLEEP_SECONDS = $env:DOCKER_STUB_INFO_SLEEP_SECONDS
+      DOCKER_STUB_INSPECT_SLEEP_SECONDS = $env:DOCKER_STUB_INSPECT_SLEEP_SECONDS
+      DOCKER_STUB_PULL_SLEEP_WINDOWS = $env:DOCKER_STUB_PULL_SLEEP_WINDOWS
+      DOCKER_STUB_PULL_SLEEP_LINUX = $env:DOCKER_STUB_PULL_SLEEP_LINUX
+      DOCKER_STUB_RUN_SLEEP_WINDOWS = $env:DOCKER_STUB_RUN_SLEEP_WINDOWS
+      DOCKER_STUB_RUN_SLEEP_LINUX = $env:DOCKER_STUB_RUN_SLEEP_LINUX
+      DOCKER_COMMAND_OVERRIDE = $env:DOCKER_COMMAND_OVERRIDE
       RUNNER_TEMP = $env:RUNNER_TEMP
     }
   }
@@ -366,6 +399,61 @@ exit 0
     $json.status | Should -Be 'failure'
     $json.failureClass | Should -Be 'image-bootstrap'
     $json.probes.windows.status | Should -Be 'success'
+  }
+
+  It 'fails closed with image-bootstrap-timeout when a windows image pull exceeds the allowed bound' {
+    $work = Join-Path $TestDrive 'pull-timeout'
+    New-Item -ItemType Directory -Path $work -Force | Out-Null
+    & $script:CreateDockerStub -WorkRoot $work
+
+    Set-Item Env:DOCKER_STUB_STATE_PATH (Join-Path $work 'docker-state.json')
+    Set-Item Env:DOCKER_STUB_INITIAL_CONTEXT 'desktop-windows'
+    Set-Item Env:DOCKER_STUB_REQUIRE_PULL_WINDOWS '1'
+    Set-Item Env:DOCKER_STUB_PULL_SLEEP_WINDOWS '6'
+    Set-Item Env:RUNNER_TEMP (Join-Path $work 'runner-temp')
+
+    $jsonPath = Join-Path $work 'docker-runtime-manager.json'
+    $output = @(& pwsh -NoLogo -NoProfile -File $script:ManagerScript `
+      -ProbeScope windows `
+      -OutputJsonPath $jsonPath `
+      -BootstrapPullTimeoutSeconds 5 `
+      -SwitchRetryCount 1 `
+      -SwitchTimeoutSeconds 30 2>&1)
+
+    $LASTEXITCODE | Should -Not -Be 0
+    ($output -join "`n") | Should -Match 'docker pull timed out'
+
+    $json = Get-Content -LiteralPath $jsonPath -Raw | ConvertFrom-Json -Depth 30
+    $json.status | Should -Be 'failure'
+    $json.failureClass | Should -Be 'image-bootstrap-timeout'
+    $json.probes.windows.bootstrap.pullError | Should -Match 'docker pull timed out'
+  }
+
+  It 'fails closed with runtime-probe-timeout when a windows runtime probe exceeds the allowed bound' {
+    $work = Join-Path $TestDrive 'runtime-probe-timeout'
+    New-Item -ItemType Directory -Path $work -Force | Out-Null
+    & $script:CreateDockerStub -WorkRoot $work
+
+    Set-Item Env:DOCKER_STUB_STATE_PATH (Join-Path $work 'docker-state.json')
+    Set-Item Env:DOCKER_STUB_INITIAL_CONTEXT 'desktop-windows'
+    Set-Item Env:DOCKER_STUB_RUN_SLEEP_WINDOWS '6'
+    Set-Item Env:RUNNER_TEMP (Join-Path $work 'runner-temp')
+
+    $jsonPath = Join-Path $work 'docker-runtime-manager.json'
+    $output = @(& pwsh -NoLogo -NoProfile -File $script:ManagerScript `
+      -ProbeScope windows `
+      -OutputJsonPath $jsonPath `
+      -ProbeTimeoutSeconds 5 `
+      -SwitchRetryCount 1 `
+      -SwitchTimeoutSeconds 30 2>&1)
+
+    $LASTEXITCODE | Should -Not -Be 0
+    ($output -join "`n") | Should -Match 'Runtime probe failed'
+
+    $json = Get-Content -LiteralPath $jsonPath -Raw | ConvertFrom-Json -Depth 30
+    $json.status | Should -Be 'failure'
+    $json.failureClass | Should -Be 'runtime-probe-timeout'
+    $json.probes.windows.probe.status | Should -Be 'timeout'
   }
 
   It 'fails with lock timeout when the runtime manager lock is held by another process' {

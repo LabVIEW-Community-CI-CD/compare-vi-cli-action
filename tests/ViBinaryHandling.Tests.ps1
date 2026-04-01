@@ -1,33 +1,15 @@
 Describe 'VI Binary Handling Invariants' -Tag 'Unit' {
-  It 'declares *.vi as binary in .gitattributes' {
-    $attrPath = Join-Path $PSScriptRoot '..' '.gitattributes'
-    Test-Path $attrPath | Should -BeTrue
-    $content = Get-Content $attrPath -Raw
-    ($content -match '(?m)^\*\.vi\s+binary\s*$') | Should -BeTrue
-  }
+  It 'passes the standalone invariant contract script' {
+    $scriptPath = Join-Path $PSScriptRoot '..' 'tools' 'Test-VIBinaryHandlingInvariants.ps1'
+    $reportPath = Join-Path $TestDrive 'vi-binary-handling-invariants.json'
 
-  It 'does not attempt textual reads of .vi files in scripts (grep heuristic)' {
-    $root = Resolve-Path (Join-Path $PSScriptRoot '..')
-    $psFiles = Get-ChildItem $root -Recurse -Include *.ps1,*.psm1 | Where-Object { 
-      $_.FullName -notmatch '[/\\]tests[/\\]' -and $_.FullName -notmatch '[/\\]tools[/\\]' 
-    }
-    $badPatterns = @(
-      'Get-Content\s+[^\n]*\.vi',
-      'ReadAllText\(',
-      'StreamReader'
-    )
-    $violations = @()
-    foreach ($f in $psFiles) {
-      $text = Get-Content $f.FullName -Raw
-      foreach ($pat in $badPatterns) {
-        if ($text -match $pat) {
-          $violations += [pscustomobject]@{ File=$f.FullName; Pattern=$pat }
-        }
-      }
-    }
-    if ($violations.Count -gt 0) {
-      $violations | Format-Table | Out-String | Write-Host
-    }
-    $violations.Count | Should -Be 0
+    { & $scriptPath -OutputJsonPath $reportPath } | Should -Not -Throw
+
+    Test-Path -LiteralPath $reportPath | Should -BeTrue
+    $report = Get-Content -LiteralPath $reportPath -Raw | ConvertFrom-Json -Depth 8
+    $report.schema | Should -Be 'comparevi/vi-binary-handling-invariants@v1'
+    $report.status | Should -Be 'passed'
+    @($report.checks).Count | Should -BeGreaterThan 1
+    (@($report.violations).Count) | Should -Be 0
   }
 }

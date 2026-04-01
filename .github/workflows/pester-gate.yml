@@ -3,6 +3,18 @@ name: Pester gate (service model pilot)
 on:
   workflow_call:
     inputs:
+      route_should_run:
+        required: false
+        default: 'true'
+        type: string
+      route_reason:
+        required: false
+        default: ''
+        type: string
+      route_trust_mode:
+        required: false
+        default: ''
+        type: string
       include_integration:
         required: false
         default: 'false'
@@ -25,6 +37,22 @@ on:
         type: string
   workflow_dispatch:
     inputs:
+      route_should_run:
+        description: 'Whether the service-model pilot should run or emit a routed skip'
+        required: false
+        default: 'true'
+        type: choice
+        options: ['false', 'true']
+      route_reason:
+        description: 'Optional skip reason emitted by the outer router'
+        required: false
+        default: ''
+        type: string
+      route_trust_mode:
+        description: 'Optional trust-mode emitted by the outer router'
+        required: false
+        default: ''
+        type: string
       include_integration:
         description: "Include Integration-tagged tests in the execution pack"
         required: false
@@ -53,37 +81,79 @@ on:
         type: string
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.inputs.sample_id || github.ref }}
+  group: pester-gate-${{ inputs.sample_id || github.ref }}
   cancel-in-progress: true
 
 jobs:
+  skipped:
+    if: ${{ !fromJSON(inputs.route_should_run || 'true') }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Append routed skip summary
+        shell: pwsh
+        run: |
+          if ($env:GITHUB_STEP_SUMMARY) {
+            $lines = @('### Pester gate (service model pilot)', '')
+            $lines += ('- Status: skipped')
+            $lines += ('- Reason: {0}' -f '${{ inputs.route_reason || 'route-should-not-run' }}')
+            $lines += ('- Trust mode: {0}' -f '${{ inputs.route_trust_mode || 'unspecified' }}')
+            $lines += ('- Checkout repository: {0}' -f '${{ inputs.checkout_repository || github.repository }}')
+            $lines += ('- Checkout ref: {0}' -f '${{ inputs.checkout_ref || github.sha }}')
+            $lines -join "`n" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+          }
+
+  context:
+    if: ${{ fromJSON(inputs.route_should_run || 'true') }}
+    uses: ./.github/workflows/pester-context.yml
+    with:
+      sample_id: ${{ inputs.sample_id || '' }}
+      checkout_repository: ${{ inputs.checkout_repository || github.repository }}
+      checkout_ref: ${{ inputs.checkout_ref || github.sha }}
+
   readiness:
+    needs: context
+    if: ${{ always() && fromJSON(inputs.route_should_run || 'true') && needs.context.outputs.receipt_status == 'ready' }}
     uses: ./.github/workflows/selfhosted-readiness.yml
     with:
       sample_id: ${{ inputs.sample_id || '' }}
       checkout_repository: ${{ inputs.checkout_repository || github.repository }}
       checkout_ref: ${{ inputs.checkout_ref || github.sha }}
 
-  pester-run:
-    needs: readiness
-    if: always()
-    uses: ./.github/workflows/pester-run.yml
+  selection:
+    needs: context
+    if: ${{ always() && fromJSON(inputs.route_should_run || 'true') && needs.context.outputs.receipt_status == 'ready' }}
+    uses: ./.github/workflows/pester-selection.yml
     with:
       include_integration: ${{ inputs.include_integration || 'false' }}
       include_patterns: ${{ inputs.include_patterns || '' }}
       sample_id: ${{ inputs.sample_id || '' }}
+      checkout_repository: ${{ inputs.checkout_repository || github.repository }}
+      checkout_ref: ${{ inputs.checkout_ref || github.sha }}
+
+  pester-run:
+    needs: [context, readiness, selection]
+    if: ${{ always() && fromJSON(inputs.route_should_run || 'true') }}
+    uses: ./.github/workflows/pester-run.yml
+    with:
+      sample_id: ${{ inputs.sample_id || '' }}
+      context_status: ${{ needs.context.outputs.receipt_status || needs.context.result || 'unknown' }}
+      context_artifact_name: ${{ needs.context.outputs.receipt_artifact_name || 'pester-context' }}
       readiness_status: ${{ needs.readiness.outputs.receipt_status || needs.readiness.result || 'unknown' }}
       readiness_artifact_name: ${{ needs.readiness.outputs.receipt_artifact_name || 'pester-readiness' }}
+      selection_status: ${{ needs.selection.outputs.receipt_status || needs.selection.result || 'unknown' }}
+      selection_artifact_name: ${{ needs.selection.outputs.receipt_artifact_name || 'pester-selection' }}
       checkout_repository: ${{ inputs.checkout_repository || github.repository }}
       checkout_ref: ${{ inputs.checkout_ref || github.sha }}
 
   pester-evidence:
-    needs: [readiness, pester-run]
-    if: always()
+    needs: [context, readiness, selection, pester-run]
+    if: ${{ always() && fromJSON(inputs.route_should_run || 'true') }}
     uses: ./.github/workflows/pester-evidence.yml
     with:
       raw_artifact_name: ${{ needs.pester-run.outputs.raw_artifact_name }}
       execution_receipt_artifact_name: ${{ needs.pester-run.outputs.execution_receipt_artifact_name || 'pester-execution-contract' }}
       dispatcher_exit_code: ${{ needs.pester-run.outputs.dispatcher_exit_code }}
+      context_status: ${{ needs.context.outputs.receipt_status || needs.context.result || 'unknown' }}
       readiness_status: ${{ needs.readiness.outputs.receipt_status || needs.readiness.result || 'unknown' }}
+      selection_status: ${{ needs.selection.outputs.receipt_status || needs.selection.result || 'unknown' }}
       execution_job_result: ${{ needs.pester-run.outputs.execution_status || needs.pester-run.result }}

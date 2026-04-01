@@ -19,6 +19,7 @@ export const MODE_CONFIG = Object.freeze({
   'windows-ni-2026q1-host-preflight': Object.freeze({
     kind: 'preflight-only',
     helperPath: path.join('tools', 'Test-WindowsNI2026q1HostPreflight.ps1'),
+    helperTimeoutSeconds: 300,
     preflightReportPath: path.join(
       DEFAULT_RESULTS_ROOT,
       'windows-ni-2026q1-host-preflight',
@@ -29,6 +30,8 @@ export const MODE_CONFIG = Object.freeze({
     kind: 'preflight-compare',
     helperPath: path.join('tools', 'Test-WindowsNI2026q1HostPreflight.ps1'),
     compareHelperPath: path.join('tools', 'Run-NIWindowsContainerCompare.ps1'),
+    helperTimeoutSeconds: 300,
+    compareProcessTimeoutSeconds: 900,
     preflightReportPath: path.join(
       DEFAULT_RESULTS_ROOT,
       'vi-history-scenarios-windows',
@@ -128,12 +131,16 @@ function runProcess(command, args, options = {}) {
     encoding: 'utf8',
     env: options.env ?? process.env,
     maxBuffer: options.maxBuffer ?? DEFAULT_REPLAY_MAX_BUFFER_BYTES,
+    timeout: options.timeoutMs,
+    killSignal: options.killSignal ?? 'SIGKILL',
   });
   return {
     status: typeof result.status === 'number' ? result.status : null,
     stdout: result.stdout ?? '',
     stderr: result.stderr ?? '',
     error: result.error ?? null,
+    signal: result.signal ?? null,
+    timedOut: result.error?.code === 'ETIMEDOUT',
   };
 }
 
@@ -331,12 +338,14 @@ export function buildReplayCommand(options) {
   const replayCommand = {
     kind: config.kind,
     helperPath: config.helperPath,
+    helperTimeoutSeconds: config.helperTimeoutSeconds ?? 300,
     command,
     modePaths,
   };
 
   if (config.kind === 'preflight-compare') {
     replayCommand.compareHelperPath = config.compareHelperPath;
+    replayCommand.compareProcessTimeoutSeconds = config.compareProcessTimeoutSeconds ?? (config.timeoutSeconds + 300);
     replayCommand.compareCommand = [
       '-NoLogo',
       '-NoProfile',
@@ -491,7 +500,16 @@ export async function runWindowsWorkflowReplayLane(
     cwd: repoRoot,
     env,
     maxBuffer: DEFAULT_REPLAY_MAX_BUFFER_BYTES,
+    timeoutMs: replayCommand.helperTimeoutSeconds * 1000,
+    killSignal: 'SIGKILL',
   });
+
+  if (helperResult.timedOut) {
+    return failClosed(
+      `Windows replay helper exceeded the bounded timeout of ${replayCommand.helperTimeoutSeconds}s.`,
+      124,
+    );
+  }
 
   if (!fs.existsSync(preflightReportResolvedPath)) {
     return failClosed(
@@ -526,7 +544,15 @@ export async function runWindowsWorkflowReplayLane(
         cwd: repoRoot,
         env,
         maxBuffer: DEFAULT_REPLAY_MAX_BUFFER_BYTES,
+        timeoutMs: replayCommand.compareProcessTimeoutSeconds * 1000,
+        killSignal: 'SIGKILL',
       });
+      if (compareResult.timedOut) {
+        return failClosed(
+          `Windows compare helper exceeded the bounded timeout of ${replayCommand.compareProcessTimeoutSeconds}s.`,
+          124,
+        );
+      }
       const compareExitCode = compareResult.status ?? 0;
       const reportResolvedPath = resolveRepoPath(repoRoot, replayCommand.modePaths.reportPath);
       const captureResolvedPath = resolveRepoPath(repoRoot, replayCommand.modePaths.capturePath);

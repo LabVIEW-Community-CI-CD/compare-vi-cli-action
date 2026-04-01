@@ -88,6 +88,7 @@ test('buildReplayCommand forwards the deterministic Windows preflight locations'
   });
 
   assert.equal(command.helperPath.replace(/\\/g, '/'), 'tools/Test-WindowsNI2026q1HostPreflight.ps1');
+  assert.equal(command.helperTimeoutSeconds, 300);
   assert.deepEqual(command.command, [
     '-NoLogo',
     '-NoProfile',
@@ -127,6 +128,8 @@ test('buildReplayCommand exposes the local vi-history-scenarios-windows compare 
 
   assert.equal(command.kind, 'preflight-compare');
   assert.equal(command.compareHelperPath.replace(/\\/g, '/'), 'tools/Run-NIWindowsContainerCompare.ps1');
+  assert.equal(command.helperTimeoutSeconds, 300);
+  assert.equal(command.compareProcessTimeoutSeconds, 900);
   assert.deepEqual(command.compareCommand, [
     '-NoLogo',
     '-NoProfile',
@@ -429,5 +432,35 @@ test('runWindowsWorkflowReplayLane fails closed and still writes a receipt when 
   assert.equal(result.status, 'failed');
   assert.equal(result.receipt.result.status, 'failed');
   assert.match(result.receipt.result.errorMessage, /preflight failed/i);
+  runSchemaValidate(repoRoot, replaySchemaPath, path.join(tmpDir, options.receiptPath));
+});
+
+test('runWindowsWorkflowReplayLane fails closed when the helper exceeds the bounded timeout', async () => {
+  const { parseArgs, runWindowsWorkflowReplayLane } = await loadModule();
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'windows-workflow-replay-timeout-'));
+  const options = parseArgs(['node', modulePath], tmpDir);
+
+  const result = await runWindowsWorkflowReplayLane(options, {
+    repoRoot: tmpDir,
+    resolveRepoGitStateFn: () => ({
+      headSha: 'abc123',
+      branch: 'issue/upstream-2088-windows-replay-timeout',
+      upstreamDevelopMergeBase: 'base123',
+      dirtyTracked: false,
+    }),
+    runProcessFn: () => ({
+      status: null,
+      stdout: '',
+      stderr: '',
+      error: Object.assign(new Error('spawnSync pwsh ETIMEDOUT'), { code: 'ETIMEDOUT' }),
+      signal: 'SIGKILL',
+      timedOut: true,
+    }),
+  });
+
+  assert.equal(result.status, 'failed');
+  assert.equal(result.receipt.result.status, 'failed');
+  assert.equal(result.receipt.result.exitCode, 124);
+  assert.match(result.receipt.result.errorMessage, /bounded timeout of 300s/i);
   runSchemaValidate(repoRoot, replaySchemaPath, path.join(tmpDir, options.receiptPath));
 });

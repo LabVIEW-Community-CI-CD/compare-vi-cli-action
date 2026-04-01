@@ -11,12 +11,12 @@ Describe 'Pester Summary Context Emission' {
     New-Item -ItemType Directory -Path $tempDir | Out-Null
     $testsDir = Join-Path $tempDir 'tests'
     New-Item -ItemType Directory -Path $testsDir | Out-Null
-    Set-Content -LiteralPath (Join-Path $testsDir 'Mini.Tests.ps1') -Value "Describe 'Mini' { It 'passes' { 1 | Should -Be 1 } }" -Encoding UTF8
+    Set-Content -LiteralPath (Join-Path $testsDir 'Invoke-PesterTests.Sample.Tests.ps1') -Value "Describe 'Mini' { It 'passes' { 1 | Should -Be 1 } }" -Encoding UTF8
 
     Push-Location $root
     try {
       $resDir = Join-Path $tempDir 'results'
-      & pwsh -NoLogo -NoProfile -File $dispatcher -TestsPath $testsDir -ResultsPath $resDir -EmitContext | Out-Null
+      & pwsh -NoLogo -NoProfile -File $dispatcher -TestsPath $testsDir -ResultsPath $resDir -EmitContext -ExecutionPack dispatcher | Out-Null
       $summaryPath = Join-Path $resDir 'pester-summary.json'
       Test-Path $summaryPath | Should -BeTrue
       $json = Get-Content -LiteralPath $summaryPath -Raw | ConvertFrom-Json
@@ -32,6 +32,9 @@ Describe 'Pester Summary Context Emission' {
       $json.selection.totalDiscoveredFileCount | Should -BeGreaterThan 0
       $json.selection.selectedTestFileCount | Should -BeGreaterThan 0
       $json.selection.maxTestFilesApplied | Should -BeFalse
+      $json.selection.executionPack | Should -Be 'dispatcher'
+      $json.selection.executionPackSource | Should -Be 'declared'
+      @($json.selection.effectiveIncludePatterns) | Should -Contain 'Invoke-PesterTests*.ps1'
     } finally {
       Pop-Location
       Remove-Item -Recurse -Force $tempDir -ErrorAction SilentlyContinue

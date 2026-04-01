@@ -3,14 +3,14 @@ name: Pester run
 on:
   workflow_call:
     inputs:
-      include_integration:
+      context_status:
         required: false
         type: string
-        default: 'false'
-      include_patterns:
+        default: 'unknown'
+      context_artifact_name:
         required: false
         type: string
-        default: ''
+        default: 'pester-context'
       sample_id:
         required: false
         type: string
@@ -22,6 +22,14 @@ on:
         required: false
         type: string
         default: 'pester-readiness'
+      selection_status:
+        required: false
+        type: string
+        default: 'unknown'
+      selection_artifact_name:
+        required: false
+        type: string
+        default: 'pester-selection'
       checkout_repository:
         required: false
         type: string
@@ -43,16 +51,15 @@ on:
         value: ${{ jobs.finalize.outputs.execution_receipt_artifact_name }}
   workflow_dispatch:
     inputs:
-      include_integration:
-        description: "Include Integration-tagged tests in the execution pack"
+      context_status:
+        description: 'Context receipt status'
         required: false
-        default: 'false'
-        type: choice
-        options: ['false', 'true']
-      include_patterns:
-        description: 'Optional repo-relative IncludePatterns selector'
+        default: 'unknown'
+        type: string
+      context_artifact_name:
+        description: 'Context receipt artifact name'
         required: false
-        default: ''
+        default: 'pester-context'
         type: string
       sample_id:
         description: 'Sampling correlation id (prevents cancels)'
@@ -69,6 +76,16 @@ on:
         required: false
         default: 'pester-readiness'
         type: string
+      selection_status:
+        description: 'Selection receipt status'
+        required: false
+        default: 'unknown'
+        type: string
+      selection_artifact_name:
+        description: 'Selection receipt artifact name'
+        required: false
+        default: 'pester-selection'
+        type: string
       checkout_repository:
         description: 'Repository to checkout for execution'
         required: false
@@ -81,34 +98,14 @@ on:
         type: string
 
 concurrency:
-  group: ${{ github.workflow }}-pester-run-${{ github.event.inputs.sample_id || inputs.sample_id || github.ref }}
+  group: pester-run-${{ github.event.inputs.sample_id || inputs.sample_id || github.ref }}
   cancel-in-progress: true
 
 jobs:
-  normalize:
-    runs-on: ubuntu-latest
-    outputs:
-      include_integration: ${{ steps.b.outputs.normalized }}
-    steps:
-      - uses: actions/checkout@v5
-        with:
-          repository: ${{ inputs.checkout_repository || github.repository }}
-          ref: ${{ inputs.checkout_ref || github.sha }}
-      - name: Apply determinism profile
-        uses: ./.github/actions/determinism-profile
-        with:
-          strict: 'true'
-      - name: Normalize include_integration
-        id: b
-        uses: ./.github/actions/bool-normalize
-        with:
-          value: ${{ inputs.include_integration || 'false' }}
-
   pester:
     name: Pester (execution only)
-    if: ${{ inputs.readiness_status == 'ready' }}
+    if: ${{ inputs.context_status == 'ready' && inputs.readiness_status == 'ready' && inputs.selection_status == 'ready' }}
     runs-on: [self-hosted, Windows, X64, comparevi, capability-ingress]
-    needs: normalize
     env:
       LV_SUPPRESS_UI: ${{ vars.LV_SUPPRESS_UI || '1' }}
       LV_NO_ACTIVATE: ${{ vars.LV_NO_ACTIVATE || '1' }}
@@ -124,21 +121,42 @@ jobs:
       dispatcher_exit_code: ${{ steps.execution_receipt.outputs.dispatcher_exit_code }}
       raw_artifact_name: ${{ steps.execution_receipt.outputs.raw_artifact_name }}
       execution_receipt_status: ${{ steps.execution_receipt.outputs.status }}
+      selection_execution_pack: ${{ steps.selection_receipt.outputs.execution_pack }}
+      selection_execution_pack_source: ${{ steps.selection_receipt.outputs.execution_pack_source }}
     steps:
       - uses: actions/checkout@v5
+        with:
+          repository: ${{ inputs.checkout_repository || github.repository }}
+          ref: ${{ inputs.checkout_ref || github.sha }}
 
       - name: Install Node dependencies
         shell: pwsh
         run: node tools/npm/cli.mjs ci
 
-      - name: Export workflow token for priority sync
+      - name: Download context receipt artifact
+        uses: actions/download-artifact@v5
+        with:
+          name: ${{ inputs.context_artifact_name }}
+          path: tests/context
+
+      - name: Validate context receipt
+        id: context_receipt
         shell: pwsh
-        env:
-          WORKFLOW_TOKEN: ${{ github.token }}
         run: |
-          if (-not $env:WORKFLOW_TOKEN) { throw 'github.token is empty' }
-          "GH_TOKEN=$env:WORKFLOW_TOKEN" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
-          "GITHUB_TOKEN=$env:WORKFLOW_TOKEN" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          $receiptPath = 'tests/context/pester-context.json'
+          if (-not (Test-Path -LiteralPath $receiptPath)) {
+            throw "Context receipt missing: $receiptPath"
+          }
+          $receipt = Get-Content -LiteralPath $receiptPath -Raw | ConvertFrom-Json -ErrorAction Stop
+          if ($receipt.schema -ne 'pester-context-receipt@v1') {
+            throw ("Unexpected context receipt schema: {0}" -f $receipt.schema)
+          }
+          if ($receipt.status -ne 'ready') {
+            throw ("Context receipt status is not ready: {0}" -f $receipt.status)
+          }
+          "path=$receiptPath" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "repository=$($receipt.repository)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "standing_priority_issue=$($receipt.standingPriority.issueNumber)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
 
       - name: Download readiness receipt artifact
         uses: actions/download-artifact@v5
@@ -174,6 +192,48 @@ jobs:
           "generated_at_utc=$($generatedAtUtc.ToString('o'))" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
           "freshness_window_seconds=$freshnessWindowSeconds" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
 
+      - name: Download selection receipt artifact
+        uses: actions/download-artifact@v5
+        with:
+          name: ${{ inputs.selection_artifact_name }}
+          path: tests/selection
+
+      - name: Validate selection receipt
+        id: selection_receipt
+        shell: pwsh
+        run: |
+          $receiptPath = 'tests/selection/pester-selection.json'
+          if (-not (Test-Path -LiteralPath $receiptPath)) {
+            throw "Selection receipt missing: $receiptPath"
+          }
+          $receipt = Get-Content -LiteralPath $receiptPath -Raw | ConvertFrom-Json -ErrorAction Stop
+          if ($receipt.schema -ne 'pester-selection-receipt@v1') {
+            throw ("Unexpected selection receipt schema: {0}" -f $receipt.schema)
+          }
+          if ($receipt.status -ne 'ready') {
+            throw ("Selection receipt status is not ready: {0}" -f $receipt.status)
+          }
+          $refinePatternsJson = @($receipt.selection.refineIncludePatterns) | ConvertTo-Json -Compress
+          if (-not $refinePatternsJson) { $refinePatternsJson = '[]' }
+          $effectivePatternsJson = @($receipt.selection.effectiveIncludePatterns) | ConvertTo-Json -Compress
+          if (-not $effectivePatternsJson) { $effectivePatternsJson = '[]' }
+          "path=$receiptPath" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "execution_pack=$($receipt.selection.executionPack)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "execution_pack_source=$($receipt.selection.executionPackSource)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "integration_mode=$($receipt.selection.integrationMode)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "fixture_required=$(([string]$receipt.selection.fixtureRequired).ToLowerInvariant())" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "refine_include_patterns_json=$refinePatternsJson" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "effective_include_patterns_json=$effectivePatternsJson" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "timeout_seconds=$($receipt.dispatcherProfile.timeoutSeconds)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "emit_failures_json_always=$($receipt.dispatcherProfile.emitFailuresJsonAlways)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "detect_leaks=$($receipt.dispatcherProfile.detectLeaks)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "fail_on_leaks=$($receipt.dispatcherProfile.failOnLeaks)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "kill_leaks=$($receipt.dispatcherProfile.killLeaks)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "leak_grace_seconds=$($receipt.dispatcherProfile.leakGraceSeconds)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "clean_labview_before=$($receipt.dispatcherProfile.cleanLabVIEWBefore)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "clean_after=$($receipt.dispatcherProfile.cleanAfter)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "track_artifacts=$($receipt.dispatcherProfile.trackArtifacts)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+
       - name: Acquire session lock
         shell: pwsh
         run: pwsh -NoLogo -NoProfile -File tools/Session-Lock.ps1 -Action Acquire -Group 'pester-selfhosted' -QueueWaitSeconds 15 -QueueMaxAttempts 40 -StaleSeconds 300 -HeartbeatSeconds 15
@@ -186,12 +246,12 @@ jobs:
           process-names: 'LVCompare,LabVIEW'
 
       - name: Prepare fixture copies (base/head)
-        if: ${{ needs.normalize.outputs.include_integration == 'true' }}
+        if: ${{ steps.selection_receipt.outputs.fixture_required == 'true' }}
         id: fixtures
         uses: ./.github/actions/prepare-fixtures
 
       - name: Export fixture env for tests
-        if: ${{ needs.normalize.outputs.include_integration == 'true' }}
+        if: ${{ steps.selection_receipt.outputs.fixture_required == 'true' }}
         shell: pwsh
         run: |
           if ('${{ steps.fixtures.outputs.base }}' -and '${{ steps.fixtures.outputs.head }}') {
@@ -205,15 +265,15 @@ jobs:
         id: dprofile
         uses: ./.github/actions/dispatcher-profile
         with:
-          timeout-seconds: '0'
-          emit-failures-json-always: 'true'
-          detect-leaks: 'true'
-          fail-on-leaks: 'false'
-          kill-leaks: 'false'
-          leak-grace-seconds: '3'
-          clean-labview-before: 'false'
-          clean-after: 'false'
-          track-artifacts: 'true'
+          timeout-seconds: ${{ steps.selection_receipt.outputs.timeout_seconds }}
+          emit-failures-json-always: ${{ steps.selection_receipt.outputs.emit_failures_json_always }}
+          detect-leaks: ${{ steps.selection_receipt.outputs.detect_leaks }}
+          fail-on-leaks: ${{ steps.selection_receipt.outputs.fail_on_leaks }}
+          kill-leaks: ${{ steps.selection_receipt.outputs.kill_leaks }}
+          leak-grace-seconds: ${{ steps.selection_receipt.outputs.leak_grace_seconds }}
+          clean-labview-before: ${{ steps.selection_receipt.outputs.clean_labview_before }}
+          clean-after: ${{ steps.selection_receipt.outputs.clean_after }}
+          track-artifacts: ${{ steps.selection_receipt.outputs.track_artifacts }}
 
       - name: Wire Probe (T1)
         if: ${{ vars.WIRE_PROBES != '0' }}
@@ -227,6 +287,8 @@ jobs:
         continue-on-error: true
         shell: pwsh
         run: |
+          $previousErrorActionPreference = $ErrorActionPreference
+          $ErrorActionPreference = 'Continue'
           $logPath = 'tests/results/pester-dispatcher.log'
           $logDir = Split-Path -Parent $logPath
           if (-not (Test-Path $logDir)) { New-Item -ItemType Directory -Force -Path $logDir | Out-Null }
@@ -237,25 +299,32 @@ jobs:
           }
           $bound = [ordered]@{}
           $bound.TestsPath = 'tests'
-          $includeIntegration = '${{ needs.normalize.outputs.include_integration }}'
-          if ($includeIntegration) {
-            switch ($includeIntegration.ToString().ToLowerInvariant()) {
-              { $_ -in @('true','1','yes','y','on','include') } { $bound.IntegrationMode = 'include' }
-              { $_ -in @('false','0','no','n','off','exclude') } { $bound.IntegrationMode = 'exclude' }
-              'auto' { $bound.IntegrationMode = 'auto' }
-            }
+          $executionPack = '${{ steps.selection_receipt.outputs.execution_pack }}'
+          if ($executionPack) {
+            $bound.ExecutionPack = $executionPack
+          }
+          $integrationMode = '${{ steps.selection_receipt.outputs.integration_mode }}'
+          if ($integrationMode) {
+            $bound.IntegrationMode = $integrationMode
           }
           $bound.ResultsPath = 'tests/results'
           if ($env:DISPATCHER_LIVE_OUTPUT -ne '0') { $bound.LiveOutput = $true }
           if ('${{ steps.dprofile.outputs.emit_failures_json_always }}' -eq 'true') { $bound.EmitFailuresJsonAlways = $true }
-          if ('${{ inputs.include_patterns }}' -ne '') {
-            $bound.IncludePatterns = (Split-Path -Leaf '${{ inputs.include_patterns }}')
+          $patterns = '${{ steps.selection_receipt.outputs.refine_include_patterns_json }}' | ConvertFrom-Json -ErrorAction Stop
+          if ($patterns -and @($patterns).Count -gt 0) {
+            $bound.IncludePatterns = @($patterns)
           }
           $timeoutSeconds = '${{ steps.dprofile.outputs.timeout_seconds }}'
           if ($timeoutSeconds -and $timeoutSeconds -match '^-?\d+(\.\d+)?$') {
             $bound.TimeoutSeconds = [double]$timeoutSeconds
           }
           $lockScript = Join-Path (Get-Location) 'tools/Session-Lock.ps1'
+          $stepOutputPath = $env:GITHUB_OUTPUT
+          $dispatcherOutputTrace = Join-Path (Get-Location) 'tests/results/dispatcher-github-output.txt'
+          $dispatcherOutputDir = Split-Path -Parent $dispatcherOutputTrace
+          if ($dispatcherOutputDir -and -not (Test-Path -LiteralPath $dispatcherOutputDir)) {
+            New-Item -ItemType Directory -Path $dispatcherOutputDir -Force | Out-Null
+          }
           $heartbeatSeconds = 15
           $heartbeatJob = Start-ThreadJob -ScriptBlock {
             param($scriptPath,$seconds)
@@ -267,24 +336,51 @@ jobs:
           $exitCode = 0
           try {
             & $dispatcherPath @bound 2>&1 | Tee-Object -FilePath $logPath
-            $exitCode = $LASTEXITCODE
+            $exitCode = if ($null -ne $LASTEXITCODE) { [int]$LASTEXITCODE } else { 0 }
+          } catch {
+            $_ | Out-String | Tee-Object -FilePath $logPath -Append | Write-Host
+            $exitCode = if ($null -ne $LASTEXITCODE -and [int]$LASTEXITCODE -ne 0) { [int]$LASTEXITCODE } else { 1 }
           } finally {
+            $ErrorActionPreference = $previousErrorActionPreference
             if ($heartbeatJob) {
               Stop-Job -Id $heartbeatJob.Id | Out-Null
               Remove-Job -Id $heartbeatJob.Id -Force | Out-Null
             }
             pwsh -NoLogo -NoProfile -File $lockScript -Action Heartbeat | Out-Null
           }
-          if (-not $env:GITHUB_OUTPUT) {
-            $fallbackOutput = Join-Path (Get-Location) 'tests/results/dispatcher-github-output.txt'
-            $fallbackDir = Split-Path -Parent $fallbackOutput
-            if (-not (Test-Path -LiteralPath $fallbackDir)) {
-              New-Item -ItemType Directory -Path $fallbackDir -Force | Out-Null
-            }
-            $env:GITHUB_OUTPUT = [System.IO.Path]::GetFullPath($fallbackOutput)
+          if (-not [string]::IsNullOrWhiteSpace($stepOutputPath)) {
+            $env:GITHUB_OUTPUT = $stepOutputPath
+          } else {
+            $env:GITHUB_OUTPUT = [System.IO.Path]::GetFullPath($dispatcherOutputTrace)
           }
           "exit_code=$exitCode" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "exit_code=$exitCode" | Out-File -FilePath $dispatcherOutputTrace -Append -Encoding utf8
+          if ($exitCode -ne 0) {
+            Write-Warning ("Dispatcher exited with code {0}" -f $exitCode)
+          }
           $global:LASTEXITCODE = 0
+
+      - name: Postprocess execution results
+        id: postprocess
+        if: always()
+        shell: pwsh
+        run: |
+          $toolPath = Join-Path (Get-Location) 'tools/Invoke-PesterExecutionPostprocess.ps1'
+          if (-not (Test-Path -LiteralPath $toolPath -PathType Leaf)) {
+            throw "Postprocess tool not found at $toolPath"
+          }
+          pwsh -NoLogo -NoProfile -File $toolPath -ResultsDir 'tests/results'
+
+      - name: Materialize execution telemetry
+        id: telemetry
+        if: always()
+        shell: pwsh
+        run: |
+          $toolPath = Join-Path (Get-Location) 'tools/Invoke-PesterExecutionTelemetry.ps1'
+          if (-not (Test-Path -LiteralPath $toolPath -PathType Leaf)) {
+            throw "Telemetry tool not found at $toolPath"
+          }
+          pwsh -NoLogo -NoProfile -File $toolPath -ResultsDir 'tests/results'
 
       - name: Release session lock
         if: always()
@@ -301,13 +397,50 @@ jobs:
             New-Item -ItemType Directory -Path $resultsDir -Force | Out-Null
           }
           $summaryPath = Join-Path $resultsDir 'pester-summary.json'
+          $postprocessPath = Join-Path $resultsDir 'pester-execution-postprocess.json'
+          $telemetryPath = Join-Path $resultsDir 'pester-execution-telemetry.json'
           $dispatcherExitCode = '${{ steps.dispatcher.outputs.exit_code }}'
+          $dispatcherOutputTrace = Join-Path $resultsDir 'dispatcher-github-output.txt'
           $status = 'seam-defect'
+          $postprocessStatus = ''
+          $resultsXmlStatus = ''
+          $telemetryStatus = ''
+          $telemetryLastKnownPhase = ''
+          $telemetryEventCount = 0
+          if ($dispatcherExitCode -eq '' -and (Test-Path -LiteralPath $dispatcherOutputTrace)) {
+            $traceLine = Get-Content -LiteralPath $dispatcherOutputTrace -ErrorAction SilentlyContinue | Select-Object -Last 1
+            if ($traceLine -match '^exit_code=(?<value>-?\d+)$') {
+              $dispatcherExitCode = $matches.value
+            }
+          }
           if ($dispatcherExitCode -eq '') {
             $dispatcherExitCode = '-1'
           }
+          $contextReceiptPresent = Test-Path -LiteralPath '${{ steps.context_receipt.outputs.path }}'
           $readinessReceiptPresent = Test-Path -LiteralPath '${{ steps.readiness_receipt.outputs.path }}'
-          if ((Test-Path -LiteralPath $summaryPath) -and $dispatcherExitCode -eq '0') {
+          $selectionReceiptPresent = Test-Path -LiteralPath '${{ steps.selection_receipt.outputs.path }}'
+          if (Test-Path -LiteralPath $postprocessPath) {
+            try {
+              $postprocess = Get-Content -LiteralPath $postprocessPath -Raw | ConvertFrom-Json -ErrorAction Stop
+              $postprocessStatus = [string]$postprocess.status
+              $resultsXmlStatus = [string]$postprocess.resultsXmlStatus
+            } catch {
+              Write-Warning ("Failed to parse postprocess report: {0}" -f $_.Exception.Message)
+            }
+          }
+          if (Test-Path -LiteralPath $telemetryPath) {
+            try {
+              $telemetry = Get-Content -LiteralPath $telemetryPath -Raw | ConvertFrom-Json -ErrorAction Stop
+              $telemetryStatus = [string]$telemetry.telemetryStatus
+              $telemetryLastKnownPhase = [string]$telemetry.lastKnownPhase
+              $telemetryEventCount = [int]$telemetry.eventCount
+            } catch {
+              Write-Warning ("Failed to parse execution telemetry report: {0}" -f $_.Exception.Message)
+            }
+          }
+          if ($postprocessStatus -in @('results-xml-truncated', 'invalid-results-xml', 'missing-results-xml', 'unsupported-schema')) {
+            $status = $postprocessStatus
+          } elseif ((Test-Path -LiteralPath $summaryPath) -and $dispatcherExitCode -eq '0') {
             $status = 'completed'
           } elseif (Test-Path -LiteralPath $summaryPath) {
             $status = 'test-failures'
@@ -315,12 +448,31 @@ jobs:
           $receipt = [ordered]@{
             schema             = 'pester-execution-receipt@v1'
             generatedAtUtc     = [DateTime]::UtcNow.ToString('o')
+            contextStatus      = '${{ inputs.context_status }}'
+            contextReceiptPath = '${{ steps.context_receipt.outputs.path }}'
+            contextReceiptPresent = $contextReceiptPresent
+            repository         = '${{ steps.context_receipt.outputs.repository }}'
+            standingPriorityIssue = '${{ steps.context_receipt.outputs.standing_priority_issue }}'
             readinessStatus    = '${{ inputs.readiness_status }}'
             readinessReceiptPath = '${{ steps.readiness_receipt.outputs.path }}'
             readinessReceiptPresent = $readinessReceiptPresent
             readinessReceiptGeneratedAtUtc = '${{ steps.readiness_receipt.outputs.generated_at_utc }}'
             readinessReceiptFreshnessWindowSeconds = '${{ steps.readiness_receipt.outputs.freshness_window_seconds }}'
+            selectionStatus    = '${{ inputs.selection_status }}'
+            selectionReceiptPath = '${{ steps.selection_receipt.outputs.path }}'
+            selectionReceiptPresent = $selectionReceiptPresent
+            selectionExecutionPack = '${{ steps.selection_receipt.outputs.execution_pack }}'
+            selectionExecutionPackSource = '${{ steps.selection_receipt.outputs.execution_pack_source }}'
+            selectionIntegrationMode = '${{ steps.selection_receipt.outputs.integration_mode }}'
+            selectionFixtureRequired = '${{ steps.selection_receipt.outputs.fixture_required }}'
             dispatcherExitCode = [int]$dispatcherExitCode
+            telemetryPath      = $telemetryPath
+            telemetryPresent   = Test-Path -LiteralPath $telemetryPath
+            telemetryStatus    = $telemetryStatus
+            telemetryLastKnownPhase = $telemetryLastKnownPhase
+            telemetryEventCount = $telemetryEventCount
+            postprocessStatus  = $postprocessStatus
+            resultsXmlStatus   = $resultsXmlStatus
             summaryPresent     = Test-Path -LiteralPath $summaryPath
             status             = $status
             rawArtifactName    = 'pester-run-raw'
@@ -341,7 +493,7 @@ jobs:
 
   finalize:
     runs-on: ubuntu-latest
-    needs: [normalize, pester]
+    needs: [pester]
     if: always()
     outputs:
       dispatcher_exit_code: ${{ steps.emit.outputs.dispatcher_exit_code }}
@@ -358,9 +510,18 @@ jobs:
           $executionStatus = 'unknown'
           $receiptStatus = '${{ needs.pester.outputs.execution_receipt_status }}'
           $rawArtifactName = ''
-          if ('${{ inputs.readiness_status }}' -ne 'ready') {
+          if ('${{ inputs.context_status }}' -ne 'ready') {
             $executionStatus = 'skipped'
-            if ([string]::IsNullOrWhiteSpace($receiptStatus)) { $receiptStatus = 'skipped' }
+            $receiptStatus = 'context-blocked'
+          } elseif ('${{ inputs.readiness_status }}' -ne 'ready') {
+            $executionStatus = 'skipped'
+            if ([string]::IsNullOrWhiteSpace($receiptStatus)) { $receiptStatus = 'readiness-blocked' }
+          } elseif ('${{ inputs.selection_status }}' -ne 'ready') {
+            $executionStatus = 'skipped'
+            if ([string]::IsNullOrWhiteSpace($receiptStatus)) { $receiptStatus = 'selection-blocked' }
+          } elseif ($receiptStatus -in @('results-xml-truncated', 'invalid-results-xml', 'missing-results-xml', 'unsupported-schema')) {
+            $executionStatus = $receiptStatus
+            $rawArtifactName = 'pester-run-raw'
           } else {
             switch ('${{ needs.pester.result }}') {
               'success' {
@@ -398,7 +559,11 @@ jobs:
           $receipt = [ordered]@{
             schema             = 'pester-execution-receipt@v1'
             generatedAtUtc     = [DateTime]::UtcNow.ToString('o')
+            contextStatus      = '${{ inputs.context_status }}'
             readinessStatus    = '${{ inputs.readiness_status }}'
+            selectionStatus    = '${{ inputs.selection_status }}'
+            selectionExecutionPack = '${{ needs.pester.outputs.selection_execution_pack }}'
+            selectionExecutionPackSource = '${{ needs.pester.outputs.selection_execution_pack_source }}'
             executionJobResult = '${{ needs.pester.result }}'
             dispatcherExitCode = [int]$dispatcherExitCode
             status             = $receiptStatus

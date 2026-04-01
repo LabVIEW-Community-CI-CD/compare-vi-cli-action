@@ -1,0 +1,37 @@
+{
+  "schema_version": "1.0.0",
+  "phase_guidance": {
+    "foundation": {
+      "mode": "local-first",
+      "preferred_commands": [
+        "npm run priority:workflow:replay:windows:vi-history",
+        "npm run history:local:proof",
+        "npm run history:local:refine"
+      ],
+      "stop_conditions": [
+        "stop when the required VI History packet tests pass and the next-step artifact no longer ranks the edited requirement first",
+        "stop when the next truthful proof surface becomes unavailable from the current host and the loop emits an escalation step"
+      ],
+      "escalate_when": [
+        "the current host cannot satisfy the Windows replay surface",
+        "the next truthful proof needs the shared windows-docker-desktop-ni-image surface"
+      ]
+    },
+    "autonomy": {
+      "mode": "local-first",
+      "preferred_commands": [
+        "npm run priority:vi-history:local-ci",
+        "npm run priority:vi-history:next-step"
+      ],
+      "stop_conditions": [
+        "stop when the next-step artifact becomes an escalation or null",
+        "stop when the packet says all tracked requirements are implemented and only a host-bound proof surface remains"
+      ],
+      "escalate_when": [
+        "the governed downstream live-history clone is absent, the target VI is missing, or git history is unavailable",
+        "the next-step artifact names windows-docker-desktop-ni-image as the required surface",
+        "another host or agent is needed to satisfy the current proof surface truthfully"
+      ]
+    }
+  }
+}

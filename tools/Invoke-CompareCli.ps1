@@ -8,20 +8,7 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
-
-function Get-IncludePatterns {
-  param([string]$Name)
-  switch ($Name.ToLowerInvariant()) {
-    'dispatcher' { return @('Invoke-PesterTests*.ps1','PesterAvailability.Tests.ps1','NestedDispatcher*.Tests.ps1') }
-    'fixtures'   { return @('Fixtures.*.ps1','FixtureValidation*.ps1','FixtureSummary*.ps1','ViBinaryHandling.Tests.ps1','FixtureValidationDiff.Tests.ps1') }
-    'schema'     { return @('Schema.*.ps1','SchemaLite*.ps1') }
-    'comparevi'  { return @('CompareVI*.ps1','CanonicalCli.Tests.ps1','Args.Tokenization.Tests.ps1') }
-    'loop'       { return @('CompareLoop*.ps1','Run-AutonomousIntegrationLoop*.ps1','LoopMetrics.Tests.ps1','Integration-ControlLoop*.ps1','IntegrationControlLoop*.ps1') }
-    'psummary'   { return @('PesterSummary*.ps1','Write-PesterSummaryToStepSummary*.ps1','AggregationHints*.ps1') }
-    'workflow'   { return @('Workflow*.ps1','On-FixtureValidationFail.Tests.ps1','Watch.FlakyRecovery.Tests.ps1','FunctionShadowing*.ps1','FunctionProxy.Tests.ps1','RunSummary.Tool*.ps1','Action.CompositeOutputs.Tests.ps1','Binding.MinRepro.Tests.ps1','ArtifactTracking*.ps1','Guard.*.Tests.ps1') }
-    default      { return @('*.ps1') }
-  }
-}
+. (Join-Path $PSScriptRoot 'PesterExecutionPacks.ps1')
 
 function Resolve-LegacyIncludeIntegration {
   param(
@@ -102,10 +89,9 @@ if (-not (Test-Path -LiteralPath $resultsDir -PathType Container)) {
   New-Item -ItemType Directory -Path $resultsDir -Force | Out-Null
 }
 
-$includePatterns = Get-IncludePatterns -Name $Category
-$includePatterns = @($includePatterns | Where-Object { $_ })
+$executionPack = Resolve-PesterExecutionPack -ExecutionPack $Category
 
-Write-Host "[cli] category=$Category results=$resultsDir include=$($includePatterns -join ',')" -ForegroundColor Cyan
+Write-Host "[cli] category=$Category results=$resultsDir executionPack=$($executionPack.executionPack) include=$($executionPack.effectiveIncludePatterns -join ',')" -ForegroundColor Cyan
 
 $legacyIncludeSpecified = $PSBoundParameters.ContainsKey('IncludeIntegration')
 $modeSpecified = $PSBoundParameters.ContainsKey('IntegrationMode')
@@ -145,10 +131,10 @@ Write-Host "[cli] integrationMode=$integrationModeResolved includeIntegration=$i
 
 & "$PSScriptRoot/Invoke-PesterTests.ps1" `
   -TestsPath 'tests' `
+  -ExecutionPack $executionPack.executionPack `
   -IntegrationMode $integrationModeResolved `
   -ResultsPath $resultsDir `
-  -EmitFailuresJsonAlways `
-  -IncludePatterns $includePatterns
+  -EmitFailuresJsonAlways
 $pesterExit = $LASTEXITCODE
 
 $summaryPath = Join-Path $resultsDir 'pester-summary.json'
@@ -156,6 +142,7 @@ $cliRun = [ordered]@{
   schema              = 'compare-cli-run/v1'
   generatedAtUtc      = (Get-Date).ToUniversalTime().ToString('o')
   category            = $Category
+  executionPack       = $executionPack.executionPack
   includeIntegration  = [bool]$includeIntegrationBool
   integrationMode     = $integrationModeResolved
   integrationSource   = $integrationReason

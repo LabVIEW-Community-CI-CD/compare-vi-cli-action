@@ -23,6 +23,13 @@ param(
   [string]$ExecutionSurface = 'desktop-local',
   [bool]$ManageDockerEngine = $false,
   [bool]$AllowHostEngineMutation = $false,
+  [string]$HostPlatformOverride = '',
+  [ValidateRange(5, 600)]
+  [int]$CommandTimeoutSeconds = 45,
+  [ValidateRange(5, 3600)]
+  [int]$BootstrapPullTimeoutSeconds = 900,
+  [ValidateRange(5, 900)]
+  [int]$RuntimeProbeTimeoutSeconds = 180,
   [switch]$AllowUnavailable,
   [string]$OutputJsonPath = '',
   [string]$GitHubOutputPath = $env:GITHUB_OUTPUT,
@@ -34,10 +41,7 @@ $ErrorActionPreference = 'Stop'
 
 function Resolve-AbsolutePath {
   param([Parameter(Mandatory)][string]$Path)
-  if ([System.IO.Path]::IsPathRooted($Path)) {
-    return [System.IO.Path]::GetFullPath($Path)
-  }
-  return [System.IO.Path]::GetFullPath((Join-Path (Get-Location).Path $Path))
+  return $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($Path)
 }
 
 function Write-GitHubOutput {
@@ -75,16 +79,153 @@ function Test-IsHostedRuntimeUnavailableMessage {
   return $false
 }
 
+function Split-OutputLines {
+  param([AllowNull()][string]$Text)
+
+  if ([string]::IsNullOrEmpty($Text)) { return @() }
+  return @($Text -split "(`r`n|`n|`r)" | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+}
+
+function Resolve-DockerCommandSource {
+  $override = $env:DOCKER_COMMAND_OVERRIDE
+  if (-not [string]::IsNullOrWhiteSpace($override) -and (Test-Path -LiteralPath $override -PathType Leaf)) {
+    return [System.IO.Path]::GetFullPath($override)
+  }
+
+  $pathSeparator = [System.IO.Path]::PathSeparator
+  $pathEntries = @($env:PATH -split [regex]::Escape([string]$pathSeparator))
+  $candidates = if ($IsWindows) {
+    @('docker.exe', 'docker.cmd', 'docker.ps1', 'docker.bat', 'docker')
+  } else {
+    @('docker', 'docker.sh', 'docker.exe', 'docker.ps1', 'docker.cmd')
+  }
+
+  foreach ($entry in $pathEntries) {
+    if ([string]::IsNullOrWhiteSpace($entry)) { continue }
+    foreach ($name in $candidates) {
+      $candidatePath = Join-Path $entry $name
+      if (Test-Path -LiteralPath $candidatePath -PathType Leaf) {
+        return [System.IO.Path]::GetFullPath($candidatePath)
+      }
+    }
+  }
+
+  $command = Get-Command -Name 'docker' -ErrorAction SilentlyContinue | Select-Object -First 1
+  if ($null -eq $command -or [string]::IsNullOrWhiteSpace([string]$command.Source)) {
+    return $null
+  }
+
+  return [System.IO.Path]::GetFullPath([string]$command.Source)
+}
+
+function Invoke-ProcessWithTimeout {
+  [CmdletBinding()]
+  param(
+    [Parameter(Mandatory)][string]$FilePath,
+    [string[]]$Arguments = @(),
+    [int]$TimeoutSeconds = 45
+  )
+
+  $safeTimeout = [Math]::Max(5, [int]$TimeoutSeconds)
+  $resolvedFilePath = $FilePath
+  $effectiveArguments = @($Arguments)
+  if ([string]::Equals($FilePath, 'docker', [System.StringComparison]::OrdinalIgnoreCase)) {
+    $dockerCommandSource = Resolve-DockerCommandSource
+    if (-not [string]::IsNullOrWhiteSpace($dockerCommandSource)) {
+      $dockerCommandExtension = [System.IO.Path]::GetExtension($dockerCommandSource)
+      if ([System.StringComparer]::OrdinalIgnoreCase.Equals($dockerCommandExtension, '.ps1')) {
+        $resolvedFilePath = (Get-Command -Name 'pwsh' -ErrorAction Stop | Select-Object -First 1).Source
+        $effectiveArguments = @('-NoLogo', '-NoProfile', '-File', $dockerCommandSource) + @($Arguments)
+      } else {
+        $resolvedFilePath = $dockerCommandSource
+      }
+    }
+  }
+
+  $argText = if ($effectiveArguments -and $effectiveArguments.Count -gt 0) {
+    [string]::Join(' ', $effectiveArguments)
+  } else {
+    ''
+  }
+  $commandText = if ([string]::IsNullOrWhiteSpace($argText)) { $resolvedFilePath } else { "$resolvedFilePath $argText" }
+
+  $result = [ordered]@{
+    timedOut = $false
+    exitCode = $null
+    stdout = @()
+    stderr = @()
+    command = $commandText
+    exception = ''
+  }
+
+  $psi = [System.Diagnostics.ProcessStartInfo]::new()
+  $psi.FileName = $resolvedFilePath
+  $psi.UseShellExecute = $false
+  $psi.RedirectStandardOutput = $true
+  $psi.RedirectStandardError = $true
+  $psi.CreateNoWindow = $true
+  foreach ($arg in @($effectiveArguments)) {
+    [void]$psi.ArgumentList.Add([string]$arg)
+  }
+
+  $proc = [System.Diagnostics.Process]::new()
+  $proc.StartInfo = $psi
+
+  try {
+    [void]$proc.Start()
+    $completed = $proc.WaitForExit($safeTimeout * 1000)
+    if (-not $completed) {
+      $result.timedOut = $true
+      try { $proc.Kill($true) } catch {}
+      return [pscustomobject]$result
+    }
+
+    $result.exitCode = [int]$proc.ExitCode
+    $result.stdout = @(Split-OutputLines -Text $proc.StandardOutput.ReadToEnd())
+    $result.stderr = @(Split-OutputLines -Text $proc.StandardError.ReadToEnd())
+  } catch {
+    $result.exception = [string]$_.Exception.Message
+    try {
+      if (-not $proc.HasExited) {
+        $proc.Kill($true)
+      }
+    } catch {}
+  } finally {
+    $proc.Dispose()
+  }
+
+  return [pscustomobject]$result
+}
+
 function Invoke-DockerCommand {
   param(
     [Parameter(Mandatory)][string[]]$Arguments,
+    [int]$TimeoutSeconds = $CommandTimeoutSeconds,
     [switch]$IgnoreExitCode
   )
 
-  $raw = & docker @Arguments 2>&1
-  $exitCode = $LASTEXITCODE
-  $lines = @($raw | ForEach-Object { [string]$_ })
+  $invoke = Invoke-ProcessWithTimeout -FilePath 'docker' -Arguments $Arguments -TimeoutSeconds $TimeoutSeconds
+  $lines = @(@($invoke.stdout) + @($invoke.stderr) | ForEach-Object { [string]$_ })
   $text = ($lines -join "`n")
+
+  if ($invoke.timedOut) {
+    $timeoutMessage = "docker {0} timed out after {1}s." -f ($Arguments -join ' '), [Math]::Max(5, [int]$TimeoutSeconds)
+    if (-not $IgnoreExitCode) {
+      throw $timeoutMessage
+    }
+    return [pscustomobject]@{
+      ExitCode = 124
+      TimedOut = $true
+      Lines = @($timeoutMessage)
+      Text = $timeoutMessage
+    }
+  }
+
+  if ($invoke.exception) {
+    throw ("docker {0} failed to launch: {1}" -f ($Arguments -join ' '), [string]$invoke.exception)
+  }
+
+  $exitCode = if ($null -eq $invoke.exitCode) { 1 } else { [int]$invoke.exitCode }
 
   if (-not $IgnoreExitCode -and $exitCode -ne 0) {
     throw ("docker {0} failed (exit={1}). Output: {2}" -f ($Arguments -join ' '), $exitCode, $text)
@@ -92,6 +233,7 @@ function Invoke-DockerCommand {
 
   return [pscustomobject]@{
     ExitCode = [int]$exitCode
+    TimedOut = $false
     Lines = $lines
     Text = $text
   }
@@ -137,17 +279,27 @@ function Ensure-LocalImageAvailability {
     pullError = ''
   }
 
-  $inspect = Invoke-DockerCommand -Arguments @('image', 'inspect', $Image, '--format', '{{json .}}') -IgnoreExitCode
+  $inspect = Invoke-DockerCommand -Arguments @('image', 'inspect', $Image, '--format', '{{json .}}') -TimeoutSeconds $CommandTimeoutSeconds -IgnoreExitCode
+  if ($inspect.TimedOut) {
+    throw ("docker image inspect timed out for '{0}' after {1}s." -f $Image, [Math]::Max(5, [int]$CommandTimeoutSeconds))
+  }
   if ($inspect.ExitCode -ne 0) {
     $pullStart = Get-Date
-    $pull = Invoke-DockerCommand -Arguments @('pull', $Image) -IgnoreExitCode
+    $pull = Invoke-DockerCommand -Arguments @('pull', $Image) -TimeoutSeconds $BootstrapPullTimeoutSeconds -IgnoreExitCode
     $result.pullDurationMs = [int]([Math]::Round(((Get-Date) - $pullStart).TotalMilliseconds))
+    if ($pull.TimedOut) {
+      $result.pullError = ("docker pull timed out for '{0}' after {1}s." -f $Image, [Math]::Max(5, [int]$BootstrapPullTimeoutSeconds))
+      throw $result.pullError
+    }
     if ($pull.ExitCode -ne 0) {
       $result.pullError = [string]$pull.Text
       throw ("docker pull failed for '{0}' (exit={1}). Output: {2}" -f $Image, $pull.ExitCode, $pull.Text)
     }
     $result.pulled = $true
-    $inspect = Invoke-DockerCommand -Arguments @('image', 'inspect', $Image, '--format', '{{json .}}') -IgnoreExitCode
+    $inspect = Invoke-DockerCommand -Arguments @('image', 'inspect', $Image, '--format', '{{json .}}') -TimeoutSeconds $CommandTimeoutSeconds -IgnoreExitCode
+    if ($inspect.TimedOut) {
+      throw ("docker image inspect timed out for '{0}' after pull (limit {1}s)." -f $Image, [Math]::Max(5, [int]$CommandTimeoutSeconds))
+    }
   }
 
   if ($inspect.ExitCode -ne 0) {
@@ -191,21 +343,25 @@ function Invoke-ContainerRuntimeProbe {
   )
 
   $start = Get-Date
-  $probe = Invoke-DockerCommand -Arguments $args -IgnoreExitCode
+  $probe = Invoke-DockerCommand -Arguments $args -TimeoutSeconds $RuntimeProbeTimeoutSeconds -IgnoreExitCode
   $durationMs = [int]([Math]::Round(((Get-Date) - $start).TotalMilliseconds))
-  $text = [string]$probe.Text
+  $text = if ($probe.TimedOut) {
+    "docker run timed out after {0}s." -f [Math]::Max(5, [int]$RuntimeProbeTimeoutSeconds)
+  } else {
+    [string]$probe.Text
+  }
   if ($text.Length -gt 2000) {
     $text = $text.Substring(0, 2000)
   }
 
   return [ordered]@{
     attempted = $true
-    status = if ($probe.ExitCode -eq 0) { 'success' } else { 'failure' }
-    exitCode = [int]$probe.ExitCode
+    status = if ($probe.TimedOut) { 'timeout' } elseif ($probe.ExitCode -eq 0) { 'success' } else { 'failure' }
+    exitCode = if ($probe.TimedOut) { 124 } else { [int]$probe.ExitCode }
     durationMs = $durationMs
     output = $text
     command = ($args -join ' ')
-    error = if ($probe.ExitCode -eq 0) { '' } else { $text }
+    error = if ($probe.TimedOut -or $probe.ExitCode -ne 0) { $text } else { '' }
   }
 }
 
@@ -310,6 +466,9 @@ try {
       -WindowsImage $Image `
       -BootstrapWindowsImage:$true `
       -BootstrapLinuxImage:$false `
+      -CommandTimeoutSeconds $CommandTimeoutSeconds `
+      -BootstrapPullTimeoutSeconds $BootstrapPullTimeoutSeconds `
+      -ProbeTimeoutSeconds $RuntimeProbeTimeoutSeconds `
       -RestoreContext 'desktop-windows' `
       -OutputJsonPath $jsonPathResolved `
       -GitHubOutputPath '' `
@@ -359,6 +518,8 @@ try {
       -AutoRepair:$true `
       -ManageDockerEngine:$ManageDockerEngine `
       -AllowHostEngineMutation:$AllowHostEngineMutation `
+      -HostPlatformOverride $HostPlatformOverride `
+      -CommandTimeoutSeconds $CommandTimeoutSeconds `
       -SnapshotPath $snapshotPath `
       -GitHubOutputPath ''
     if ($LASTEXITCODE -ne 0) {
@@ -445,7 +606,19 @@ try {
 
   if (-not $handledUnavailable) {
     $summary.status = 'failure'
-    if ([string]::IsNullOrWhiteSpace([string]$summary.failureClass) -or [string]::Equals([string]$summary.failureClass, 'none', [System.StringComparison]::OrdinalIgnoreCase)) {
+    if ($failureMessage -match '(?i)docker pull timed out') {
+      $summary.failureClass = 'image-bootstrap-timeout'
+      $summary.bootstrap.attempted = $true
+      $summary.bootstrap.pullError = $failureMessage
+    } elseif ($failureMessage -match '(?i)runtime probe timed out|docker run timed out|Hosted Windows runtime probe failed.+exit=124') {
+      $summary.failureClass = 'runtime-probe-timeout'
+      $summary.probe.attempted = $true
+      $summary.probe.status = 'timeout'
+      $summary.probe.exitCode = 124
+      $summary.probe.error = $failureMessage
+    } elseif ($failureMessage -match '(?i)docker .+timed out') {
+      $summary.failureClass = 'docker-command-timeout'
+    } elseif ([string]::IsNullOrWhiteSpace([string]$summary.failureClass) -or [string]::Equals([string]$summary.failureClass, 'none', [System.StringComparison]::OrdinalIgnoreCase)) {
       $summary.failureClass = 'preflight-failed'
     }
     if ([string]::IsNullOrWhiteSpace([string]$summary.failureMessage)) {

@@ -96,6 +96,9 @@ Quick commands:
 # Unit tests only
 ./Invoke-PesterTests.ps1
 
+# Local execution-slice harness (lock + LV guard + fixture prep + dispatcher)
+pwsh -NoLogo -NoProfile -File tools/Run-PesterExecutionOnly.Local.ps1
+
 # Integration tests (requires LVCompare)
 $env:LV_BASE_VI = 'VI1.vi'
 $env:LV_HEAD_VI = 'VI2.vi'
