@@ -119,10 +119,11 @@ jobs:
         uses: lycheeverse/lychee-action@v2
         with:
           fail: true
+          failIfEmpty: false
+          format: json
+          output: tests/results/_agent/pester-service-model/docs-link-check.json
           args: >-
             --no-progress
-            --format json
-            --output tests/results/_agent/pester-service-model/docs-link-check.json
             docs/knowledgebase/Pester-Service-Model.md
             docs/architecture/pester-service-model-control-plane.md
             docs/architecture/ADR-2078-pester-service-model-requirements.md
