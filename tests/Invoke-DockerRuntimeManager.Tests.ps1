@@ -109,8 +109,16 @@ if ($Args[0] -eq 'info') {
 }
 
 if ($Args[0] -eq 'manifest' -and $Args.Count -ge 3 -and $Args[1] -eq 'inspect') {
+  $paddingBytes = [Environment]::GetEnvironmentVariable('DOCKER_STUB_MANIFEST_PADDING_BYTES')
+  $padding = ''
+  if (-not [string]::IsNullOrWhiteSpace($paddingBytes)) {
+    $padding = ('x' * [int]$paddingBytes)
+  }
   $manifest = [ordered]@{
     schemaVersion = 2
+    annotations = [ordered]@{
+      padding = $padding
+    }
     manifests = @(
       [ordered]@{
         digest = 'sha256:1111111111111111111111111111111111111111111111111111111111111111'
@@ -242,6 +250,7 @@ exit 0
       DOCKER_STUB_RUN_FAIL_LINUX = $env:DOCKER_STUB_RUN_FAIL_LINUX
       DOCKER_STUB_INFO_SLEEP_SECONDS = $env:DOCKER_STUB_INFO_SLEEP_SECONDS
       DOCKER_STUB_INSPECT_SLEEP_SECONDS = $env:DOCKER_STUB_INSPECT_SLEEP_SECONDS
+      DOCKER_STUB_MANIFEST_PADDING_BYTES = $env:DOCKER_STUB_MANIFEST_PADDING_BYTES
       DOCKER_STUB_PULL_SLEEP_WINDOWS = $env:DOCKER_STUB_PULL_SLEEP_WINDOWS
       DOCKER_STUB_PULL_SLEEP_LINUX = $env:DOCKER_STUB_PULL_SLEEP_LINUX
       DOCKER_STUB_RUN_SLEEP_WINDOWS = $env:DOCKER_STUB_RUN_SLEEP_WINDOWS
@@ -454,6 +463,32 @@ exit 0
     $json.status | Should -Be 'failure'
     $json.failureClass | Should -Be 'runtime-probe-timeout'
     $json.probes.windows.probe.status | Should -Be 'timeout'
+  }
+
+  It 'handles large manifest output without deadlocking the timeout helper' {
+    $work = Join-Path $TestDrive 'large-manifest-output'
+    New-Item -ItemType Directory -Path $work -Force | Out-Null
+    & $script:CreateDockerStub -WorkRoot $work
+
+    Set-Item Env:DOCKER_STUB_STATE_PATH (Join-Path $work 'docker-state.json')
+    Set-Item Env:DOCKER_STUB_INITIAL_CONTEXT 'desktop-windows'
+    Set-Item Env:DOCKER_STUB_MANIFEST_PADDING_BYTES '20000'
+    Set-Item Env:RUNNER_TEMP (Join-Path $work 'runner-temp')
+
+    $jsonPath = Join-Path $work 'docker-runtime-manager.json'
+    $output = @(& pwsh -NoLogo -NoProfile -File $script:ManagerScript `
+      -ProbeScope windows `
+      -OutputJsonPath $jsonPath `
+      -CommandTimeoutSeconds 5 `
+      -SwitchRetryCount 1 `
+      -SwitchTimeoutSeconds 30 2>&1)
+
+    $LASTEXITCODE | Should -Be 0 -Because ($output -join "`n")
+
+    $json = Get-Content -LiteralPath $jsonPath -Raw | ConvertFrom-Json -Depth 30
+    $json.status | Should -Be 'success'
+    $json.probes.windows.status | Should -Be 'success'
+    $json.probes.windows.digest | Should -Be 'sha256:1111111111111111111111111111111111111111111111111111111111111111'
   }
 
   It 'fails with lock timeout when the runtime manager lock is held by another process' {
