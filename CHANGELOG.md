@@ -7,6 +7,22 @@ The format is based on Keep a Changelog, and this project adheres to Semantic Ve
 
 ## [Unreleased]
 
+## [v0.6.11] - 2026-04-01
+
+### Fixed
+
+- Repaired VI-history native path handling on the Windows NI proof surface, so
+  the released backend now preserves the intended repository-relative VI target
+  across ref extraction, history comparison, and report rendering instead of
+  collapsing to a host-native path that the proof lane cannot certify.
+
+### Changed
+
+- Built the `v0.6.11` release line on top of `v0.6.10`, preserving the stable
+  Windows NI / LabVIEW Docker proof authority and release-control-plane repairs
+  while adding the backend fix required for the released VI-history consumer
+  proof.
+
 ## [v0.6.10] - 2026-04-01
 
 ### Changed
