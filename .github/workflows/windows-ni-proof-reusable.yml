@@ -76,6 +76,7 @@ jobs:
 
       - name: Prepare NI Windows image and hosted runtime
         id: windows-preflight
+        timeout-minutes: 20
         run: |
           $resultsRoot = '${{ inputs.results_root }}'
           New-Item -ItemType Directory -Path $resultsRoot -Force | Out-Null

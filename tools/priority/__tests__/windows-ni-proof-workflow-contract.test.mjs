@@ -32,6 +32,7 @@ test('reusable Windows NI proof workflow owns hosted preflight, compare, artifac
   assert.match(workflow, /Validate VI binary-handling invariants/);
   assert.match(workflow, /Test-VIBinaryHandlingInvariants\.ps1/);
   assert.match(workflow, /Prepare NI Windows image and hosted runtime/);
+  assert.match(workflow, /Prepare NI Windows image and hosted runtime[\s\S]*?timeout-minutes:\s+20/);
   assert.match(workflow, /Test-WindowsNI2026q1HostPreflight\.ps1/);
   assert.match(workflow, /-ExecutionSurface 'github-hosted-windows'/);
   assert.match(workflow, /Run NI Windows create comparison report/);
