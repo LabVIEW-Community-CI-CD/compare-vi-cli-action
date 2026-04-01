@@ -72,6 +72,8 @@ param(
 
   [bool]$AllowHostEngineMutation = $false,
 
+  [string]$HostPlatformOverride = '',
+
   [int]$EngineReadyTimeoutSeconds = 120,
 
   [int]$EngineReadyPollSeconds = 3,
@@ -979,7 +981,15 @@ $observedIsDockerDesktop = $false
 
 $runnerOsRaw = $env:RUNNER_OS
 $runnerOsNormalized = if ([string]::IsNullOrWhiteSpace($runnerOsRaw)) { '' } else { $runnerOsRaw.Trim().ToLowerInvariant() }
-$hostIsWindows = [bool]$IsWindows
+$hostPlatform = if ([string]::IsNullOrWhiteSpace($HostPlatformOverride)) {
+  [string][System.Environment]::OSVersion.Platform
+} else {
+  $HostPlatformOverride.Trim()
+}
+$hostIsWindows = (
+  [string]::Equals($hostPlatform, 'Win32NT', [System.StringComparison]::OrdinalIgnoreCase) -or
+  $hostPlatform -match '(?i)windows'
+)
 $hostAlignmentOk = $true
 if ($ExpectedOsType -eq 'windows') {
   if (-not $hostIsWindows) {

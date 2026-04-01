@@ -4,6 +4,11 @@ The shared Windows Docker Desktop + pinned NI Windows image surface should be
 treated as its own local proof packet, not as an incidental advisory merged
 from sibling packets.
 
+For Windows image-backed CI gates, this surface is also the authoritative
+execution-truth plane. Supporting static invariants may run beside it, but the
+blocking gate should route through the Windows NI proof path instead of through
+the generic Pester reusable workflow.
+
 ## Local Proof Surfaces
 
 - `tests:windows-surface:probe`
@@ -15,6 +20,9 @@ from sibling packets.
   - bounded container compare probe on the shared Windows surface
 - `priority:windows-surface:local-ci`
   - machine-readable local assurance loop for the shared Windows surface
+- `.github/workflows/windows-ni-proof-reusable.yml`
+  - reusable hosted Windows NI proof lane for CI gates such as
+    `.github/workflows/vi-binary-gate.yml`
 
 ## Design Rules
 
@@ -24,6 +32,10 @@ from sibling packets.
   recommended. OneDrive-like managed roots are risk until a safe local root is
   used.
 - Bootstrap, probe, and packet-local proof should remain separate contracts.
+- Windows image-backed CI gates should use `windows-ni-proof-reusable.yml` as
+  the reusable hosted proof contract, with `Run-NIWindowsContainerCompare.ps1`
+  as the authoritative execution helper and `Test-VIBinaryHandlingInvariants.ps1`
+  as an optional supporting invariant surface.
 - The shared Windows surface should participate in the same local proof program
   selector as Pester and VI History.
 - When the coordinator is running under WSL or another Unix host but a
@@ -45,6 +57,7 @@ from sibling packets.
 - `windows-docker-shared-surface-local-ci-report.json`
 - `windows-docker-shared-surface-next-step.json`
 - `ni-windows-container-capture.json`
+- `comparevi/vi-binary-handling-invariants@v1`
 
 ## Local Commands
 
@@ -63,3 +76,8 @@ This packet is the authoritative home for the shared
 escalate to that surface, but the surface itself should also be governable as a
 packet with its own requirements, proof checks, bounded next-step handoff, and
 reachable Windows host bridge rules.
+
+The current CI authority slice that implements this rule is:
+
+- `.github/workflows/vi-binary-gate.yml`
+- `.github/workflows/windows-ni-proof-reusable.yml`

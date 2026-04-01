@@ -4,7 +4,8 @@
 
 This control plane covers the shared Windows Docker Desktop + pinned NI Windows
 image surface that adjacent local proof packets should use before another
-hosted rerun is chosen.
+hosted rerun is chosen, and the hosted proof workflow that owns blocking CI
+authority for Windows image-backed binary-handling lanes.
 
 ## Surface View
 
@@ -15,6 +16,7 @@ hosted rerun is chosen.
 | Bridge surface | Reach Windows-local PowerShell and Node execution from a Unix or WSL coordinator | Node.js + PowerShell |
 | Path-hygiene surface | Detect synced or externally managed roots such as OneDrive-managed paths before live proof | Node.js |
 | Windows-local staging surface | Stage UNC-backed or otherwise non-bindable Windows inputs and outputs into a local mount root for Docker consumption | PowerShell + Docker |
+| Hosted CI authority surface | Route blocking Windows image-backed gates through the shared Windows NI proof workflow instead of the generic Pester reusable workflow | GitHub Actions + PowerShell |
 | Local autonomy surface | Emit ranked local guidance, proof checks, and next-step handoffs for the shared surface | Node.js + assurance packet |
 
 ## Component View
@@ -25,6 +27,8 @@ hosted rerun is chosen.
 | `Test-WindowsNI2026q1HostPreflight.ps1` | Bootstrap and preflight surface | Emit deterministic Windows host preflight contracts |
 | `Run-NIWindowsContainerCompare.ps1` | Bootstrap and preflight surface | Provide the bounded compare probe on the shared NI Windows image surface |
 | `Run-NIWindowsContainerCompare.ps1` | Windows-local staging surface | Stage UNC-backed WSL container-bound paths into a Windows-local mount root and synchronize report artifacts back |
+| `windows-ni-proof-reusable.yml` | Hosted CI authority surface | Reuse the hosted Windows NI proof contract across manual parity and blocking CI gates |
+| `Test-VIBinaryHandlingInvariants.ps1` | Hosted CI authority surface | Emit the supporting static invariant contract without routing the gate through Pester |
 | `windows-host-bridge.mjs` | Bridge surface | Resolve reachable Windows PowerShell/Node entrypoints and run governed Windows-local work from Unix or WSL |
 | `windows-docker-shared-surface-local-ci.mjs` | Path-hygiene + local autonomy surfaces | Detect OneDrive-like risks, synthesize the packet, and emit next-step handoffs |
 
@@ -36,6 +40,9 @@ hosted rerun is chosen.
   shared surface instead of an incidental environment concern.
 - The shared surface should remain the first-class owner of
   `windows-docker-desktop-ni-image` escalation semantics.
+- Blocking CI lanes for Windows image-backed binary-handling proof should route
+  through `windows-ni-proof-reusable.yml` and not through
+  `.github/workflows/pester-reusable.yml`.
 - When a reachable Windows Desktop exists behind Unix or WSL, the bridge
   surface should execute Windows-local probe and preflight work before the
   packet emits a host-unavailable escalation.

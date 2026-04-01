@@ -185,6 +185,8 @@ test('assurance packet records forward execution-pack, path-hygiene, replay, and
   assert.match(srs, /machine-readable escalation step/i);
   assert.match(srs, /REQ-PSM-028/);
   assert.match(srs, /shared local proof program selector/i);
+  assert.match(srs, /REQ-PSM-029/);
+  assert.match(srs, /secondary harness or evidence truth/i);
 
   assert.match(rtm, /REQ-PSM-012/);
   assert.match(rtm, /TEST-PSM-012/);
@@ -220,6 +222,8 @@ test('assurance packet records forward execution-pack, path-hygiene, replay, and
   assert.match(rtm, /TEST-PSM-027/);
   assert.match(rtm, /REQ-PSM-028/);
   assert.match(rtm, /TEST-PSM-028/);
+  assert.match(rtm, /REQ-PSM-029/);
+  assert.match(rtm, /TEST-PSM-029/);
 
   assert.match(plan, /TEST-PSM-012[\s\S]*named-pack and execution-group coverage/i);
   assert.match(plan, /TEST-PSM-013[\s\S]*local path-hygiene coverage/i);
@@ -242,6 +246,7 @@ test('assurance packet records forward execution-pack, path-hygiene, replay, and
   assert.match(plan, /TEST-PSM-026[\s\S]*proof-check aware autonomy coverage/i);
   assert.match(plan, /TEST-PSM-027[\s\S]*next-step escalation coverage/i);
   assert.match(plan, /TEST-PSM-028[\s\S]*shared local-program selector coverage/i);
+  assert.match(plan, /TEST-PSM-029[\s\S]*secondary-authority coverage/i);
 
   assert.match(doc, /named execution pack or test group/i);
   assert.match(doc, /OneDrive-like paths are path-hygiene risk/i);
@@ -276,6 +281,10 @@ test('assurance packet records forward execution-pack, path-hygiene, replay, and
   assert.match(doc, /machine-readable escalation step/i);
   assert.match(doc, /comparevi-local-program-next-step\.json/i);
   assert.match(doc, /shared `windows-docker-desktop-ni-image` escalations should merge/i);
+  assert.match(doc, /Windows image-backed binary-handling CI surfaces/i);
+  assert.match(doc, /secondary harness and evidence truth/i);
+  assert.match(doc, /vi-binary-gate\.yml/i);
+  assert.match(doc, /windows-ni-proof-reusable\.yml/i);
 });
 
 test('assurance packet records failure-detail producer consistency as an implemented execution requirement', () => {

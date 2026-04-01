@@ -118,6 +118,14 @@ The additive pilot introduces seven workflow surfaces:
 - When the next truthful proof surface is unavailable from the current host, local autonomy should emit a machine-readable escalation step instead of a human-only advisory. The canonical handoff artifact is `pester-service-model-next-step.json`.
 - When more than one local proof packet exists, the shared program selector should reconcile them into one next step. Requirement work still outranks escalations, and shared `windows-docker-desktop-ni-image` escalations should merge into one `comparevi-local-program-next-step.json` handoff instead of competing packet advisories.
 - The existing required gate remains in place until the pilot proves equivalent or better behavior.
+- For Windows image-backed binary-handling CI surfaces, the authoritative
+  blocking proof should stay on the shared Windows NI image path. On that
+  surface, Pester is secondary harness and evidence truth rather than the
+  primary execution gate.
+- The current implementation of that authority split is
+  `.github/workflows/vi-binary-gate.yml`, which now routes through
+  `.github/workflows/windows-ni-proof-reusable.yml` instead of
+  `.github/workflows/pester-reusable.yml`.
 - Trusted PR proving must stay on `pull_request_target` with same-owner gating. Cross-owner fork heads are not allowed to drive self-hosted execution.
 
 ## Promotion Rule

@@ -68,6 +68,13 @@ test('VI History local-proof packet traces requirements, tests, and shared Windo
   assert.match(srs, /VIP_Pre-Uninstall Custom Action\.vi/);
   assert.match(srs, /REQ-VHLP-009/);
   assert.match(srs, /clone exists locally, contains the target VI, and exposes real git history/i);
+  assert.match(srs, /REQ-VHLP-010/);
+  assert.match(srs, /explicit next step/i);
+  assert.match(srs, /priority:workflow:replay:windows:vi-history/);
+  assert.match(srs, /REQ-VHLP-011/);
+  assert.match(srs, /bounded helper-process timeouts/i);
+  assert.match(srs, /REQ-VHLP-012/);
+  assert.match(srs, /consume a successful governed Windows workflow replay receipt/i);
 
   assert.match(rtm, /REQ-VHLP-006/);
   assert.match(rtm, /TEST-VHLP-006/);
@@ -77,6 +84,12 @@ test('VI History local-proof packet traces requirements, tests, and shared Windo
   assert.match(rtm, /TEST-VHLP-008/);
   assert.match(rtm, /REQ-VHLP-009/);
   assert.match(rtm, /TEST-VHLP-009/);
+  assert.match(rtm, /REQ-VHLP-010/);
+  assert.match(rtm, /TEST-VHLP-010/);
+  assert.match(rtm, /REQ-VHLP-011/);
+  assert.match(rtm, /TEST-VHLP-011/);
+  assert.match(rtm, /REQ-VHLP-012/);
+  assert.match(rtm, /TEST-VHLP-012/);
 
   assert.match(plan, /TEST-VHLP-001/);
   assert.match(plan, /TEST-VHLP-006/);
@@ -87,6 +100,12 @@ test('VI History local-proof packet traces requirements, tests, and shared Windo
   assert.match(plan, /ni\/labview-icon-editor/i);
   assert.match(plan, /TEST-VHLP-009/);
   assert.match(plan, /clone presence, target path presence, and git history/i);
+  assert.match(plan, /TEST-VHLP-010/);
+  assert.match(plan, /explicit Windows replay next-step coverage/i);
+  assert.match(plan, /TEST-VHLP-011/);
+  assert.match(plan, /bounded Windows replay lifecycle coverage/i);
+  assert.match(plan, /TEST-VHLP-012/);
+  assert.match(plan, /replay receipt consumption coverage/i);
 
   assert.match(doc, /priority:workflow:replay:windows:vi-history/);
   assert.match(doc, /history:local:proof/);
@@ -99,16 +118,27 @@ test('VI History local-proof packet traces requirements, tests, and shared Windo
   assert.match(doc, /VIP_Pre-Uninstall Custom Action\.vi/);
   assert.match(doc, /UNC-backed WSL checkout/i);
   assert.match(doc, /staged into a Windows-local mount root/i);
+  assert.match(doc, /vi-history-windows-workflow-replay/);
+  assert.match(doc, /should not launch the live Windows workflow replay lane/i);
+  assert.match(doc, /terminate or fail closed within bounded helper-process timeouts/i);
+  assert.match(doc, /consume[\s\S]*same replay step/i);
 
   assert.match(arch, /Windows workflow replay surface/);
   assert.match(arch, /Local autonomy surface/);
   assert.match(arch, /Clone-backed live-history candidate surface/);
+  assert.match(arch, /explicit next-step escalation/i);
+  assert.match(arch, /bounded helper-process[\s\S]*timeouts/i);
+  assert.match(arch, /passing governed Windows workflow replay receipt should be consumable/i);
 
   assert.match(localCi, /REQ-VHLP-006/);
   assert.match(localCi, /windows-docker-desktop-ni-image/);
   assert.match(localCi, /priority:workflow:replay:windows:vi-history/);
-  assert.match(localCi, /windows-host-bridge/i);
+  assert.match(localCi, /runSharedWindowsDockerSurfaceProof/);
+  assert.match(localCi, /windows-docker-shared-surface-local-ci/);
   assert.match(localCi, /REQ-VHLP-009/);
   assert.match(localCi, /clone-backed-live-history-candidate/);
   assert.match(localCi, /vi-history-live-candidate-readiness\.json/);
+  assert.match(localCi, /REQ-VHLP-010/);
+  assert.match(localCi, /ready-for-explicit-replay/);
+  assert.match(localCi, /vi-history-windows-workflow-replay/);
 });

@@ -31,6 +31,9 @@ Pester service model, not as an incidental side effect of Pester work.
   prose-only advisory.
 - The VI History packet should reuse the shared `windows-docker-desktop-ni-image` proof surface with Pester rather than inventing a second unmanaged Windows proof lane.
 - When a reachable Windows Desktop is available behind WSL or another Unix coordinator, the VI History packet should consume that bridge before emitting a `windows-docker-desktop-ni-image` escalation.
+- Local VI History CI should not launch the live Windows workflow replay lane merely to decide what comes next.
+- Once the shared Windows surface and clone-backed live-history candidate are ready, the next step should be an explicit `vi-history-windows-workflow-replay` handoff that points at `priority:workflow:replay:windows:vi-history`.
+- The governed Windows workflow replay lane should terminate or fail closed within bounded helper-process timeouts, and it should still emit a workflow receipt when a timeout occurs.
 - When the replay lane runs from a UNC-backed WSL checkout through the shared
   Windows Docker surface, container-bound inputs and output targets should be
   staged into a Windows-local mount root and synchronized back to the
@@ -85,6 +88,18 @@ When more than one local proof packet exists, the shared selector should emit
 `comparevi-local-program-next-step.json` and merge the shared
 `windows-docker-desktop-ni-image` handoff across VI History and Pester instead
 of leaving two independent advisories for a human to reconcile.
+
+When the shared Windows surface and governed live-history candidate are already
+ready, the VI History packet should instead emit
+`vi-history-local-next-step.json` with required surface
+`vi-history-windows-workflow-replay` and command:
+
+- `npm run priority:workflow:replay:windows:vi-history`
+
+Once that governed replay lane emits a passing
+`vi-history-scenarios-windows-receipt.json`, local VI History CI should consume
+that receipt as satisfied replay proof instead of continuing to re-select the
+same replay step.
 
 ## Governed Live-History Candidate
 

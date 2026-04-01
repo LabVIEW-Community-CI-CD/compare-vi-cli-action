@@ -3,7 +3,7 @@
 ## Document Control
 
 - System: Pester service-model control plane
-- Version: `v0.1.20`
+- Version: `v0.1.21`
 - Owner: `#2069`
 - Basis: retained fork promotion dossier under `#2078`
 - Status: Active
@@ -22,7 +22,9 @@
   retained artifacts, local replay surfaces, evidence provenance,
   machine-readable next-requirement guidance, representative retained-artifact
   replay, local Windows-container surrogate proof, autonomy policy,
-  machine-readable next-step escalation, and evidence classification.
+  machine-readable next-step escalation, evidence classification, and the
+  bounded authority split between Pester harness truth and Windows image-backed
+  CI product proof.
 - Out of scope:
   Legacy monolithic `test-pester.yml` behavior except where it remains the
   current baseline to compare against.
@@ -68,6 +70,7 @@
 | REQ-PSM-026 | The local autonomy loop shall consume representative proof checks, including retained-artifact replay and Windows-container surface status, and shall reopen implemented requirements when representative proof checks regress. | Static RTM status alone can overstate maturity; an autonomous loop must reopen the owning requirement when real local proof contradicts the packet. | `priority:pester:local-ci` records proof checks, refuses to report a clean `pass` when representative replay regresses, and selects the owning requirement as the next local target even when the RTM row is already marked implemented. | `TEST-PSM-026` |
 | REQ-PSM-027 | When the next truthful proof surface is unavailable from the current host, local assurance CI shall emit a machine-readable escalation step that names the blocked requirement, governing requirement, required proof surface, current host state, and exact next commands. | An autonomous loop that stops at an advisory without an explicit escalation packet still depends on human interpretation and cannot hand off cleanly to another agent or host. | `priority:pester:local-ci` emits `pester-service-model-next-step.json`; when no locally actionable requirement remains and the Windows-container surface is unavailable, the next step is an escalation packet rather than `null`, with receipt path, required surface `windows-docker-desktop-ni-image`, and recommended commands. | `TEST-PSM-027` |
 | REQ-PSM-028 | The Pester packet shall participate in the shared local proof program selector so autonomous development can choose between sibling packets and merge shared-surface escalations into one bounded handoff. | Once more than one local proof packet exists, two independent packet advisories force a human to reconcile them and weaken the value of the autonomy loop. | `priority:program:local-ci` consumes the Pester packet next-step artifact, can select a Pester requirement ahead of sibling packet escalations, and merges shared `windows-docker-desktop-ni-image` escalations from Pester and VI History into one `comparevi-local-program-next-step.json` handoff. | `TEST-PSM-028` |
+| REQ-PSM-029 | For Windows image-backed binary-handling CI surfaces, the Pester packet shall remain secondary harness or evidence truth and shall not own the blocking execution gate when the shared Windows NI proof surface is available. | Image-backed compare execution is closer to product truth than the generic dispatcher harness, so the Pester packet should not keep blocking authority over CI surfaces that already have a governed Windows NI proof lane. | `docs/knowledgebase/Pester-Service-Model.md` states that Windows image-backed CI proof remains authoritative on the shared Windows NI path, `vi-binary-gate.yml` routes through `windows-ni-proof-reusable.yml`, and the Pester packet no longer claims that gate as its authoritative executor. | `TEST-PSM-029` |
 
 ## Assumptions
 

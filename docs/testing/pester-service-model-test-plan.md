@@ -3,7 +3,7 @@
 ## Overview
 
 - Release or baseline:
-  Pester service-model assurance packet `v0.1.20`
+  Pester service-model assurance packet `v0.1.21`
 - Owner:
   `#2069` with retained fork basis on `#2078`
 - Scope:
@@ -47,6 +47,7 @@
 | `TEST-PSM-026` proof-check aware autonomy coverage | Assurance/Contract | High | Verifies local CI consumes representative replay and Windows-surface proof checks and reopens implemented requirements when representative proof regresses |
 | `TEST-PSM-027` next-step escalation coverage | Assurance/Contract | High | Verifies local CI emits a machine-readable escalation step when the next truthful proof surface is unavailable from the current host |
 | `TEST-PSM-028` shared local-program selector coverage | Assurance/Contract | High | Verifies the shared program selector can choose a Pester requirement ahead of sibling escalations and merge the shared Windows Docker Desktop + NI image escalation across packets |
+| `TEST-PSM-029` secondary-authority coverage | Workflow/Governance | Medium | Verifies Windows image-backed CI gates use the shared Windows NI proof path as blocking execution truth and that the Pester packet documents itself as secondary on that surface |
 
 ## Entry Criteria
 
@@ -93,6 +94,7 @@
 | Proof-check aware autonomy coverage | Local CI reopens implemented requirements when representative local proof regresses and records advisory surface status | `tools/priority/pester-service-model-local-ci.mjs`, `TEST-PSM-026` |
 | Next-step escalation coverage | Local CI emits `pester-service-model-next-step.json` with a governed escalation packet when the next truthful proof surface is unavailable from the current host | `tools/priority/pester-service-model-local-ci.mjs`, `docs/schemas/pester-service-model-next-step-v1.schema.json`, `TEST-PSM-027` |
 | Shared local-program selector coverage | Shared local CI emits `comparevi-local-program-next-step.json`, chooses requirement work ahead of sibling packet escalations, and merges the shared Windows Docker Desktop + NI image handoff across packets | `tools/priority/__tests__/comparevi-local-program-ci.test.mjs`, `tools/priority/comparevi-local-program-ci.mjs`, `docs/schemas/comparevi-local-program-next-step-v1.schema.json`, `TEST-PSM-028` |
+| Secondary-authority coverage | The Pester packet documents Windows image-backed CI proof as authoritative on the shared Windows NI surface, and `vi-binary-gate.yml` no longer routes through `pester-reusable.yml` | `tools/priority/__tests__/pester-service-model-workflow-contract.test.mjs`, `tools/priority/__tests__/pester-service-model-local-harness-contract.test.mjs`, `TEST-PSM-029` |
 | Packet coverage gate | Retained `coverage.xml` and named PR coverage gate | `.github/workflows/pester-service-model-quality.yml` |
 | Promotion bundle retention | Hosted bundle retains the minimal promotion handoff | `.github/workflows/pester-service-model-release-evidence.yml` |
 

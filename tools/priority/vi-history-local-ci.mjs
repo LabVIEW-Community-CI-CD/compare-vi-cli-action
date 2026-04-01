@@ -9,11 +9,6 @@ import Ajv2020 from 'ajv/dist/2020.js';
 import addFormats from 'ajv-formats';
 import yaml from 'js-yaml';
 
-import {
-  buildWindowsNodeBridgeSpec,
-  detectWindowsHostBridge,
-  runBridgeSpec,
-} from './windows-host-bridge.mjs';
 import { runWindowsSurfaceProof as runSharedWindowsDockerSurfaceProof } from './windows-docker-shared-surface-local-ci.mjs';
 
 const repoRootDefault = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -137,6 +132,17 @@ async function ensureDir(filePath) {
 
 async function readJson(filePath) {
   return JSON.parse(await fs.readFile(filePath, 'utf8'));
+}
+
+async function readJsonIfExists(filePath) {
+  try {
+    return await readJson(filePath);
+  } catch (error) {
+    if (error && typeof error === 'object' && 'code' in error && error.code === 'ENOENT') {
+      return null;
+    }
+    throw error;
+  }
 }
 
 function relativeFrom(repoRoot, filePath) {
@@ -370,6 +376,34 @@ function deriveEscalations(proofChecks) {
           stop_conditions: [
             'Stop once vi-history-live-candidate-readiness.json reaches status=ready.',
             'Stop if the candidate repo exposes a different target path or history shape than the governed packet expects.'
+          ]
+        };
+      }
+
+      if (check.current_surface_status === 'ready-for-explicit-replay') {
+        return {
+          type: 'escalation',
+          escalation_id: 'vi-history-windows-workflow-replay',
+          governing_requirement: 'REQ-VHLP-010',
+          blocked_requirement: 'REQ-VHLP-001',
+          proof_check_id: check.id,
+          status: 'required',
+          mode: 'escalate',
+          why_now: 'The shared Windows surface and clone-backed live-history candidate are ready, so the next truthful move is the explicit governed VI History Windows workflow replay lane.',
+          reason: check.reason,
+          required_surface: 'vi-history-windows-workflow-replay',
+          current_surface_status: check.current_surface_status ?? 'unknown',
+          current_host_platform: check.current_host_platform ?? 'unknown',
+          receipt_path: check.receipt_path ?? null,
+          suggested_loop: [
+            'Run the governed Windows workflow replay lane explicitly instead of expecting packet selection to invoke it.',
+            'Inspect the workflow-grade receipt and compare artifacts the replay lane emits.',
+            'If the replay lane fails, reopen the owning VI History requirement from the emitted receipt.'
+          ],
+          recommended_commands: check.recommended_commands ?? [],
+          stop_conditions: [
+            'Stop once the VI History Windows workflow replay lane receipt reaches status=passed.',
+            'Stop if the replay lane exposes a new blocking host, image, or artifact defect.'
           ]
         };
       }
@@ -739,8 +773,14 @@ async function runSharedWindowsSurfaceProof(repoRoot, resultsDir) {
   };
 }
 
-async function runWindowsWorkflowReplayProof(repoRoot, resultsDir) {
-  const surfaceProof = await runSharedWindowsSurfaceProof(repoRoot, resultsDir);
+async function runWindowsWorkflowReplayProof(
+  repoRoot,
+  resultsDir,
+  {
+    runSharedWindowsSurfaceProofFn = runSharedWindowsSurfaceProof,
+  } = {},
+) {
+  const surfaceProof = await runSharedWindowsSurfaceProofFn(repoRoot, resultsDir);
   if (surfaceProof.status !== 'pass') {
     return {
       id: 'windows-workflow-replay',
@@ -759,96 +799,67 @@ async function runWindowsWorkflowReplayProof(repoRoot, resultsDir) {
   }
 
   const receiptPath = path.join('tests', 'results', 'docker-tools-parity', 'workflow-replay', 'vi-history-scenarios-windows-receipt.json');
-  const result = process.platform === 'win32'
-    ? spawnSync('node', [
-        'tools/priority/windows-workflow-replay-lane.mjs',
-        '--mode',
-        'vi-history-scenarios-windows',
-        '--allow-unavailable'
-      ], {
-        cwd: repoRoot,
-        encoding: 'utf8',
-        maxBuffer: 20 * 1024 * 1024
-      })
-    : (() => {
-        const bridge = detectWindowsHostBridge(repoRoot);
-        if (bridge.status !== 'reachable') {
-          throw new Error(bridge.reason);
-        }
-        const bridgeSpec = buildWindowsNodeBridgeSpec({
-          bridge,
-          scriptRelativePath: path.join('tools', 'priority', 'windows-workflow-replay-lane.mjs'),
-          scriptArgs: ['--mode', 'vi-history-scenarios-windows', '--allow-unavailable']
-        });
-        return runBridgeSpec(bridgeSpec, { cwd: repoRoot, maxBuffer: 64 * 1024 * 1024 });
-      })();
+  const receipt = await readJsonIfExists(path.join(repoRoot, receiptPath));
+  const receiptStatus = receipt?.result?.status ?? null;
 
-  const base = {
-    id: 'windows-workflow-replay',
-    owner_requirement: 'REQ-VHLP-001',
-    receipt_path: receiptPath
-  };
-
-  let receipt;
-  try {
-    receipt = await readJson(path.join(repoRoot, receiptPath));
-  } catch (error) {
-    return {
-      ...base,
-      status: 'fail',
-      blocking: true,
-      summary: 'VI History Windows workflow replay did not emit its governed receipt.',
-      details: [result.stdout?.trim(), result.stderr?.trim(), error instanceof Error ? error.message : String(error)].filter(Boolean)
-    };
-  }
-
-  const receiptStatus = receipt?.result?.status ?? 'unknown';
   if (receiptStatus === 'passed') {
     return {
-      ...base,
+      id: 'windows-workflow-replay',
+      owner_requirement: 'REQ-VHLP-001',
       status: 'pass',
       blocking: false,
-      summary: 'VI History Windows workflow replay passed and emitted a workflow-grade receipt.',
-      current_surface_status: receiptStatus,
-      current_host_platform: 'Windows',
-      coordinator_host_platform: process.platform === 'win32' ? 'Windows' : 'Unix',
-      bridge_mode: process.platform === 'win32' ? 'native-windows' : 'wsl-windows',
+      summary: 'The governed VI History Windows workflow replay lane already passed and emitted a workflow-grade receipt.',
+      current_surface_status: 'passed',
+      current_host_platform: surfaceProof.current_host_platform,
+      coordinator_host_platform: surfaceProof.coordinator_host_platform,
+      bridge_mode: surfaceProof.bridge_mode,
+      reason: 'A passing VI History Windows workflow replay receipt is already present for the governed lane.',
+      receipt_path: receiptPath,
       recommended_commands: [
         'npm run priority:workflow:replay:windows:vi-history'
       ]
     };
   }
-  if (receiptStatus === 'unavailable') {
+
+  if (receiptStatus === 'failed') {
     return {
-      ...base,
-      status: 'advisory',
-      blocking: false,
-      summary: 'VI History Windows workflow replay is unavailable from the current host; use the shared Windows Docker Desktop + NI image surface.',
-      current_surface_status: receiptStatus,
-      current_host_platform: 'Windows',
-      coordinator_host_platform: process.platform === 'win32' ? 'Windows' : 'Unix',
-      bridge_mode: process.platform === 'win32' ? 'native-windows' : 'wsl-windows',
+      id: 'windows-workflow-replay',
+      owner_requirement: 'REQ-VHLP-001',
+      status: 'fail',
+      blocking: true,
+      summary: 'The governed VI History Windows workflow replay lane emitted a failing receipt.',
+      current_surface_status: 'failed',
+      current_host_platform: surfaceProof.current_host_platform,
+      coordinator_host_platform: surfaceProof.coordinator_host_platform,
+      bridge_mode: surfaceProof.bridge_mode,
+      reason: receipt?.result?.errorMessage ?? 'The replay receipt recorded a failure.',
+      receipt_path: receiptPath,
+      details: [receipt?.result?.errorMessage].filter(Boolean),
       recommended_commands: [
-        'npm run docker:ni:windows:bootstrap',
-        'npm run compare:docker:ni:windows:probe',
         'npm run priority:workflow:replay:windows:vi-history'
       ]
     };
   }
+
   return {
-    ...base,
-    status: 'fail',
-    blocking: true,
-    summary: 'VI History Windows workflow replay failed on the current packet.',
-    current_surface_status: receiptStatus,
-    current_host_platform: 'Windows',
-    coordinator_host_platform: process.platform === 'win32' ? 'Windows' : 'Unix',
-    bridge_mode: process.platform === 'win32' ? 'native-windows' : 'wsl-windows',
-    details: [result.stdout?.trim(), result.stderr?.trim()].filter(Boolean)
+    id: 'windows-workflow-replay',
+    owner_requirement: 'REQ-VHLP-001',
+    status: 'advisory',
+    blocking: false,
+    summary: 'The governed VI History Windows workflow replay lane is ready and must be invoked explicitly as the next live-proof step.',
+    current_surface_status: 'ready-for-explicit-replay',
+    current_host_platform: surfaceProof.current_host_platform,
+    coordinator_host_platform: surfaceProof.coordinator_host_platform,
+    bridge_mode: surfaceProof.bridge_mode,
+    reason: 'Local VI History CI keeps live Windows workflow replay as an explicit next step instead of running it implicitly during packet selection.',
+    receipt_path: receiptPath,
+    recommended_commands: [
+      'npm run priority:workflow:replay:windows:vi-history'
+    ]
   };
 }
 
-export { parseCsv, parseRequirementNumber, determinePhase, rankRequirementGaps, rankProofRegressions, deriveEscalations, selectNextStep, applyAutonomyPolicy, runLiveHistoryCandidateProof };
+export { parseCsv, parseRequirementNumber, determinePhase, rankRequirementGaps, rankProofRegressions, deriveEscalations, selectNextStep, applyAutonomyPolicy, runLiveHistoryCandidateProof, runWindowsWorkflowReplayProof };
 
 export async function runVIHistoryLocalCi({
   repoRoot = repoRootDefault,
