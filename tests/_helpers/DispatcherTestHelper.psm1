@@ -86,7 +86,6 @@ function Invoke-DispatcherSafe {
   $psi.EnvironmentVariables['SINGLE_INVOKER']       = '1'
   $psi.EnvironmentVariables['SUPPRESS_NESTED_DISCOVERY'] = '1'
   $psi.EnvironmentVariables['STUCK_GUARD']          = '0'
-  $psi.EnvironmentVariables['DISABLE_SINGLE_INVOKER'] = '1'
   $psi.EnvironmentVariables['SUPPRESS_PATTERN_SELFTEST'] = '1'
 
   $baseline  = Get-PwshProcessIds

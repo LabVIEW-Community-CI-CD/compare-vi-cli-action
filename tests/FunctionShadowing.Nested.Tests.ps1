@@ -41,9 +41,19 @@ Describe "Inner Smoke" {
     $toolsDir = Join-Path $workspace 'tools'
     New-Item -ItemType Directory -Path $toolsDir -Force | Out-Null
 
-    $trackerModule = Join-Path $repoRoot 'tools' 'LabVIEWPidTracker.psm1'
-    if (Test-Path -LiteralPath $trackerModule -PathType Leaf) {
-      Copy-Item -Path $trackerModule -Destination $toolsDir -Force
+    # Keep the nested workspace aligned with dispatcher-side tool growth.
+    $supportFiles = @(
+      'LabVIEWPidTracker.psm1',
+      'PesterExecutionPacks.ps1',
+      'Invoke-PesterExecutionPostprocess.ps1',
+      'PesterServiceModelSchema.ps1',
+      'Get-PesterResultXmlSummary.ps1'
+    )
+    foreach ($supportFile in $supportFiles) {
+      $supportPath = Join-Path $repoRoot 'tools' $supportFile
+      if (Test-Path -LiteralPath $supportPath -PathType Leaf) {
+        Copy-Item -Path $supportPath -Destination $toolsDir -Force
+      }
     }
 
     $dispatcherTools = Join-Path $repoRoot 'tools' 'Dispatcher'
@@ -68,7 +78,12 @@ Describe "Inner Smoke" {
       $nestedExit | Should -Be 0
       $json.failed | Should -Be 0
       $json.errors | Should -Be 0
-      $json.discoveryFailures | Should -Be 0 -Because 'Shadowing smoke test should not introduce discovery failures'
+      $discoveryFailures = if ($json.PSObject.Properties.Name -contains 'discoveryFailures') {
+        [int]$json.discoveryFailures
+      } else {
+        0
+      }
+      $discoveryFailures | Should -Be 0 -Because 'Shadowing smoke test should not introduce discovery failures'
       if ($json.failed -gt 0 -or $json.errors -gt 0 -or $json.discoveryFailures -gt 0) {
         Write-Host '[nested-shadow] DEBUG OUTPUT START' -ForegroundColor Yellow
         ($innerOutput | Out-String) | Write-Host

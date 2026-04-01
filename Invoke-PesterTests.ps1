@@ -567,6 +567,9 @@ $ErrorActionPreference = 'Stop'
 if (-not (Get-Variable -Name includeIntegrationBool -Scope Script -ErrorAction SilentlyContinue)) {
   $script:includeIntegrationBool = $false
 }
+$script:stuckGuardEnabled = $false
+$script:hbPath = $null
+$script:partialLogPath = $null
 $script:executionPackResolved = 'full'
 $script:executionPackReason = 'default'
 $script:executionPackBaseIncludePatterns = @()
