@@ -10,6 +10,7 @@
     "execution",
     "observedInterpretation",
     "summary",
+    "decisionGuidance",
     "reports",
     "modes"
   ],
@@ -141,6 +142,172 @@
           "type": "string"
         },
         "outcomeLabels": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "decisionGuidance": {
+      "type": "object",
+      "required": [
+        "decisionStatement",
+        "reviewPriority",
+        "latestPair",
+        "latestSignalPair",
+        "reviewSequence",
+        "signalPairs",
+        "collapsedPairs",
+        "focusBuckets",
+        "contextBuckets"
+      ],
+      "properties": {
+        "decisionStatement": {
+          "type": "string"
+        },
+        "reviewPriority": {
+          "type": "string"
+        },
+        "latestPair": {
+          "type": "object",
+          "required": [
+            "index",
+            "status",
+            "baseRef",
+            "headRef",
+            "baseSubject",
+            "headSubject",
+            "baseDate",
+            "headDate"
+          ],
+          "properties": {
+            "index": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "status": {
+              "type": "string"
+            },
+            "baseRef": {
+              "type": "string"
+            },
+            "headRef": {
+              "type": "string"
+            },
+            "baseSubject": {
+              "type": "string"
+            },
+            "headSubject": {
+              "type": "string"
+            },
+            "baseDate": {
+              "type": "string"
+            },
+            "headDate": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false
+        },
+        "latestSignalPair": {
+          "type": "object",
+          "required": [
+            "index",
+            "baseRef",
+            "headRef",
+            "baseSubject",
+            "headSubject",
+            "baseDate",
+            "headDate"
+          ],
+          "properties": {
+            "index": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "baseRef": {
+              "type": "string"
+            },
+            "headRef": {
+              "type": "string"
+            },
+            "baseSubject": {
+              "type": "string"
+            },
+            "headSubject": {
+              "type": "string"
+            },
+            "baseDate": {
+              "type": "string"
+            },
+            "headDate": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false
+        },
+        "reviewSequence": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "index",
+              "baseRef",
+              "headRef",
+              "baseSubject",
+              "headSubject",
+              "baseDate",
+              "headDate"
+            ],
+            "properties": {
+              "index": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "baseRef": {
+                "type": "string"
+              },
+              "headRef": {
+                "type": "string"
+              },
+              "baseSubject": {
+                "type": "string"
+              },
+              "headSubject": {
+                "type": "string"
+              },
+              "baseDate": {
+                "type": "string"
+              },
+              "headDate": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "signalPairs": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "collapsedPairs": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "focusBuckets": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "contextBuckets": {
           "type": "array",
           "items": {
             "type": "string"

@@ -1,0 +1,42 @@
+version: 1
+id: vi-history-local-proof
+description: >
+  Dedicated local CI audit surface for the VI History local proof subsystem.
+  This bundle captures the workflow replay lane, local refinement and operator
+  surfaces, workflow-readiness envelope, and the VI History autonomy loop.
+include:
+  - package.json
+  - docs/knowledgebase/Local-Proof-Autonomy-Program.md
+  - tools/priority/vi-history-local-ci.mjs
+  - tools/priority/windows-host-bridge.mjs
+  - tools/priority/vi-history-live-candidate.json
+  - tools/priority/comparevi-local-program-ci.mjs
+  - tools/priority/vi-history-local-proof-audit-surface.yaml
+  - tools/priority/vi-history-local-proof-autonomy-policy.json
+  - tools/priority/__tests__/comparevi-local-program-ci.test.mjs
+  - tools/priority/__tests__/vi-history-local-ci.test.mjs
+  - tools/priority/__tests__/vi-history-local-proof-contract.test.mjs
+  - tools/priority/__tests__/windows-host-bridge.test.mjs
+  - tools/priority/__tests__/windows-workflow-replay-lane.test.mjs
+  - tools/priority/windows-workflow-replay-lane.mjs
+  - tools/Invoke-VIHistoryLocalRefinement.ps1
+  - tools/Invoke-VIHistoryLocalOperatorSession.ps1
+  - tools/Write-VIHistoryWorkflowReadiness.ps1
+  - tools/Test-WindowsNI2026q1HostPreflight.ps1
+  - tools/Run-NIWindowsContainerCompare.ps1
+  - tools/docker/Dockerfile.vi-history-dev
+  - tests/VIHistoryLocalAcceleration.Tests.ps1
+  - tests/VIHistoryLocalOperatorSession.Tests.ps1
+  - tests/Write-VIHistoryWorkflowReadiness.Tests.ps1
+  - docs/requirements-vi-history-local-proof-srs.md
+  - docs/rtm-vi-history-local-proof.csv
+  - docs/testing/vi-history-local-proof-test-plan.md
+  - docs/knowledgebase/VI-History-Local-Proof.md
+  - docs/architecture/vi-history-local-proof-control-plane.md
+  - docs/schemas/windows-workflow-replay-lane-v1.schema.json
+  - docs/schemas/comparevi-local-program-ci-report-v1.schema.json
+  - docs/schemas/comparevi-local-program-next-step-v1.schema.json
+  - docs/schemas/vi-history-live-candidate-v1.schema.json
+  - docs/schemas/vi-history-live-candidate-readiness-v1.schema.json
+  - docs/schemas/vi-history-local-ci-report-v1.schema.json
+  - docs/schemas/vi-history-local-next-step-v1.schema.json

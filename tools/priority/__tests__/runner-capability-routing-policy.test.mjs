@@ -53,6 +53,10 @@ test('runner capability routing policy covers all current self-hosted compare wo
         assert.equal(job.routingClass, 'specialized-opt-in');
         assert.deepEqual(job.requiredCapabilityLabels, ['labview-2026', 'lv32']);
         assert.deepEqual(job.requiredHealthReceipts, ['labview-2026-host-plane-report']);
+      } else if (entry.workflow === '.github/workflows/validate.yml' && job.id === 'vi-history-scenarios-windows') {
+        assert.equal(job.routingClass, 'specialized-opt-in');
+        assert.deepEqual(job.requiredCapabilityLabels, ['docker-lane']);
+        assert.equal(job.requiredHealthReceipts, undefined);
       } else if (entry.workflow === '.github/workflows/validate.yml' && job.id === 'vi-history-scenarios-windows-lv32') {
         assert.equal(job.routingClass, 'specialized-opt-in');
         assert.deepEqual(job.requiredCapabilityLabels, ['labview-2026', 'lv32']);

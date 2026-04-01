@@ -99,8 +99,20 @@ today's compare jobs is:
 - `tools/policy/runner-capability-routing.json`
 
 That matrix keeps most compare jobs ingress-only, but
-`.github/workflows/labview-cli-compare.yml` is now an explicit native 32-bit
-consumer:
+`.github/workflows/validate.yml`'s `vi-history-scenarios-windows` lane is now an
+explicit Windows Docker proof consumer:
+
+- `runs-on: [self-hosted, Windows, X64, comparevi, capability-ingress, docker-lane]`
+- it may mutate Docker Desktop into the Windows engine to prove `nationalinstruments/labview:2026q1-windows`
+- it restores the starting Docker context after the proof completes
+
+The matrix also keeps the native 32-bit consumers explicit so they can run in
+parallel with the 64-bit Windows Docker proof:
+
+- `.github/workflows/validate.yml` `vi-history-scenarios-windows-lv32`
+- `.github/workflows/labview-cli-compare.yml`
+
+- `.github/workflows/labview-cli-compare.yml` consumer details:
 
 - `runs-on: [self-hosted, Windows, X64, comparevi, capability-ingress, labview-2026, lv32]`
 - emit `node tools/npm/run-script.mjs env:labview:2026:host-planes`

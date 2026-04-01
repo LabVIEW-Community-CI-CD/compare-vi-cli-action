@@ -11,7 +11,7 @@ function readRepoFile(relativePath) {
   return readFileSync(path.join(repoRoot, relativePath), 'utf8');
 }
 
-test('validate workflow pins explicit LabVIEW paths for hosted Linux and Windows VI history lanes', () => {
+test('validate workflow pins explicit LabVIEW paths for hosted Linux and self-hosted Windows VI history lanes', () => {
   const workflow = readRepoFile('.github/workflows/validate.yml');
 
   assert.match(workflow, /NI_LINUX_IMAGE:\s*nationalinstruments\/labview:2026q1-linux/);
@@ -20,15 +20,19 @@ test('validate workflow pins explicit LabVIEW paths for hosted Linux and Windows
   assert.match(workflow, /-Image \$env:NI_LINUX_IMAGE/);
   assert.match(workflow, /-LabVIEWPath \$env:NI_LINUX_LABVIEW_PATH/);
   assert.match(workflow, /vi-history-scenarios-windows-plan:/);
-  assert.match(workflow, /Resolve-HostedWindowsLanePlan\.ps1/);
+  assert.match(workflow, /Resolve-SelfHostedWindowsLanePlan\.ps1/);
   assert.match(workflow, /vi-history-scenarios-windows:/);
-  assert.match(workflow, /runs-on:\s*windows-2022/);
+  assert.match(workflow, /runs-on:\s*\[self-hosted, Windows, X64, comparevi, capability-ingress, docker-lane\]/);
   assert.match(workflow, /NI_WINDOWS_IMAGE:\s*nationalinstruments\/labview:2026q1-windows/);
   assert.match(workflow, /NI_WINDOWS_LABVIEW_PATH:\s*C:\\Program Files\\National Instruments\\LabVIEW 2026\\LabVIEW\.exe/);
   assert.match(workflow, /Test-WindowsNI2026q1HostPreflight\.ps1/);
   assert.match(workflow, /Write-VIHistoryLaneEvidence\.ps1/);
   assert.match(workflow, /Run-NIWindowsContainerCompare\.ps1/);
-  assert.match(workflow, /-ExecutionSurface 'github-hosted-windows'/);
+  assert.match(workflow, /Assert-RunnerLabelContract\.ps1/);
+  assert.match(workflow, /-ExecutionSurface 'desktop-local'/);
+  assert.match(workflow, /-ManageDockerEngine:\$true/);
+  assert.match(workflow, /-AllowHostEngineMutation:\$true/);
+  assert.match(workflow, /Restore Docker Desktop context after Windows proof/);
   assert.match(workflow, /-Image \$env:NI_WINDOWS_IMAGE/);
   assert.match(workflow, /-LabVIEWPath \$env:NI_WINDOWS_LABVIEW_PATH/);
   assert.match(workflow, /validate-vi-history-scenarios-windows/);
@@ -138,11 +142,11 @@ test('windows hosted parity no longer includes hosted LVCompare babysitting debt
   const workflow = readRepoFile('.github/workflows/windows-hosted-parity.yml');
 
   assert.match(workflow, /name:\s*Windows Hosted NI Proof \(Manual\)/);
-  assert.match(workflow, /runs-on:\s*windows-2022/);
+  assert.match(workflow, /uses:\s+\.\s*\/\.github\/workflows\/windows-ni-proof-reusable\.yml/);
   assert.doesNotMatch(workflow, /Verify LVCompare and idle LabVIEW state \(notice-only on hosted\)/);
   assert.doesNotMatch(workflow, /LVCompare\.exe not found at canonical path/);
-  assert.match(workflow, /Prepare NI Windows image and hosted runtime/);
-  assert.match(workflow, /Run-NIWindowsContainerCompare\.ps1/);
+  assert.match(workflow, /results_root:\s*tests\/results\/windows-hosted-parity/);
+  assert.match(workflow, /artifact_name:\s*windows-hosted-ni-proof/);
 });
 
 test('docker desktop fast-loop only accepts lane-specific LabVIEW path contracts', () => {

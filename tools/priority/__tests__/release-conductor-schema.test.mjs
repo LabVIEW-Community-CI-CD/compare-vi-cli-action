@@ -68,7 +68,6 @@ test('release conductor report validates schema', async () => {
       stream: 'comparevi-cli',
       channel: 'stable',
       version: '0.8.0',
-      dwellMinutes: 60,
       quarantineStaleHours: 24,
       help: false
     },

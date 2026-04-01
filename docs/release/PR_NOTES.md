@@ -1,41 +1,37 @@
 <!-- markdownlint-disable-next-line MD041 -->
-# Release v0.6.9 - PR Notes Helper
+# Release v0.6.11 - PR Notes Helper
 
-Reference sheet for the `v0.6.9` maintenance release. This cut repairs the
-published `CompareVI.Tools` bundle so released downstream consumers can execute
-the hosted NI Linux VI-history contract without a maintainer checkout.
+Reference sheet for the `v0.6.11` maintenance release. This cut carries the
+`v0.6.10` stable line forward and adds the VI-history native-path repair proven
+on the Windows NI Docker-backed proof surface.
 
 ## 1. Summary
 
-Release `v0.6.9` focuses on three themes:
+Release `v0.6.11` focuses on three themes:
 
-- **Executable released bundle**: `CompareVI.Tools-v0.6.9.zip` now carries the
-  hosted NI Linux helper `tools/Get-LabVIEWContainerShellContract.ps1` instead
-  of shipping an incomplete runtime contract.
-- **Faster local replay**: maintainers can now mirror
-  `vi-history-scenarios-windows` through the checked-in Windows Docker replay
-  lane instead of waiting on the hosted proof for every iteration.
-- **Released-backend recovery**: downstream VI-history consumers can once again
-  rely on the published bundle rather than a maintainer override or local
-  source tree to execute the canonical proof path.
-- **Narrow maintenance scope**: this cut only repairs released bundle
-  executability and local maintainer replay. It does not expand the public
-  VI-history surface or add new product claims.
+- **VI-history native-path correctness**: the released backend now resolves
+  Windows NI proof-surface file paths without losing the repository-relative VI
+  target, so hosted and local replay lanes can reach the real history target
+  instead of a synthetic temp-root mismatch.
+- **Windows NI proof continuity**: the LabVIEW Docker-backed Windows proof path
+  remains the authoritative hosted execution surface, and `v0.6.11` is cut
+  directly from the `v0.6.10` stable line so the released proof authority is
+  preserved rather than reintroduced from stale `develop`.
+- **Consumer-ready repin path**: the release packet is aligned for the next
+  `comparevi-history` pin bump and the clone-backed `ni/labview-icon-editor`
+  history proof rerun on the newly published backend.
 
 ## 2. Maintenance Highlights
 
-- `tools/Publish-CompareVIToolsArtifact.ps1` now places
-  `tools/Get-LabVIEWContainerShellContract.ps1` in the bundle and advertises it
-  through the published hosted-runner contract metadata.
-- `tools/Test-CompareVIHistoryBundleCertification.ps1` now fails closed if the
-  extracted bundle omits the hosted NI Linux support scripts required by the
-  released consumer path.
-- `tools/priority/windows-workflow-replay-lane.mjs` now supports a local
-  `vi-history-scenarios-windows` replay mode so hosted Windows scenario fixes
-  can be iterated on this machine without changing the hosted certification
-  contract.
-- Stable release surfaces now pin `0.6.9`, isolating the bundle-contract repair
-  in an immutable stable cut after the broken `v0.6.8` publication.
+- `tools/Compare-VIHistory.ps1`, `tools/Compare-RefsToTemp.ps1`, and
+  `tools/Render-VIHistoryReport.ps1` now preserve the intended VI-history
+  target path across the Windows NI proof surface instead of collapsing to a
+  host-native path that the replay layer cannot certify.
+- `tests/TestFileExistsAtRef.Tests.ps1` and
+  `tests/CompareVI.GitRefs.VI2.Tests.ps1` now cover the backend-side path and
+  git-ref seams that caused the Windows proof regression.
+- Stable release surfaces now pin `0.6.11`, while the helper docs still point
+  consumers at `v0.6.10` until publication completes.
 
 ## 3. Validation Snapshot
 
@@ -45,17 +41,16 @@ Release `v0.6.9` focuses on three themes:
   - `smoke-gate`
   - `Policy Guard (Upstream) / policy-guard`
   - `commit-integrity`
-- [x] Direct bundle proof restored the published hosted NI Linux contract:
-  - extracted bundle contains both `tools/Run-NILinuxContainerCompare.ps1` and
-    `tools/Get-LabVIEWContainerShellContract.ps1`
-  - bundle certification summary reports `status: producer-native-ready`
-- [ ] `node tools/npm/run-script.mjs release:finalize -- 0.6.9` completes from
+- [ ] Hosted Windows NI Docker proof is green on the release branch.
+- [ ] Local-proof autonomy selector still emits the truthful next proof
+      surface instead of looping or hanging.
+- [ ] `node tools/npm/run-script.mjs release:finalize -- 0.6.11` completes from
       a clean helper lane and writes fresh finalize metadata under
       `tests/results/_agent/release/`
-- [ ] Published release `v0.6.9` includes the signed distribution assets,
+- [ ] Published release `v0.6.11` includes the signed distribution assets,
       `SHA256SUMS.txt`, `sbom.spdx.json`, and `provenance.json`
-- [ ] `comparevi-history` repins `comparevi-backend-ref.txt` to `v0.6.9`
-      before the canonical `DrawIcon.vi` product proof is rerun
+- [ ] `comparevi-history` repins `comparevi-backend-ref.txt` to `v0.6.11`
+      before the clone-backed `ni/labview-icon-editor` proof is rerun
 
 ## 4. Reviewer Focus
 
@@ -63,22 +58,23 @@ Release `v0.6.9` focuses on three themes:
   - `package.json`
   - `Directory.Build.props`
   - `tools/CompareVI.Tools/CompareVI.Tools.psd1`
-- Review the released bundle contract repair for correctness:
-  - `tools/Publish-CompareVIToolsArtifact.ps1`
-  - `tools/Test-CompareVIHistoryBundleCertification.ps1`
-  - `docs/schemas/comparevi-history-bundle-certification-v1.schema.json`
+- Review the released Windows NI Docker proof and VI-history backend surfaces for correctness:
+  - `.github/workflows/windows-ni-proof-reusable.yml`
+  - `tools/Compare-VIHistory.ps1`
+  - `tools/Compare-RefsToTemp.ps1`
+  - `tools/Render-VIHistoryReport.ps1`
 - Review the release helper packet for consistency:
   - `CHANGELOG.md`
   - `docs/release/TAG_PREP_CHECKLIST.md`
-  - `docs/archive/releases/RELEASE_NOTES_v0.6.9.md`
+  - `docs/archive/releases/RELEASE_NOTES_v0.6.11.md`
 
 ## 5. Follow-Up After Stable
 
-1. Re-pin `comparevi-history` from `v0.6.8` to `v0.6.9` and rerun the
-   canonical `DrawIcon.vi` proof on the released backend.
-2. Re-evaluate the current emitted history surface against the real developer
+1. Re-pin `comparevi-history` from `v0.6.10` to `v0.6.11` and rerun the
+   clone-backed `ni/labview-icon-editor` proof on the released backend.
+2. Confirm the Windows NI proof artifacts and the published benchmark packet
+   still agree on the certified backend version after the repin.
+3. Re-evaluate the current emitted history surface against the real developer
    question before treating any mode as decision-ready.
-3. Reduce the public mode surface again if the rerun product proof only
-   justifies a narrower mode set.
 
---- Updated: 2026-03-30 (prepared for the `v0.6.9` maintenance cut).
+--- Updated: 2026-04-01 (prepared for the `v0.6.11` maintenance cut).

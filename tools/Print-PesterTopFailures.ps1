@@ -9,6 +9,11 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+$failurePayloadTool = Join-Path $PSScriptRoot 'PesterFailurePayload.ps1'
+if (Test-Path -LiteralPath $failurePayloadTool -PathType Leaf) {
+  . $failurePayloadTool
+}
+
 $repoRoot = (Resolve-Path '.').Path
 $uxModule = Join-Path $repoRoot 'tools' 'ConsoleUx.psm1'
 if (Test-Path -LiteralPath $uxModule -PathType Leaf) {
@@ -30,11 +35,12 @@ if (-not (Test-Path -LiteralPath $ResultsDir -PathType Container)) {
 $items = @()
 $failJson = Join-Path $ResultsDir 'pester-failures.json'
 $nunitXml = Join-Path $ResultsDir 'pester-results.xml'
+$failurePayloadInfo = $null
 
 if (Test-Path -LiteralPath $failJson -PathType Leaf) {
-  try {
-    $arr = Get-Content -LiteralPath $failJson -Raw | ConvertFrom-Json -ErrorAction Stop
-    foreach ($f in $arr) {
+  $failurePayloadInfo = Read-PesterFailurePayloadFile -PathValue $failJson
+  if ($failurePayloadInfo.parseStatus -eq 'parsed') {
+    foreach ($f in (Get-PesterFailureEntries -FailurePayload $failurePayloadInfo.payload)) {
       $nameProp = if ($f.PSObject.Properties['name']) { [string]$f.name } else { '' }
       $fileProp = if ($f.PSObject.Properties['file']) { [string]$f.file } else { '' }
       $lineProp = if ($f.PSObject.Properties['line']) { [string]$f.line } else { '' }
@@ -46,8 +52,8 @@ if (Test-Path -LiteralPath $failJson -PathType Leaf) {
         message = $messageProp
       }
     }
-  } catch {
-    if ($dx -ne 'quiet') { Write-Warning "Failed to parse ${failJson}: $_" }
+  } elseif ($dx -ne 'quiet') {
+    Write-Warning ("Failed to parse ${failJson}: {0}" -f $failurePayloadInfo.parseError)
   }
 } elseif (Test-Path -LiteralPath $nunitXml -PathType Leaf) {
   try {
@@ -77,7 +83,20 @@ if (Test-Path -LiteralPath $failJson -PathType Leaf) {
 }
 
 if (-not $items -or $items.Count -eq 0) {
-  if ($dx -ne 'quiet') { Write-Host '[dx] top-failures none' }
+  if ($dx -ne 'quiet') {
+    $summaryPath = Join-Path $ResultsDir 'pester-summary.json'
+    $summary = $null
+    if (Test-Path -LiteralPath $summaryPath -PathType Leaf) {
+      try { $summary = Get-Content -LiteralPath $summaryPath -Raw | ConvertFrom-Json -ErrorAction Stop } catch {}
+    }
+    $detailState = Get-PesterFailureDetailState -FailurePayload $(if ($failurePayloadInfo) { $failurePayloadInfo.payload } else { $null }) -Summary $summary
+    if ($detailState.detailStatus -eq 'unavailable') {
+      $reasonSuffix = if ($detailState.unavailableReason) { " reason=$($detailState.unavailableReason)" } else { '' }
+      Write-Host ("[dx] top-failures unavailable{0}" -f $reasonSuffix)
+    } else {
+      Write-Host '[dx] top-failures none'
+    }
+  }
   if ($PassThru) { return @() }
   return
 }

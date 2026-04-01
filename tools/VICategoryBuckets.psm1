@@ -105,19 +105,22 @@ function Resolve-VICategorySlug {
     if ([string]::IsNullOrWhiteSpace($Name)) { return $null }
 
     $token = $Name.Trim().ToLowerInvariant()
+    if ($token -eq 'attributes') { return 'vi-attribute' }
+    if ($script:CategoryDefinitions.ContainsKey($token)) { return $token }
+    $normalizedToken = $token -replace '[-_]+', ' '
 
-    if ($token -match 'block diagram' -and $token -match 'cosmetic') { return 'block-diagram-cosmetic' }
-    if ($token -match 'block diagram' -and $token -match 'functional') { return 'block-diagram-functional' }
-    if ($token -match 'block diagram') { return 'block-diagram' }
-    if ($token -match 'connector') { return 'connector-pane' }
-    if ($token -match 'vi attribute' -or $token -match 'attributes') { return 'vi-attribute' }
-    if ($token -match 'front panel position') { return 'front-panel-position-size' }
-    if ($token -match 'front panel' -or $token -match 'control changes') { return 'front-panel' }
-    if ($token -match 'cosmetic') { return 'cosmetic' }
-    if ($token -match 'window') { return 'window' }
-    if ($token -match 'icon') { return 'icon' }
-    if ($token -match 'documentation') { return 'documentation' }
-    if ($token -match 'execution') { return 'execution' }
+    if ($normalizedToken -match 'block diagram' -and $normalizedToken -match 'cosmetic') { return 'block-diagram-cosmetic' }
+    if ($normalizedToken -match 'block diagram' -and $normalizedToken -match 'functional') { return 'block-diagram-functional' }
+    if ($normalizedToken -match 'block diagram') { return 'block-diagram' }
+    if ($normalizedToken -match 'connector') { return 'connector-pane' }
+    if ($normalizedToken -match 'vi attribute' -or $normalizedToken -match 'attributes') { return 'vi-attribute' }
+    if ($normalizedToken -match 'front panel position') { return 'front-panel-position-size' }
+    if ($normalizedToken -match 'front panel' -or $normalizedToken -match 'control changes') { return 'front-panel' }
+    if ($normalizedToken -match 'cosmetic') { return 'cosmetic' }
+    if ($normalizedToken -match 'window') { return 'window' }
+    if ($normalizedToken -match 'icon') { return 'icon' }
+    if ($normalizedToken -match 'documentation') { return 'documentation' }
+    if ($normalizedToken -match 'execution') { return 'execution' }
 
     return ($token -replace '[^a-z0-9]+', '-').Trim('-')
 }

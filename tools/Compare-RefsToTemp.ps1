@@ -28,12 +28,36 @@ $ErrorActionPreference = 'Stop'
 try { git --version | Out-Null } catch { throw 'git is required on PATH to fetch file content at refs.' }
 
 $repoRoot = (Get-Location).Path
-try {
-  $categoryModule = Join-Path $repoRoot 'tools' 'VICategoryBuckets.psm1'
-  if (Test-Path -LiteralPath $categoryModule -PathType Leaf) {
-    Import-Module $categoryModule -Force
+
+function Convert-ToNativeFileSystemPath {
+  param([AllowNull()][string]$PathValue)
+  if ([string]::IsNullOrWhiteSpace($PathValue)) { return $PathValue }
+
+  $candidate = [string]$PathValue
+  $lastProviderSeparator = $candidate.LastIndexOf('::', [System.StringComparison]::Ordinal)
+  if ($lastProviderSeparator -ge 0) {
+    $candidate = $candidate.Substring($lastProviderSeparator + 2)
   }
-} catch {}
+  $candidate = ($candidate -replace '^[A-Za-z][A-Za-z0-9.+-]*::', '')
+  if ($candidate -match '^[\\/](wsl\.localhost|wsl\$)[\\/]') {
+    $candidate = [System.IO.Path]::DirectorySeparatorChar + $candidate
+  }
+  try {
+    $resolved = Resolve-Path -LiteralPath $candidate -ErrorAction Stop | Select-Object -First 1
+    $providerPath = [string]$resolved.ProviderPath
+    if (-not [string]::IsNullOrWhiteSpace($providerPath)) {
+      return [System.IO.Path]::GetFullPath($providerPath)
+    }
+  } catch {}
+
+  try {
+    return [System.IO.Path]::GetFullPath($candidate)
+  } catch {
+    return $candidate
+  }
+}
+
+$repoRoot = Convert-ToNativeFileSystemPath -PathValue $repoRoot
 
 function Resolve-CompareVIScriptsRoot {
   param([string]$PrimaryRoot)
@@ -55,6 +79,21 @@ function Resolve-CompareVIScriptsRoot {
   return $PrimaryRoot
 }
 
+try {
+  $categoryModuleCandidates = New-Object System.Collections.Generic.List[string]
+  $categoryModuleCandidates.Add((Join-Path $repoRoot 'tools' 'VICategoryBuckets.psm1')) | Out-Null
+  $resolvedScriptsRoot = Resolve-CompareVIScriptsRoot -PrimaryRoot $repoRoot
+  if (-not [string]::IsNullOrWhiteSpace($resolvedScriptsRoot)) {
+    $categoryModuleCandidates.Add((Join-Path $resolvedScriptsRoot 'tools' 'VICategoryBuckets.psm1')) | Out-Null
+  }
+  foreach ($candidate in @($categoryModuleCandidates | Select-Object -Unique)) {
+    if (Test-Path -LiteralPath $candidate -PathType Leaf) {
+      Import-Module $candidate -Force
+      break
+    }
+  }
+} catch {}
+
 function Split-ArgString {
   param([string]$Value)
   if ([string]::IsNullOrWhiteSpace($Value)) { return @() }
@@ -71,7 +110,13 @@ function Split-ArgString {
 function Normalize-ExistingPath {
   param([string]$Candidate)
   if ([string]::IsNullOrWhiteSpace($Candidate)) { return $null }
-  try { return (Resolve-Path -LiteralPath $Candidate -ErrorAction Stop).Path } catch { return $Candidate }
+  try { return Convert-ToNativeFileSystemPath -PathValue $Candidate } catch { return $Candidate }
+}
+
+function Resolve-NativeExistingPath {
+  param([string]$Candidate)
+  if ([string]::IsNullOrWhiteSpace($Candidate)) { return $null }
+  try { return Convert-ToNativeFileSystemPath -PathValue $Candidate } catch { return $Candidate }
 }
 
 function Resolve-TempRoot {
@@ -164,9 +209,10 @@ function Parse-DiffHeadings {
       $raw = $match.Groups['text'].Value
       if ([string]::IsNullOrWhiteSpace($raw)) { continue }
 
-      $decoded = [System.Net.WebUtility]::HtmlDecode($raw.Trim())
+      $decoded = Normalize-ComparisonReportText -Value $raw
       $decoded = ($decoded -replace '^\s*\d+[\.\)]\s*', '')
       if ([string]::IsNullOrWhiteSpace($decoded)) { continue }
+      if (Test-IsComparisonIdentityLabel -Value $decoded) { continue }
       if (-not $headings.Contains($decoded)) {
         $headings.Add($decoded) | Out-Null
       }
@@ -174,6 +220,25 @@ function Parse-DiffHeadings {
   }
 
   return @($headings.ToArray())
+}
+
+function Normalize-ComparisonReportText {
+  param([string]$Value)
+
+  if ([string]::IsNullOrWhiteSpace($Value)) { return '' }
+
+  $decoded = [System.Net.WebUtility]::HtmlDecode($Value)
+  $withoutTags = [regex]::Replace($decoded, '<[^>]+>', ' ')
+  return ([regex]::Replace($withoutTags, '\s+', ' ')).Trim()
+}
+
+function Test-IsComparisonIdentityLabel {
+  param([string]$Value)
+
+  $normalized = Normalize-ComparisonReportText -Value $Value
+  if ([string]::IsNullOrWhiteSpace($normalized)) { return $false }
+
+  return ($normalized -match '^\s*First\s+VI:\s*.+?\s+Second\s+VI:\s*.+?\s*$')
 }
 
 function Parse-DiffDetails {
@@ -186,7 +251,8 @@ function Parse-DiffDetails {
   foreach ($match in [System.Text.RegularExpressions.Regex]::Matches($Html, $pattern, 'IgnoreCase')) {
     $raw = $match.Groups['text'].Value
     if ([string]::IsNullOrWhiteSpace($raw)) { continue }
-    $decoded = [System.Net.WebUtility]::HtmlDecode($raw.Trim())
+    $decoded = Normalize-ComparisonReportText -Value $raw
+    if (Test-IsComparisonIdentityLabel -Value $decoded) { continue }
     if ($decoded) {
       $details.Add($decoded) | Out-Null
     }
@@ -254,6 +320,61 @@ function Infer-DiffCategoriesFromDetails {
   return @($inferred.ToArray())
 }
 
+function Normalize-ReportCategories {
+  param([System.Collections.IEnumerable]$Categories)
+
+  if (-not $Categories -or -not (Get-Command -Name Get-VICategoryBuckets -ErrorAction SilentlyContinue)) {
+    return @(
+      $Categories |
+        Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) } |
+        Select-Object -Unique
+    )
+  }
+
+  $categoryInfo = Get-VICategoryBuckets -Names @($Categories)
+  if ($null -eq $categoryInfo -or -not $categoryInfo.Details) {
+    return @(
+      $Categories |
+        Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) } |
+        Select-Object -Unique
+    )
+  }
+
+  $details = @($categoryInfo.Details)
+  if ($details.Count -gt 1) {
+    $specificDetails = @($details | Where-Object { [string]$_.slug -ne 'cosmetic' })
+    if ($specificDetails.Count -gt 0) {
+      $details = $specificDetails
+    }
+  }
+
+  return @(
+    $details |
+      ForEach-Object {
+        switch ([string]$_.slug) {
+          'block-diagram' { 'Block Diagram' }
+          'block-diagram-functional' { 'Block Diagram Functional' }
+          'block-diagram-cosmetic' { 'Block Diagram Cosmetic' }
+          'connector-pane' { 'Connector Pane' }
+          'front-panel' { 'Front Panel' }
+          'front-panel-position-size' { 'Front Panel Position/Size' }
+          'control-changes' { 'Front Panel Controls' }
+          'window' { 'Window Properties' }
+          'attributes' { 'VI Attribute' }
+          'vi-attribute' { 'VI Attribute' }
+          'documentation' { 'Documentation' }
+          'execution' { 'Execution Settings' }
+          'icon' { 'Icon' }
+          'unspecified' { 'Unspecified' }
+          'cosmetic' { 'Cosmetic' }
+          default { if ([string]::IsNullOrWhiteSpace([string]$_.label)) { [string]$_.slug } else { [string]$_.label } }
+        }
+      } |
+      Where-Object { -not [string]::IsNullOrWhiteSpace($_) } |
+      Select-Object -Unique
+  )
+}
+
 function Get-ReportCategoryMetadata {
   param([string]$ReportPath)
 
@@ -314,6 +435,12 @@ function Get-ReportCategoryMetadata {
         $categories.Add($name) | Out-Null
       }
     }
+  }
+
+  $normalizedCategories = @(Normalize-ReportCategories -Categories @($categories.ToArray()))
+  $categories = New-Object System.Collections.Generic.List[string]
+  foreach ($name in $normalizedCategories) {
+    $categories.Add([string]$name) | Out-Null
   }
 
   $categoryDetails = @()
@@ -545,6 +672,7 @@ Get-FileAtRef -ref $RefA -relPath $Path -dest $base
 Get-FileAtRef -ref $RefB -relPath $Path -dest $head
 
 $rd = if ([System.IO.Path]::IsPathRooted($ResultsDir)) { $ResultsDir } else { Join-Path $repoRoot $ResultsDir }
+$rd = Convert-ToNativeFileSystemPath -PathValue $rd
 New-Item -ItemType Directory -Path $rd -Force | Out-Null
 $execPath = Join-Path $rd ("$OutName-exec.json")
 $sumPath  = Join-Path $rd ("$OutName-summary.json")
@@ -747,7 +875,7 @@ if ($detailRequested) {
       if (-not $candidatePath) { continue }
       if (Test-Path -LiteralPath $candidatePath -PathType Leaf) {
         try {
-          $leakResolvedPath = (Resolve-Path -LiteralPath $candidatePath).Path
+          $leakResolvedPath = Resolve-NativeExistingPath -Candidate $candidatePath
         } catch {
           $leakResolvedPath = $candidatePath
         }
@@ -784,18 +912,18 @@ if ($detailRequested) {
     }
   }
 
-  if (Test-Path -LiteralPath $capturePath) { $detailPaths.captureJson = (Resolve-Path -LiteralPath $capturePath).Path }
-  if (Test-Path -LiteralPath $stdoutPath)  { $detailPaths.stdout       = (Resolve-Path -LiteralPath $stdoutPath).Path }
-  if (Test-Path -LiteralPath $stderrPath)  { $detailPaths.stderr       = (Resolve-Path -LiteralPath $stderrPath).Path }
+  if (Test-Path -LiteralPath $capturePath) { $detailPaths.captureJson = Resolve-NativeExistingPath -Candidate $capturePath }
+  if (Test-Path -LiteralPath $stdoutPath)  { $detailPaths.stdout       = Resolve-NativeExistingPath -Candidate $stdoutPath }
+  if (Test-Path -LiteralPath $stderrPath)  { $detailPaths.stderr       = Resolve-NativeExistingPath -Candidate $stderrPath }
   $reportResolved = $null
   if ($reportFile -and (Test-Path -LiteralPath $reportFile)) {
-    $reportResolved = (Resolve-Path -LiteralPath $reportFile).Path
+    $reportResolved = Resolve-NativeExistingPath -Candidate $reportFile
     $detailPaths.reportPath = $reportResolved
     if ($reportFormatEffective -eq 'html') {
       $detailPaths.reportHtml = $reportResolved
     }
   }
-  if (Test-Path -LiteralPath $imagesDir)   { $detailPaths.imagesDir    = (Resolve-Path -LiteralPath $imagesDir).Path }
+  if (Test-Path -LiteralPath $imagesDir)   { $detailPaths.imagesDir    = Resolve-NativeExistingPath -Candidate $imagesDir }
   if ($reportFormatEffective -eq 'html' -and $reportResolved) {
     $includedAttributes = Get-IncludedAttributesFromReport -ReportPath $reportResolved
     $reportMetadata = Get-ReportCategoryMetadata -ReportPath $reportResolved
@@ -842,14 +970,14 @@ if (-not $cliDiff -and $cliExit -eq $null) { $cliExit = 0 }
 
 $exec = Get-Content -LiteralPath $execPath -Raw | ConvertFrom-Json -Depth 6
 
-$outPaths = [ordered]@{ execJson = (Resolve-Path -LiteralPath $execPath).Path }
+$outPaths = [ordered]@{ execJson = (Resolve-NativeExistingPath -Candidate $execPath) }
 foreach ($k in @('captureJson','stdout','stderr','reportHtml','reportPath','imagesDir')) {
   if ($detailPaths.Contains($k) -and $detailPaths[$k]) { $outPaths[$k] = $detailPaths[$k] }
 }
 if ($detailPaths.Contains('leakJson') -and $detailPaths['leakJson']) {
   $outPaths.leakJson = $detailPaths['leakJson']
 }
-if ($artifactDir) { $outPaths.artifactDir = (Resolve-Path -LiteralPath $artifactDir).Path }
+if ($artifactDir) { $outPaths.artifactDir = Resolve-NativeExistingPath -Candidate $artifactDir }
 
 $cliSummary = [ordered]@{
   exitCode    = $cliExit

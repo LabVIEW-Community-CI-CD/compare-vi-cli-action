@@ -774,6 +774,59 @@ jobs:
           source_sha="$(git rev-parse "${RELEASE_TAG}^{commit}")"
           echo "source_sha=$source_sha" >> "$GITHUB_OUTPUT"
 
+      - name: Resolve current develop head
+        id: current_develop
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --force origin "refs/heads/develop:refs/remotes/origin/develop"
+          develop_sha="$(git rev-parse "refs/remotes/origin/develop^{commit}")"
+          echo "develop_sha=$develop_sha" >> "$GITHUB_OUTPUT"
+
+      - name: Decide downstream proving enforcement mode
+        id: downstream_proving_policy
+        if: always()
+        shell: bash
+        env:
+          RELEASE_SOURCE_SHA: ${{ steps.release_source.outputs.source_sha }}
+          CURRENT_DEVELOP_SHA: ${{ steps.current_develop.outputs.develop_sha }}
+        run: |
+          # shellcheck disable=SC2016
+          set -euo pipefail
+          source_sha="${RELEASE_SOURCE_SHA}"
+          develop_sha="${CURRENT_DEVELOP_SHA}"
+          mode="advisory-replay"
+          reason="release-publication-mode-not-publish"
+
+          if [[ "${RELEASE_PUBLICATION_MODE}" == "publish" ]]; then
+            if [[ "$source_sha" == "$develop_sha" ]]; then
+              mode="required"
+              reason="release-source-matches-current-develop"
+            else
+              mode="deferred-release-source-not-current-develop"
+              reason="release-source-differs-from-current-develop"
+            fi
+          fi
+
+          {
+            echo "mode=$mode"
+            echo "reason=$reason"
+          } >> "$GITHUB_OUTPUT"
+
+          {
+            echo '## Downstream Proving Gate'
+            echo
+            echo "- Publication mode: \`${RELEASE_PUBLICATION_MODE}\`"
+            echo "- Release source SHA: \`$source_sha\`"
+            echo "- Current develop SHA: \`$develop_sha\`"
+            echo "- Enforcement mode: \`$mode\`"
+            echo "- Reason: \`$reason\`"
+            if [[ "$mode" == 'deferred-release-source-not-current-develop' ]]; then
+              echo '- Exact-SHA downstream proving is deferred because `downstream-promotion.yml` proves `develop`, not a release-only branch head.'
+              echo '- Keep the selection artifact for evidence, then enforce exact downstream proof after finalize or back-merge aligns `develop` to the release source.'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Resolve downstream proving artifact selection
         id: downstream_proving_artifacts
         if: always()
@@ -956,7 +1009,7 @@ jobs:
             --trust tests/results/_agent/supply-chain/release-trust-gate.json
             --output tests/results/_agent/release/release-scorecard.json
           )
-          if [[ "${RELEASE_PUBLICATION_MODE}" == 'publish' ]]; then
+          if [[ "${{ steps.downstream_proving_policy.outputs.mode }}" == 'required' ]]; then
             scorecard_args+=(
               --downstream-proving-selection "${downstream_proving_selection_path}"
               --require-downstream-proving

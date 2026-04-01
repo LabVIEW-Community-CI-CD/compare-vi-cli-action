@@ -232,7 +232,7 @@ if ($totalDiffs -gt 0) {
 }
 
 $lines.Add("")
-$lines.Add("#### Attribute coverage")
+$lines.Add("#### Mode filter coverage")
 $attributeCoverageAdded = $false
 foreach ($mode in $modeSummaries) {
   $modeName = Get-ObjectPropertyValue -InputObject $mode -PropertyName 'mode'
@@ -296,7 +296,7 @@ foreach ($mode in $modeSummaries) {
 }
 
 if (-not $attributeCoverageAdded) {
-  $lines.Add("- *(Attribute coverage unavailable in manifest)*")
+  $lines.Add("- *(Mode filter coverage unavailable in manifest)*")
 }
 
 $body = $lines -join "`n"

@@ -22,7 +22,7 @@ tuning.
 
 ## Trust and support status
 
-- Supported stable release line: `v0.6.6`
+- Supported stable release line: `v0.6.10`
 - Future pre-release work may use `v0.6.x-rc` tags only when a later stable
   cut is being prepared
 - License: `BSD-3-Clause`
@@ -36,6 +36,8 @@ tuning.
 - Minimal adopter contract: [`docs/MINIMAL_ADOPTER_CONTRACT.md`](./docs/MINIMAL_ADOPTER_CONTRACT.md)
 - Maintainer continuity profile: [`docs/MAINTAINER_CONTINUITY_PROFILE.md`](./docs/MAINTAINER_CONTINUITY_PROFILE.md)
 - Release evidence: [`docs/release/RELEASE_EVIDENCE_v0.6.6.md`](./docs/release/RELEASE_EVIDENCE_v0.6.6.md)
+  (latest immutable in-repo evidence packet retained while the `v0.6.11`
+  stable cut supersedes the published `v0.6.10` baseline)
 - Certified downstream consumer ring:
   `LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate` on `develop` and
   `LabVIEW-Community-CI-CD/comparevi-history` on `main`, monitored by the weekly/manual
@@ -149,7 +151,11 @@ renders, `history-report-html`). Downstream workflows and reusable snippets can
 consume those keys to surface the Markdown/HTML report or to dispatch follow-up
 automation without spelunking the artifacts. When the renderer is unavailable,
 `Compare-VIHistory.ps1` writes a lightweight fallback report so the Markdown
-output key always resolves to a readable summary.
+output key always resolves to a readable summary. The stable
+`history-summary-json` facade and rendered history report now also surface the
+decision statement, the newest meaningful pair, and pair chronology (refs,
+subjects, and commit dates) so reviewers can answer what changed, when it
+changed, and whether it matters without opening raw manifests first.
 
 Provide the optional `notify_issue` input when dispatching the workflow to post
 the same summary table to a GitHub issue for stakeholders.

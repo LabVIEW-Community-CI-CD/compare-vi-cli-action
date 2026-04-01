@@ -144,14 +144,16 @@ Notes:
 - The `windows-mirror-proof` local VI-history profile is pinned to this same image and is proof-only in the first
   slice; it is not a warm or accelerated lane.
 - Hosted CI now has a matching non-required Windows proof lane in `Validate`:
-  `vi-history-scenarios-windows`. It runs on GitHub-hosted `windows-2022`, bootstraps
+  `vi-history-scenarios-windows`. It runs on the self-hosted compare ingress
+  host with the `docker-lane` capability label, bootstraps
   `nationalinstruments/labview:2026q1-windows`, and uses the same canonical in-container LabVIEW path:
   `C:\Program Files\National Instruments\LabVIEW 2026\LabVIEW.exe`.
-- If the GitHub-hosted runner cannot expose a usable Docker Windows daemon, the lane now records
-  `status = unavailable` in the preflight artifact and skips the heavy compare instead of blocking
-  unrelated integration work.
-- Expect the hosted Windows image pull to be materially slower than the Linux lane.
-  Agents can dispatch the hosted lane while manually running the Linux or Windows Docker Desktop/WSL2 lanes on this host.
+- `vi-history-scenarios-windows-lv32` runs in parallel on the same ingress host and serves
+  as the native 32-bit reference for the Windows Docker proof.
+- The lane can mutate Docker Desktop into the Windows engine and restores the starting
+  context after the proof run so the ingress host does not stay stranded on the wrong daemon.
+- Expect the self-hosted Windows image proof to remain materially slower than the Linux lane,
+  but it now spends local host time instead of GitHub-hosted Windows minutes.
 - Use `node tools/npm/run-script.mjs priority:lane:concurrency:plan` to turn the current host-plane,
   host-RAM, and Docker-runtime receipts into a recommended concurrent hosted/manual lane bundle before
   dispatching work. The plan now emits a `dockerRuntimeCutover` contract so you can tell whether a Linux-based
@@ -197,6 +199,8 @@ Notes:
   `vi-history-scenarios-windows` lane locally: it runs the same NI Windows
   host preflight, then the same fixed fixture compare invocation against the
   canonical in-container LabVIEW path.
+- That replay remains the fastest way to iterate on the Windows Docker proof locally; the
+  CI lane exists to keep the parallel 64-bit proof aligned with the LV32 reference job.
 
 Common remediation:
 

@@ -1,14 +1,14 @@
-# v0.6.9 Tag Preparation Checklist
+# v0.6.11 Tag Preparation Checklist
 <!-- markdownlint-disable-next-line MD041 -->
 
-Helper reference for cutting or replaying the `v0.6.9` maintenance release.
+Helper reference for cutting or replaying the `v0.6.11` maintenance release.
 Aligns with the archived release notes
-(`../archive/releases/RELEASE_NOTES_v0.6.9.md`) and the checked-in stable
+(`../archive/releases/RELEASE_NOTES_v0.6.11.md`) and the checked-in stable
 release surfaces.
 
 ## 1. Pre-flight Verification
 
-- [ ] Work from `release/v0.6.9` and ensure it contains the final maintenance
+- [ ] Work from `release/v0.6.11` and ensure it contains the final maintenance
       changes.
 - [ ] CI is green on the release branch (`lint`, `pester / normalize`,
       `smoke-gate`, `Policy Guard (Upstream) / policy-guard`,
@@ -22,12 +22,12 @@ release surfaces.
 ## 2. Version & Metadata Consistency
 
 - [ ] `CHANGELOG.md` contains a finalized
-      `## [v0.6.9] - 2026-03-30` section.
-- [ ] Stable docs reference `v0.6.8` consistently until `v0.6.9` publication
-      completes, and the release helper packet references `v0.6.9`
+      `## [v0.6.11] - 2026-04-01` section.
+- [ ] Stable docs reference `v0.6.10` consistently until `v0.6.11` publication
+      completes, and the release helper packet references `v0.6.11`
       consistently.
 - [ ] `package.json`, `Directory.Build.props`, and
-      `tools/CompareVI.Tools/CompareVI.Tools.psd1` all report `0.6.9`.
+      `tools/CompareVI.Tools/CompareVI.Tools.psd1` all report `0.6.11`.
 - [ ] `docs/action-outputs.md` still matches `action.yml`.
 - [ ] Update `docs/documentation-manifest.json` if release-doc coverage changed.
 
@@ -36,26 +36,29 @@ release surfaces.
 - [ ] Focused bundle regression tests pass locally:
 
 ```bash
-pwsh -NoLogo -NoProfile -File tools/Test-CompareVIHistoryBundleCertification.ps1 -BundleArchivePath tests/results/_agent/bundle-fix/artifacts/CompareVI.Tools-v0.6.9.zip -ResultsDir tests/results/_agent/bundle-fix/certification -SummaryJsonPath tests/results/_agent/bundle-fix/certification/summary.json
+pwsh -NoLogo -NoProfile -File tools/Test-CompareVIHistoryBundleCertification.ps1 -BundleArchivePath tests/results/_agent/bundle-fix/artifacts/CompareVI.Tools-v0.6.11.zip -ResultsDir tests/results/_agent/bundle-fix/certification -SummaryJsonPath tests/results/_agent/bundle-fix/certification/summary.json
 ```
 
-- [ ] Confirm the published bundle preserves the hosted NI Linux consumer contract:
+- [ ] Confirm the released Windows NI / LabVIEW Docker image proof surface is intact:
 
-- [ ] The extracted bundle contains:
-      `tools/Run-NILinuxContainerCompare.ps1`
+- [ ] The released surface still includes:
+      `tools/Run-NIWindowsContainerCompare.ps1`
       and
-      `tools/Get-LabVIEWContainerShellContract.ps1`
-- [ ] Bundle certification reports `status: producer-native-ready`
+      `tools/Test-WindowsNI2026q1HostPreflight.ps1`
+- [ ] Windows NI proof contracts and local replay commands still resolve:
+      `docker:ni:windows:bootstrap`
+      `compare:docker:ni:windows:probe`
+      `compare:docker:ni:windows`
 - [ ] `comparevi-history` pin-bump coordination is queued immediately after
-      publication so the canonical product proof uses the released backend
-      instead of a maintainer override.
+      publication so the clone-backed `ni/labview-icon-editor` proof uses the
+      released backend instead of a maintainer override.
 
 ## 4. Release Materials Review
 
 - [ ] `PR_NOTES.md`, this checklist, and
-      `../archive/releases/RELEASE_NOTES_v0.6.9.md` are consistent.
-- [ ] `README.md` and `docs/USAGE_GUIDE.md` still treat `v0.6.8` as the
-      previously released stable pin until `v0.6.9` publication completes.
+      `../archive/releases/RELEASE_NOTES_v0.6.11.md` are consistent.
+- [ ] `README.md` and `docs/USAGE_GUIDE.md` still treat `v0.6.10` as the
+      previously released stable pin until `v0.6.11` publication completes.
 
 ## 5. Tag Creation
 
@@ -63,7 +66,7 @@ pwsh -NoLogo -NoProfile -File tools/Test-CompareVIHistoryBundleCertification.ps1
 
 ```pwsh
 node tools/npm/run-script.mjs priority:release:signing:readiness
-node tools/npm/run-script.mjs priority:release:conductor -- --apply --channel stable --version 0.6.9
+node tools/npm/run-script.mjs priority:release:conductor -- --apply --channel stable --version 0.6.11
 ```
 
 - [ ] Confirm `tests/results/_agent/release/release-signing-readiness.json`
@@ -74,34 +77,35 @@ node tools/npm/run-script.mjs priority:release:conductor -- --apply --channel st
 - [ ] Create an annotated stable tag:
 
 ```pwsh
-git tag -a v0.6.9 -m "v0.6.9: repair CompareVI.Tools hosted bundle contract"
+git tag -a v0.6.11 -m "v0.6.11: repair VI history native paths on Windows proof surfaces"
 ```
 
 - [ ] Push the tag:
 
 ```pwsh
-git push origin v0.6.9
+git push origin v0.6.11
 ```
 
 ## 6. Validation After Publish
 
-- [ ] Run `node tools/npm/run-script.mjs release:finalize -- 0.6.9` from a
+- [ ] Run `node tools/npm/run-script.mjs release:finalize -- 0.6.11` from a
       clean helper lane to fast-forward `main` and `develop`, then record the
       finalize metadata.
-- [ ] Install the bundle via `@v0.6.9` in a sample workflow and confirm the
-      released hosted NI Linux VI-history contract executes without a local
-      source-tree override.
+- [ ] Install the bundle via `@v0.6.11` in a sample workflow and confirm the
+      released Windows NI and hosted VI-history contracts execute without a
+      local source-tree override.
 - [ ] Optional maintainer fast loop: run the local Windows Docker replay lane
       for `vi-history-scenarios-windows` and confirm it still mirrors the
       hosted contract without replacing the hosted proof requirement.
-- [ ] Re-pin `comparevi-history` to `v0.6.9` and confirm the canonical
-      `DrawIcon.vi` proof reaches real comparisons on the released backend.
+- [ ] Re-pin `comparevi-history` to `v0.6.11` and confirm the clone-backed
+      `ni/labview-icon-editor` proof reaches real comparisons on the released
+      backend.
 
 ## 7. Communication
 
-- [ ] Announce the maintenance cut, calling out the released bundle-contract
-      repair and the required `comparevi-history` repin.
-- [ ] Notify consumers that `v0.6.9` supersedes `v0.6.8` as the supported
+- [ ] Announce the maintenance cut, calling out the promoted Windows NI Docker
+      proof surface and the required `comparevi-history` repin.
+- [ ] Notify consumers that `v0.6.11` supersedes `v0.6.10` as the supported
       stable pin.
 
---- Updated: 2026-03-30 (prepared for the `v0.6.9` maintenance cut).
+--- Updated: 2026-04-01 (prepared for the `v0.6.11` maintenance cut).

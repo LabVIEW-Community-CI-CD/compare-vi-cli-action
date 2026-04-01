@@ -61,6 +61,18 @@ Canonical required-check lists for `develop` and `release/*` must remain in sync
     `release/*`; `priority:policy` resolves it to the current live GitHub
     ruleset)
 
+For `develop`, the required set is intentionally limited to the smallest merge-safety
+surface that still preserves trunk truth:
+
+- `lint`
+- `fixtures`
+- `Policy Guard (Upstream) / policy-guard`
+- `vi-history-scenarios-linux`
+- `commit-integrity`
+
+Other Validate or platform lanes can still run and remain useful evidence, but they
+must not be treated as queue-required unless they prove merge safety for `develop`.
+
 The workflow context `Promotion Contract / promotion-contract` remains an operational evidence check, but it is not a
 branch-protection required status on `develop` or `release/*` because the workflow is intentionally path-scoped for
 pull requests.
@@ -303,6 +315,16 @@ Scorecard blockers are fail-closed when any gate regresses:
 - signed-tag requirement not met when enabled
 - downstream proving selection report missing, invalid, or not aligned to the
   selected downstream promotion scorecard when downstream proving is required
+
+Downstream proving is required during initial release publication only when the
+release source commit matches the current `develop` head that
+`downstream-promotion.yml` can actually prove. When publication targets a
+release-branch commit that has not yet been re-aligned with `develop`, release
+workflows must still emit the downstream proving selection artifact, but the
+scorecard must treat that proof as deferred evidence instead of an immediate
+blocking gate. Exact-SHA downstream proving becomes blocking again after
+finalize or back-merge restores `develop` alignment, or during a dedicated
+post-publication replay that runs against the aligned source.
 
 The SLO artifact now has two distinct surfaces:
 

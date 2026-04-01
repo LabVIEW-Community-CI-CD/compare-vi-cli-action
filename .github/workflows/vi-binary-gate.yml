@@ -4,12 +4,20 @@ on:
     paths:
       - '.gitattributes'
       - 'scripts/**'
+      - 'tools/**'
+      - 'fixtures/vi-stage/control-rename/**'
+      - '.github/workflows/vi-binary-gate.yml'
+      - '.github/workflows/windows-ni-proof-reusable.yml'
       - 'tests/ViBinaryHandling.Tests.ps1'
   push:
     branches: [ main ]
     paths:
       - '.gitattributes'
       - 'scripts/**'
+      - 'tools/**'
+      - 'fixtures/vi-stage/control-rename/**'
+      - '.github/workflows/vi-binary-gate.yml'
+      - '.github/workflows/windows-ni-proof-reusable.yml'
       - 'tests/ViBinaryHandling.Tests.ps1'
   merge_group:
     branches: [ main ]
@@ -22,9 +30,11 @@ on:
 
 jobs:
   vi-binary-check:
-    uses: ./.github/workflows/pester-reusable.yml
+    uses: ./.github/workflows/windows-ni-proof-reusable.yml
     with:
-      include_integration: ${{ 'false' }}
-      install_pester: ${{ 'true' }}
-      include_patterns: ${{ 'tests/ViBinaryHandling.Tests.ps1' }}
       sample_id: ${{ github.event.inputs.sample_id || '' }}
+      base_vi: fixtures/vi-stage/control-rename/Base.vi
+      head_vi: fixtures/vi-stage/control-rename/Head.vi
+      results_root: tests/results/vi-binary-gate
+      artifact_name: vi-binary-gate
+      run_binary_invariants: true

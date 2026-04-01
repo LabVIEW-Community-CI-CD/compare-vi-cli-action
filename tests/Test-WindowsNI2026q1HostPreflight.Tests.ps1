@@ -77,6 +77,10 @@ if ($Args[0] -eq 'info') {
 }
 
 if ($Args[0] -eq 'image' -and $Args.Count -ge 2 -and $Args[1] -eq 'inspect') {
+  $inspectSleep = [Environment]::GetEnvironmentVariable('DOCKER_STUB_INSPECT_SLEEP_SECONDS')
+  if (-not [string]::IsNullOrWhiteSpace($inspectSleep)) {
+    Start-Sleep -Seconds ([int]$inspectSleep)
+  }
   $exists = [Environment]::GetEnvironmentVariable('DOCKER_STUB_IMAGE_EXISTS')
   if ($exists -eq '1') {
     Write-Output '{"Id":"sha256:synthetic","RepoDigests":["nationalinstruments/labview:2026q1-windows@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"]}'
@@ -87,11 +91,19 @@ if ($Args[0] -eq 'image' -and $Args.Count -ge 2 -and $Args[1] -eq 'inspect') {
 }
 
 if ($Args[0] -eq 'pull') {
+  $pullSleep = [Environment]::GetEnvironmentVariable('DOCKER_STUB_PULL_SLEEP_SECONDS')
+  if (-not [string]::IsNullOrWhiteSpace($pullSleep)) {
+    Start-Sleep -Seconds ([int]$pullSleep)
+  }
   Write-Output 'pulled'
   exit 0
 }
 
 if ($Args[0] -eq 'run') {
+  $runSleep = [Environment]::GetEnvironmentVariable('DOCKER_STUB_RUN_SLEEP_SECONDS')
+  if (-not [string]::IsNullOrWhiteSpace($runSleep)) {
+    Start-Sleep -Seconds ([int]$runSleep)
+  }
   $runStderr = [Environment]::GetEnvironmentVariable('DOCKER_STUB_RUN_STDERR')
   if (-not [string]::IsNullOrWhiteSpace($runStderr)) {
     [Console]::Error.WriteLine($runStderr)
@@ -139,6 +151,7 @@ exit 0
       Set-Content -LiteralPath (Join-Path $binDir 'wsl.cmd') -Value $wslCmd -Encoding ascii
 
       $env:PATH = "{0};{1}" -f $binDir, $env:PATH
+      $env:DOCKER_COMMAND_OVERRIDE = (Join-Path $binDir 'docker.ps1')
     }
   }
 
@@ -152,6 +165,10 @@ exit 0
       DOCKER_STUB_INFO_EXITCODE = $env:DOCKER_STUB_INFO_EXITCODE
       DOCKER_STUB_RUN_STDERR = $env:DOCKER_STUB_RUN_STDERR
       DOCKER_STUB_RUN_EXITCODE = $env:DOCKER_STUB_RUN_EXITCODE
+      DOCKER_STUB_INSPECT_SLEEP_SECONDS = $env:DOCKER_STUB_INSPECT_SLEEP_SECONDS
+      DOCKER_STUB_PULL_SLEEP_SECONDS = $env:DOCKER_STUB_PULL_SLEEP_SECONDS
+      DOCKER_STUB_RUN_SLEEP_SECONDS = $env:DOCKER_STUB_RUN_SLEEP_SECONDS
+      DOCKER_COMMAND_OVERRIDE = $env:DOCKER_COMMAND_OVERRIDE
     }
   }
 
@@ -185,6 +202,7 @@ exit 0
       -Image 'nationalinstruments/labview:2026q1-windows' `
       -ResultsDir $resultsRoot `
       -ExecutionSurface 'github-hosted-windows' `
+      -HostPlatformOverride 'Win32NT' `
       -OutputJsonPath $outputJsonPath `
       -GitHubOutputPath '' `
       -StepSummaryPath '' 2>&1
@@ -219,6 +237,7 @@ exit 0
       -ResultsDir $resultsRoot `
       -ExecutionSurface 'github-hosted-windows' `
       -AllowUnavailable `
+      -HostPlatformOverride 'Win32NT' `
       -OutputJsonPath $outputJsonPath `
       -GitHubOutputPath '' `
       -StepSummaryPath '' 2>&1
@@ -229,6 +248,69 @@ exit 0
     $json.failureClass | Should -Be 'docker-runtime-unavailable'
     $json.runtimeDeterminism.status | Should -Be 'unavailable'
     $json.runtimeDeterminism.reason | Should -Be 'docker-daemon-unavailable'
+  }
+
+  It 'fails closed with image-bootstrap-timeout when hosted docker pull exceeds the allowed bound' {
+    $work = Join-Path $TestDrive 'hosted-pull-timeout'
+    New-Item -ItemType Directory -Path $work -Force | Out-Null
+    & $script:CreateDockerHostedStubs -WorkRoot $work
+
+    Set-Item Env:DOCKER_STUB_CONTEXT 'default'
+    Set-Item Env:DOCKER_STUB_OSTYPE 'windows'
+    Set-Item Env:DOCKER_STUB_INFO_JSON '{"OSType":"windows","OperatingSystem":"Windows Server 2022","Name":"github-hosted","Platform":{"Name":"Docker Engine - Community"}}'
+    Set-Item Env:DOCKER_STUB_PULL_SLEEP_SECONDS '6'
+
+    $resultsRoot = Join-Path $work 'results'
+    $outputJsonPath = Join-Path $resultsRoot 'windows-ni-2026q1-host-preflight.json'
+
+    $output = @(& pwsh -NoLogo -NoProfile -File $script:ToolPath `
+      -Image 'nationalinstruments/labview:2026q1-windows' `
+      -ResultsDir $resultsRoot `
+      -ExecutionSurface 'github-hosted-windows' `
+      -HostPlatformOverride 'Win32NT' `
+      -OutputJsonPath $outputJsonPath `
+      -BootstrapPullTimeoutSeconds 5 `
+      -GitHubOutputPath '' `
+      -StepSummaryPath '' 2>&1)
+    $LASTEXITCODE | Should -Not -Be 0
+
+    $json = Get-Content -LiteralPath $outputJsonPath -Raw | ConvertFrom-Json -Depth 20
+    $json.status | Should -Be 'failure'
+    $json.failureClass | Should -Be 'image-bootstrap-timeout'
+    $json.bootstrap.pullError | Should -Match 'docker pull timed out'
+    ($output -join "`n") | Should -Match 'docker pull timed out'
+  }
+
+  It 'fails closed with runtime-probe-timeout when hosted runtime probe exceeds the allowed bound' {
+    $work = Join-Path $TestDrive 'hosted-runtime-timeout'
+    New-Item -ItemType Directory -Path $work -Force | Out-Null
+    & $script:CreateDockerHostedStubs -WorkRoot $work
+
+    Set-Item Env:DOCKER_STUB_CONTEXT 'default'
+    Set-Item Env:DOCKER_STUB_OSTYPE 'windows'
+    Set-Item Env:DOCKER_STUB_IMAGE_EXISTS '1'
+    Set-Item Env:DOCKER_STUB_INFO_JSON '{"OSType":"windows","OperatingSystem":"Windows Server 2022","Name":"github-hosted","Platform":{"Name":"Docker Engine - Community"}}'
+    Set-Item Env:DOCKER_STUB_RUN_SLEEP_SECONDS '6'
+
+    $resultsRoot = Join-Path $work 'results'
+    $outputJsonPath = Join-Path $resultsRoot 'windows-ni-2026q1-host-preflight.json'
+
+    $output = @(& pwsh -NoLogo -NoProfile -File $script:ToolPath `
+      -Image 'nationalinstruments/labview:2026q1-windows' `
+      -ResultsDir $resultsRoot `
+      -ExecutionSurface 'github-hosted-windows' `
+      -HostPlatformOverride 'Win32NT' `
+      -OutputJsonPath $outputJsonPath `
+      -RuntimeProbeTimeoutSeconds 5 `
+      -GitHubOutputPath '' `
+      -StepSummaryPath '' 2>&1)
+    $LASTEXITCODE | Should -Not -Be 0
+
+    $json = Get-Content -LiteralPath $outputJsonPath -Raw | ConvertFrom-Json -Depth 20
+    $json.status | Should -Be 'failure'
+    $json.failureClass | Should -Be 'runtime-probe-timeout'
+    $json.probe.status | Should -Be 'timeout'
+    ($output -join "`n") | Should -Match 'Hosted Windows runtime probe failed'
   }
 
   It 'fails desktop-local fast and quietly when Docker Desktop is still on the Linux engine' {

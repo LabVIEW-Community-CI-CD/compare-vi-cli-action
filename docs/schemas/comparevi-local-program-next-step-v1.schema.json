@@ -1,0 +1,141 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://comparevi.dev/schemas/comparevi-local-program-next-step-v1.schema.json",
+  "title": "CompareVI Local Program Next Step",
+  "anyOf": [
+    {
+      "$ref": "#/$defs/requirement"
+    },
+    {
+      "$ref": "#/$defs/escalation"
+    },
+    {
+      "type": "null"
+    }
+  ],
+  "$defs": {
+    "requirement": {
+      "type": "object",
+      "required": [
+        "type",
+        "packet_id",
+        "packet_label",
+        "source_report_path",
+        "source_next_step_path",
+        "req_id",
+        "priority",
+        "status",
+        "phase",
+        "score",
+        "why_now",
+        "requirement",
+        "test_id",
+        "code_refs",
+        "suggested_loop"
+      ],
+      "properties": {
+        "type": { "const": "requirement" },
+        "packet_id": { "type": "string" },
+        "packet_label": { "type": "string" },
+        "source_report_path": { "type": "string" },
+        "source_next_step_path": { "type": "string" },
+        "req_id": { "type": "string" },
+        "priority": { "type": "string" },
+        "status": { "type": "string" },
+        "phase": { "type": "string" },
+        "score": { "type": "number" },
+        "program_score": { "type": "number" },
+        "why_now": { "type": "string" },
+        "requirement": { "type": "string" },
+        "test_id": { "type": "string" },
+        "test_artifact": { "type": "string" },
+        "code_refs": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "suggested_loop": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      },
+      "additionalProperties": true
+    },
+    "escalation": {
+      "type": "object",
+      "required": [
+        "type",
+        "escalation_id",
+        "status",
+        "mode",
+        "why_now",
+        "reason",
+        "required_surface",
+        "current_surface_status",
+        "current_host_platform",
+        "packet_ids",
+        "packet_labels",
+        "governing_requirements",
+        "blocked_requirements",
+        "proof_check_ids",
+        "receipt_paths",
+        "source_next_step_paths",
+        "suggested_loop",
+        "recommended_commands",
+        "stop_conditions"
+      ],
+      "properties": {
+        "type": { "const": "escalation" },
+        "escalation_id": { "type": "string" },
+        "status": { "type": "string" },
+        "mode": { "type": "string" },
+        "why_now": { "type": "string" },
+        "reason": { "type": "string" },
+        "required_surface": { "type": "string" },
+        "current_surface_status": { "type": "string" },
+        "current_host_platform": { "type": "string" },
+        "packet_count": { "type": "number" },
+        "packet_ids": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "packet_labels": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "governing_requirements": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "blocked_requirements": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "proof_check_ids": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "receipt_paths": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "source_next_step_paths": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "suggested_loop": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "recommended_commands": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "stop_conditions": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      },
+      "additionalProperties": true
+    }
+  }
+}

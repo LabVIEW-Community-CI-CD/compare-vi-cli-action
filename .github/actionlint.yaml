@@ -2,9 +2,11 @@ self-hosted-runner:
   labels:
     - comparevi
     - capability-ingress
+    - docker-lane
     - labview-2026
     - lv32
-    - docker-lane
-    - teststand
-    - self-hosted-docker-linux
-    - hosted-docker-linux
+
+paths:
+  .github/workflows/release.yml:
+    ignore:
+      - 'SC2016:info:.*Expressions don''t expand in single quotes'

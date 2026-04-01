@@ -82,6 +82,26 @@
       ]
     },
     {
+      "workflow": ".github/workflows/selfhosted-readiness.yml",
+      "jobs": [
+        {
+          "id": "readiness",
+          "routingClass": "ingress-only",
+          "requiredCapabilityLabels": []
+        }
+      ]
+    },
+    {
+      "workflow": ".github/workflows/pester-run.yml",
+      "jobs": [
+        {
+          "id": "pester",
+          "routingClass": "ingress-only",
+          "requiredCapabilityLabels": []
+        }
+      ]
+    },
+    {
       "workflow": ".github/workflows/runbook-validation.yml",
       "jobs": [
         {
@@ -119,6 +139,13 @@
     {
       "workflow": ".github/workflows/validate.yml",
       "jobs": [
+        {
+          "id": "vi-history-scenarios-windows",
+          "routingClass": "specialized-opt-in",
+          "requiredCapabilityLabels": [
+            "docker-lane"
+          ]
+        },
         {
           "id": "vi-history-scenarios-windows-lv32",
           "routingClass": "specialized-opt-in",

@@ -22,6 +22,34 @@ try {
   }
 } catch {}
 
+function Convert-ToNativeFileSystemPath {
+  param([AllowNull()][string]$PathValue)
+  if ([string]::IsNullOrWhiteSpace($PathValue)) { return $PathValue }
+
+  $candidate = [string]$PathValue
+  $lastProviderSeparator = $candidate.LastIndexOf('::', [System.StringComparison]::Ordinal)
+  if ($lastProviderSeparator -ge 0) {
+    $candidate = $candidate.Substring($lastProviderSeparator + 2)
+  }
+  $candidate = ($candidate -replace '^[A-Za-z][A-Za-z0-9.+-]*::', '')
+  if ($candidate -match '^[\\/](wsl\.localhost|wsl\$)[\\/]') {
+    $candidate = [System.IO.Path]::DirectorySeparatorChar + $candidate
+  }
+  try {
+    $resolved = Resolve-Path -LiteralPath $candidate -ErrorAction Stop | Select-Object -First 1
+    $providerPath = [string]$resolved.ProviderPath
+    if (-not [string]::IsNullOrWhiteSpace($providerPath)) {
+      return [System.IO.Path]::GetFullPath($providerPath)
+    }
+  } catch {}
+
+  try {
+    return [System.IO.Path]::GetFullPath($candidate)
+  } catch {
+    return $candidate
+  }
+}
+
 function Resolve-ExistingPath {
   param(
     [string]$Path,
@@ -36,7 +64,7 @@ function Resolve-ExistingPath {
     if ($Optional.IsPresent) { return $null }
     throw ("{0} file not found: {1}" -f $Description, $Path)
   }
-  return (Resolve-Path -LiteralPath $Path).Path
+  return Convert-ToNativeFileSystemPath -PathValue $Path
 }
 
 function Ensure-Directory {
@@ -45,14 +73,14 @@ function Ensure-Directory {
   if (-not (Test-Path -LiteralPath $Path -PathType Container)) {
     New-Item -ItemType Directory -Force -Path $Path | Out-Null
   }
-  return (Resolve-Path -LiteralPath $Path).Path
+  return Convert-ToNativeFileSystemPath -PathValue $Path
 }
 
 function Resolve-FullPath {
   param([string]$Path)
   if ([string]::IsNullOrWhiteSpace($Path)) { return $null }
   try {
-    return (Resolve-Path -LiteralPath $Path -ErrorAction Stop).Path
+    return Convert-ToNativeFileSystemPath -PathValue $Path
   } catch {
     if ([System.IO.Path]::IsPathRooted($Path)) {
       return [System.IO.Path]::GetFullPath($Path)
@@ -106,6 +134,102 @@ function Get-ShortSha {
   return $Value.Substring(0, $Length)
 }
 
+function Format-DecisionTimestamp {
+  param($Value)
+
+  if ($null -eq $Value) { return '' }
+
+  if ($Value -is [DateTimeOffset]) {
+    return $Value.ToString('yyyy-MM-ddTHH:mm:ssK')
+  }
+
+  if ($Value -is [DateTime]) {
+    return ([DateTimeOffset]$Value).ToString('yyyy-MM-ddTHH:mm:ssK')
+  }
+
+  $text = [string]$Value
+  if ([string]::IsNullOrWhiteSpace($text)) { return '' }
+
+  try {
+    $parsed = [DateTimeOffset]::Parse($text, [System.Globalization.CultureInfo]::InvariantCulture, [System.Globalization.DateTimeStyles]::RoundtripKind)
+    return $parsed.ToString('yyyy-MM-ddTHH:mm:ssK')
+  } catch {
+    return $text
+  }
+}
+
+function New-DecisionPairMetadata {
+  param([AllowNull()][object]$Entry)
+
+  if (-not $Entry) {
+    return [ordered]@{
+      index = 0
+      baseRef = ''
+      headRef = ''
+      baseSubject = ''
+      headSubject = ''
+      baseDate = ''
+      headDate = ''
+    }
+  }
+
+  return [ordered]@{
+    index = [int](Coalesce $Entry.index 0)
+    baseRef = [string](Coalesce (Coalesce $Entry.base.short $Entry.base.full) '')
+    headRef = [string](Coalesce (Coalesce $Entry.head.short $Entry.head.full) '')
+    baseSubject = [string](Coalesce $Entry.base.subject '')
+    headSubject = [string](Coalesce $Entry.head.subject '')
+    baseDate = [string](Format-DecisionTimestamp -Value $Entry.base.date)
+    headDate = [string](Format-DecisionTimestamp -Value $Entry.head.date)
+  }
+}
+
+function Format-DecisionCommitLabel {
+  param(
+    [string]$Ref,
+    [string]$Subject,
+    [string]$Date
+  )
+
+  $label = [string](Coalesce $Ref 'n/a')
+  $details = New-Object System.Collections.Generic.List[string]
+  if (-not [string]::IsNullOrWhiteSpace($Subject)) {
+    $details.Add($Subject) | Out-Null
+  }
+  if (-not [string]::IsNullOrWhiteSpace($Date)) {
+    $details.Add($Date) | Out-Null
+  }
+  if ($details.Count -gt 0) {
+    $label = '{0} ({1})' -f $label, ([string]::Join('; ', @($details.ToArray())))
+  }
+  return $label
+}
+
+function Format-DecisionPairTimelineLabel {
+  param(
+    [AllowNull()][object]$Pair,
+    [switch]$UseSubjectsOnly
+  )
+
+  if (-not $Pair) { return 'pair n/a' }
+
+  if ($UseSubjectsOnly.IsPresent) {
+    $baseLabel = if (-not [string]::IsNullOrWhiteSpace([string]$Pair.baseSubject)) { [string]$Pair.baseSubject } else { [string](Coalesce $Pair.baseRef 'n/a') }
+    if (-not [string]::IsNullOrWhiteSpace([string]$Pair.baseDate)) {
+      $baseLabel = '{0} @ {1}' -f $baseLabel, [string]$Pair.baseDate
+    }
+    $headLabel = if (-not [string]::IsNullOrWhiteSpace([string]$Pair.headSubject)) { [string]$Pair.headSubject } else { [string](Coalesce $Pair.headRef 'n/a') }
+    if (-not [string]::IsNullOrWhiteSpace([string]$Pair.headDate)) {
+      $headLabel = '{0} @ {1}' -f $headLabel, [string]$Pair.headDate
+    }
+  } else {
+    $baseLabel = Format-DecisionCommitLabel -Ref ([string](Coalesce $Pair.baseRef 'n/a')) -Subject ([string](Coalesce $Pair.baseSubject '')) -Date ([string](Coalesce $Pair.baseDate ''))
+    $headLabel = Format-DecisionCommitLabel -Ref ([string](Coalesce $Pair.headRef 'n/a')) -Subject ([string](Coalesce $Pair.headSubject '')) -Date ([string](Coalesce $Pair.headDate ''))
+  }
+
+  return 'pair {0} ({1} -> {2})' -f (Coalesce $Pair.index 'n/a'), $baseLabel, $headLabel
+}
+
 function Get-LineageLabel {
   param(
     [object]$Lineage,
@@ -126,6 +250,9 @@ function Get-LineageLabel {
   $rootMerge = if ($Lineage.PSObject.Properties['rootMerge']) { [string]$Lineage.rootMerge } else { $mergeCommit }
 
   switch ($type.ToLowerInvariant()) {
+    'touch-history' {
+      return 'Touch history'
+    }
     'merge-parent' {
       $label = if ($parentIndex -and $parentIndex -gt 0) { "Merge parent #$parentIndex" } else { 'Merge parent' }
       if ($depth -and $depth -gt 0) {
@@ -661,11 +788,15 @@ function Get-BucketLabelEntries {
   foreach ($item in $items) {
     if ($null -eq $item) { continue }
     $slug = $null
+    $classification = $null
     if ($item -is [pscustomobject]) {
       if ($item.PSObject.Properties['bucketSlug']) {
         $slug = [string]$item.bucketSlug
       } elseif ($item.PSObject.Properties['slug']) {
         $slug = [string]$item.slug
+      }
+      if ($item.PSObject.Properties['classification']) {
+        $classification = [string]$item.classification
       }
     } else {
       $slug = [string]$item
@@ -677,7 +808,7 @@ function Get-BucketLabelEntries {
         $entries.Add([pscustomobject]@{
           slug           = $meta.slug
           label          = $meta.label
-          classification = $meta.classification
+          classification = if ([string]::IsNullOrWhiteSpace($classification)) { $meta.classification } else { $classification }
         }) | Out-Null
       }
     }
@@ -820,7 +951,19 @@ function Build-FallbackHistoryContext {
       continue
     }
 
-    foreach ($comparison in @($modeManifest.comparisons)) {
+    $modeComparisons = New-Object System.Collections.Generic.List[object]
+    foreach ($comparisonEntry in @($modeManifest.comparisons)) {
+      if ($comparisonEntry) {
+        $modeComparisons.Add($comparisonEntry) | Out-Null
+      }
+    }
+    foreach ($comparisonEntry in @($modeManifest.collapsedComparisons)) {
+      if ($comparisonEntry) {
+        $modeComparisons.Add($comparisonEntry) | Out-Null
+      }
+    }
+
+    foreach ($comparison in @($modeComparisons | Sort-Object { [int](Coalesce $_.index 0) })) {
       if (-not $comparison) { continue }
       $baseNode = $comparison.base
       $headNode = $comparison.head
@@ -860,6 +1003,9 @@ function Build-FallbackHistoryContext {
         }
         if ($resultNode.PSObject.Properties['classification'] -and $resultNode.classification) {
           $resultPayload.classification = $resultNode.classification
+        }
+        if ($resultNode.PSObject.Properties['collapsed']) {
+          $resultPayload.collapsed = [bool]$resultNode.collapsed
         }
         if ($resultNode.PSObject.Properties['artifactDir'] -and $resultNode.artifactDir) {
           $resultPayload.artifactDir = $resultNode.artifactDir
@@ -1185,6 +1331,164 @@ if ($modeEntries.Count -gt 0) {
 
 $stepSummaryLines = @($summaryLines)
 
+$sortedComparisons = @(
+  $comparisons |
+    Sort-Object {
+      try { [int](Coalesce $_.index 0) } catch { 0 }
+    }
+)
+$latestComparisonEntry = if ($sortedComparisons.Count -gt 0) { $sortedComparisons[0] } else { $null }
+$collapsedComparisonEntries = @(
+  $sortedComparisons |
+    Where-Object {
+      $_.result -and
+      $_.result.PSObject.Properties['collapsed'] -and
+      [bool]$_.result.collapsed
+    }
+)
+$signalComparisonEntries = @(
+  $sortedComparisons |
+    Where-Object {
+      $resultNode = $_.result
+      if (-not $resultNode) { return $false }
+      $hasDiff = $resultNode.PSObject.Properties['diff'] -and ($resultNode.diff -eq $true)
+      if (-not $hasDiff) { return $false }
+      if ($resultNode.PSObject.Properties['collapsed'] -and [bool]$resultNode.collapsed) { return $false }
+      $detailNodes = @()
+      if ($resultNode.PSObject.Properties['categoryDetails'] -and $resultNode.categoryDetails) {
+        $detailNodes = @($resultNode.categoryDetails)
+      }
+      if ($detailNodes.Count -eq 0) { return $true }
+      @($detailNodes | Where-Object { [string]$_.classification -ne 'noise' }).Count -gt 0
+    }
+)
+$decisionFocusBuckets = New-Object System.Collections.Generic.List[string]
+$decisionFocusBucketSet = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+$decisionContextBuckets = New-Object System.Collections.Generic.List[string]
+$decisionContextBucketSet = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+foreach ($decisionEntry in $signalComparisonEntries) {
+  $decisionResultNode = $decisionEntry.result
+  if (-not $decisionResultNode) { continue }
+  $decisionBucketEntries = @()
+  if ($decisionResultNode.PSObject.Properties['categoryBucketDetails'] -and $decisionResultNode.categoryBucketDetails) {
+    $decisionBucketEntries = @(Get-BucketLabelEntries -Buckets $decisionResultNode.categoryBucketDetails)
+  } elseif ($decisionResultNode.PSObject.Properties['categoryBuckets'] -and $decisionResultNode.categoryBuckets) {
+    $decisionBucketEntries = @(Get-BucketLabelEntries -Buckets $decisionResultNode.categoryBuckets)
+  }
+  foreach ($decisionBucketEntry in $decisionBucketEntries) {
+    if ($null -eq $decisionBucketEntry) { continue }
+    $bucketLabel = [string]$decisionBucketEntry.label
+    if ([string]::IsNullOrWhiteSpace($bucketLabel)) { continue }
+    $bucketDisplayLabel = $bucketLabel
+    $isContextBucket = $false
+    switch ([string]$decisionBucketEntry.classification) {
+      'noise' {
+        $bucketDisplayLabel = '{0} (noise)' -f $bucketLabel
+        if ($decisionContextBucketSet.Add($bucketDisplayLabel)) {
+          $decisionContextBuckets.Add($bucketDisplayLabel) | Out-Null
+        }
+        $isContextBucket = $true
+        break
+      }
+      'neutral' {
+        $bucketDisplayLabel = '{0} (neutral)' -f $bucketLabel
+        if ($decisionContextBucketSet.Add($bucketDisplayLabel)) {
+          $decisionContextBuckets.Add($bucketDisplayLabel) | Out-Null
+        }
+        $isContextBucket = $true
+        break
+      }
+    }
+    if ($isContextBucket) { continue }
+    if ($decisionFocusBucketSet.Add($bucketDisplayLabel)) {
+      $decisionFocusBuckets.Add($bucketDisplayLabel) | Out-Null
+    }
+  }
+}
+$decisionReviewPriority = if ($signalComparisonEntries.Count -gt 0) {
+  'review-signal-pairs'
+} elseif ($collapsedComparisonEntries.Count -gt 0) {
+  'metadata-only-history'
+} else {
+  'no-diff'
+}
+$decisionLatestPair = New-DecisionPairMetadata -Entry $latestComparisonEntry
+$latestSignalComparisonEntry = if ($signalComparisonEntries.Count -gt 0) { $signalComparisonEntries[0] } else { $null }
+$decisionLatestSignalPair = New-DecisionPairMetadata -Entry $latestSignalComparisonEntry
+$decisionReviewSequence = @(
+  $signalComparisonEntries | ForEach-Object {
+    New-DecisionPairMetadata -Entry $_
+  }
+)
+$decisionLatestStatus = 'n/a'
+if ($latestComparisonEntry) {
+  $latestResultNode = $latestComparisonEntry.result
+  if ($latestResultNode -and $latestResultNode.PSObject.Properties['diff'] -and ($latestResultNode.diff -eq $true)) {
+    if ($latestResultNode.PSObject.Properties['collapsed'] -and [bool]$latestResultNode.collapsed) {
+      $decisionLatestStatus = 'collapsed-noise'
+    } else {
+      $decisionLatestStatus = 'signal-review'
+    }
+  } elseif ($latestResultNode -and $latestResultNode.PSObject.Properties['status'] -and $latestResultNode.status) {
+    $decisionLatestStatus = [string]$latestResultNode.status
+  } else {
+    $decisionLatestStatus = 'clean'
+  }
+}
+$decisionStatement = ''
+if ($latestComparisonEntry -and $decisionLatestStatus -eq 'collapsed-noise' -and $latestSignalComparisonEntry) {
+  $decisionStatement = 'Newest VI touch is metadata-only.'
+  if ($decisionFocusBuckets.Count -gt 0) {
+    $decisionStatement = '{0} Start at pair {1}; newest meaningful change touches {2}.' -f $decisionStatement, (Coalesce $latestSignalComparisonEntry.index 'n/a'), ([string]::Join(', ', @($decisionFocusBuckets.ToArray())))
+  } else {
+    $decisionStatement = '{0} Start at pair {1}; it is the newest meaningful change.' -f $decisionStatement, (Coalesce $latestSignalComparisonEntry.index 'n/a')
+  }
+} elseif ($latestSignalComparisonEntry) {
+  $decisionStatement = 'Start at pair {0}; it is the newest meaningful change.' -f (Coalesce $latestSignalComparisonEntry.index 'n/a')
+  if ($decisionFocusBuckets.Count -gt 0) {
+    $decisionStatement = '{0} It touches {1}.' -f $decisionStatement, ([string]::Join(', ', @($decisionFocusBuckets.ToArray())))
+  }
+} elseif ($collapsedComparisonEntries.Count -gt 0) {
+  $decisionStatement = 'All observed pairs are metadata-only under the current noise policy.'
+} else {
+  $decisionStatement = 'No meaningful differences were observed in the selected history window.'
+}
+if ($sortedComparisons.Count -gt 0) {
+  $summaryLines.Add('')
+  $summaryLines.Add('## Decision guidance')
+  $summaryLines.Add('')
+  $summaryLines.Add(('- Decision statement: {0}' -f $decisionStatement))
+  $summaryLines.Add(('- Review priority: `{0}`' -f $decisionReviewPriority))
+  if ($latestComparisonEntry) {
+    $summaryLines.Add(('- Latest pair: `{0}` is `{1}`' -f (Format-DecisionPairTimelineLabel -Pair $decisionLatestPair), $decisionLatestStatus))
+  }
+  if ($latestSignalComparisonEntry) {
+    $summaryLines.Add(('- Review first: `{0}`' -f (Format-DecisionPairTimelineLabel -Pair $decisionLatestSignalPair)))
+  }
+  if ($decisionReviewSequence.Count -gt 0) {
+    $reviewSequenceLabels = @(
+      $decisionReviewSequence | ForEach-Object {
+        Format-DecisionPairTimelineLabel -Pair $_ -UseSubjectsOnly
+      }
+    )
+    $summaryLines.Add(('- Review sequence: `{0}`' -f ([string]::Join('; ', $reviewSequenceLabels))))
+  }
+  if ($signalComparisonEntries.Count -gt 0) {
+    $summaryLines.Add(('- Signal pairs: `{0}`' -f ([string]::Join(', ', @($signalComparisonEntries | ForEach-Object { [string](Coalesce $_.index 'n/a') })))))
+  } else {
+    $summaryLines.Add('- Signal pairs: `none`')
+  }
+  if ($collapsedComparisonEntries.Count -gt 0) {
+    $summaryLines.Add(('- Collapsed pairs: `{0}`' -f ([string]::Join(', ', @($collapsedComparisonEntries | ForEach-Object { [string](Coalesce $_.index 'n/a') })))))
+  }
+  if ($decisionFocusBuckets.Count -gt 0) {
+    $summaryLines.Add(('- Focus buckets: `{0}`' -f ([string]::Join(', ', @($decisionFocusBuckets.ToArray())))))
+  }
+  if ($decisionContextBuckets.Count -gt 0) {
+    $summaryLines.Add(('- Context buckets: `{0}`' -f ([string]::Join(', ', @($decisionContextBuckets.ToArray())))))
+  }
+}
+
 $comparisonHtmlRows = New-Object System.Collections.Generic.List[object]
 if ($comparisons.Count -gt 0) {
   $summaryLines.Add('')
@@ -1205,16 +1509,20 @@ if ($comparisons.Count -gt 0) {
     }
     if ([string]::IsNullOrWhiteSpace($lineageLabel)) { $lineageLabel = 'Mainline' }
 
-    $baseRef = Coalesce $entry.base.short $entry.base.full
-    if ($entry.base.subject) { $baseRef = '{0} ({1})' -f $baseRef, $entry.base.subject }
-    $headRef = Coalesce $entry.head.short $entry.head.full
-    if ($entry.head.subject) { $headRef = '{0} ({1})' -f $headRef, $entry.head.subject }
+    $baseRef = Format-DecisionCommitLabel -Ref ([string](Coalesce $entry.base.short $entry.base.full)) -Subject ([string](Coalesce $entry.base.subject '')) -Date (Format-DecisionTimestamp -Value $entry.base.date)
+    $headRef = Format-DecisionCommitLabel -Ref ([string](Coalesce $entry.head.short $entry.head.full)) -Subject ([string](Coalesce $entry.head.subject '')) -Date (Format-DecisionTimestamp -Value $entry.head.date)
     $resultNode = $entry.result
     $hasDiffValue = $resultNode -and $resultNode.PSObject.Properties['diff']
     $diffValue = $hasDiffValue -and ($resultNode.diff -eq $true)
     $statusValue = if ($resultNode -and $resultNode.PSObject.Properties['status']) { [string]$resultNode.status } else { $null }
     $diffCell = if ($hasDiffValue) {
-      if ($diffValue) { '**diff**' } else { 'clean' }
+      if ($diffValue) {
+        if ($resultNode -and $resultNode.PSObject.Properties['collapsed'] -and [bool]$resultNode.collapsed) {
+          '_collapsed noise_'
+        } else {
+          '**diff**'
+        }
+      } else { 'clean' }
     } elseif ($statusValue) {
       ('_{0}_' -f $statusValue)
     } else {
@@ -1307,6 +1615,7 @@ if ($comparisons.Count -gt 0) {
       LineageLabel = $lineageLabel
       LineageType  = if ($lineageNode -and $lineageNode.PSObject.Properties['type']) { [string]$lineageNode.type } else { 'mainline' }
       Diff       = [bool]$diffValue
+      Collapsed  = if ($resultNode -and $resultNode.PSObject.Properties['collapsed']) { [bool]$resultNode.collapsed } else { $false }
       HasDiff    = $hasDiffValue
       Status     = $statusValue
       Duration   = $durationValue
@@ -1333,7 +1642,7 @@ if ($comparisons.Count -gt 0) {
 }
 
 $summaryLines.Add('')
-$summaryLines.Add('## Attribute coverage')
+$summaryLines.Add('## Mode filter coverage')
 $summaryLines.Add('')
 if ($modeEntries.Count -gt 0) {
   foreach ($mode in $modeEntries) {
@@ -1358,7 +1667,7 @@ if ($contextResolved) {
 
 $markdownContent = $summaryLines -join [Environment]::NewLine
 [System.IO.File]::WriteAllText($MarkdownPath, $markdownContent, [System.Text.Encoding]::UTF8)
-$markdownOutPath = (Resolve-Path -LiteralPath $MarkdownPath).Path
+$markdownOutPath = Convert-ToNativeFileSystemPath -PathValue $MarkdownPath
 
 $htmlOutPath = $null
 if ($emitHtml -and $HtmlPath) {
@@ -1509,14 +1818,54 @@ if ($emitHtml -and $HtmlPath) {
     [void]$htmlBuilder.AppendLine('  </table>')
   }
 
+  if ($sortedComparisons.Count -gt 0) {
+    [void]$htmlBuilder.AppendLine('  <h2>Decision guidance</h2>')
+    [void]$htmlBuilder.AppendLine('  <ul>')
+    [void]$htmlBuilder.AppendLine(('    <li><strong>Decision statement</strong><span>{0}</span></li>' -f (ConvertTo-HtmlSafe $decisionStatement)))
+    [void]$htmlBuilder.AppendLine(('    <li><strong>Review priority</strong><span>{0}</span></li>' -f (Format-HtmlCodeList -Values @($decisionReviewPriority))))
+    if ($latestComparisonEntry) {
+      [void]$htmlBuilder.AppendLine(('    <li><strong>Latest pair</strong><span><code>{0}</code> is <code>{1}</code></span></li>' -f (ConvertTo-HtmlSafe (Format-DecisionPairTimelineLabel -Pair $decisionLatestPair)), (ConvertTo-HtmlSafe $decisionLatestStatus)))
+    }
+    if ($latestSignalComparisonEntry) {
+      [void]$htmlBuilder.AppendLine(('    <li><strong>Review first</strong><span><code>{0}</code></span></li>' -f (ConvertTo-HtmlSafe (Format-DecisionPairTimelineLabel -Pair $decisionLatestSignalPair))))
+    }
+    if ($decisionReviewSequence.Count -gt 0) {
+      $reviewSequenceLabels = @(
+        $decisionReviewSequence | ForEach-Object {
+          Format-DecisionPairTimelineLabel -Pair $_ -UseSubjectsOnly
+        }
+      )
+      [void]$htmlBuilder.AppendLine(('    <li><strong>Review sequence</strong><span><code>{0}</code></span></li>' -f (ConvertTo-HtmlSafe ([string]::Join('; ', $reviewSequenceLabels)))))
+    }
+    if ($signalComparisonEntries.Count -gt 0) {
+      [void]$htmlBuilder.AppendLine(('    <li><strong>Signal pairs</strong><span><code>{0}</code></span></li>' -f (ConvertTo-HtmlSafe ([string]::Join(', ', @($signalComparisonEntries | ForEach-Object { [string](Coalesce $_.index 'n/a') }))))))
+    } else {
+      [void]$htmlBuilder.AppendLine('    <li><strong>Signal pairs</strong><span><code>none</code></span></li>')
+    }
+    if ($collapsedComparisonEntries.Count -gt 0) {
+      [void]$htmlBuilder.AppendLine(('    <li><strong>Collapsed pairs</strong><span><code>{0}</code></span></li>' -f (ConvertTo-HtmlSafe ([string]::Join(', ', @($collapsedComparisonEntries | ForEach-Object { [string](Coalesce $_.index 'n/a') }))))))
+    }
+    if ($decisionFocusBuckets.Count -gt 0) {
+      [void]$htmlBuilder.AppendLine(('    <li><strong>Focus buckets</strong><span>{0}</span></li>' -f (ConvertTo-HtmlSafe ([string]::Join(', ', @($decisionFocusBuckets.ToArray()))))))
+    }
+    if ($decisionContextBuckets.Count -gt 0) {
+      [void]$htmlBuilder.AppendLine(('    <li><strong>Context buckets</strong><span>{0}</span></li>' -f (ConvertTo-HtmlSafe ([string]::Join(', ', @($decisionContextBuckets.ToArray()))))))
+    }
+    [void]$htmlBuilder.AppendLine('  </ul>')
+  }
+
   [void]$htmlBuilder.AppendLine('  <h2>Commit pairs</h2>')
   if ($comparisonHtmlRows.Count -gt 0) {
     [void]$htmlBuilder.AppendLine('  <table>')
     [void]$htmlBuilder.AppendLine('    <thead><tr><th>Mode</th><th>Pair</th><th>Lineage</th><th>Base</th><th>Head</th><th>Diff</th><th>Duration (s)</th><th>Categories</th><th>Buckets</th><th>Report</th><th>Highlights</th></tr></thead>')
     [void]$htmlBuilder.AppendLine('    <tbody>')
     foreach ($row in $comparisonHtmlRows) {
-      $diffClass = if ($row.Diff) { 'diff-yes' } elseif ($row.Status) { 'diff-status' } else { 'diff-no' }
-      $diffLabel = if ($row.Diff) { 'Diff' } elseif ($row.Status) { ConvertTo-HtmlSafe $row.Status } else { 'No' }
+      $diffClass = if ($row.Diff) {
+        if ($row.Collapsed) { 'diff-collapsed' } else { 'diff-yes' }
+      } elseif ($row.Status) { 'diff-status' } else { 'diff-no' }
+      $diffLabel = if ($row.Diff) {
+        if ($row.Collapsed) { 'Collapsed noise' } else { 'Diff' }
+      } elseif ($row.Status) { ConvertTo-HtmlSafe $row.Status } else { 'No' }
       $durationDisplay = '<span class="muted">n/a</span>'
       if ($row.DurationDisplay -and $row.DurationDisplay -ne 'n/a') {
         $durationDisplay = ConvertTo-HtmlSafe $row.DurationDisplay
@@ -1685,7 +2034,7 @@ if ($emitHtml -and $HtmlPath) {
     [void]$htmlBuilder.AppendLine('  <p class="muted">No commit pairs were captured for the requested history window.</p>')
   }
 
-  [void]$htmlBuilder.AppendLine('  <h2>Attribute coverage</h2>')
+  [void]$htmlBuilder.AppendLine('  <h2>Mode filter coverage</h2>')
   if ($modeEntries.Count -gt 0) {
     [void]$htmlBuilder.AppendLine('  <ul>')
     foreach ($mode in $modeEntries) {
@@ -1720,7 +2069,7 @@ if ($emitHtml -and $HtmlPath) {
 
   $htmlContent = $htmlBuilder.ToString()
   [System.IO.File]::WriteAllText($HtmlPath, $htmlContent, [System.Text.Encoding]::UTF8)
-  $htmlOutPath = (Resolve-Path -LiteralPath $HtmlPath).Path
+  $htmlOutPath = Convert-ToNativeFileSystemPath -PathValue $HtmlPath
   Write-GitHubOutput -Key 'history-report-html' -Value $htmlOutPath -DestPath $GitHubOutputPath
 }
 
@@ -1781,6 +2130,46 @@ $historySummary = [ordered]@{
     modeSensitivity = [string]$modeSensitivity
     outcomeLabels = @(Get-SortedUniqueStringArray -Value $outcomeLabels)
   }
+  decisionGuidance = [ordered]@{
+    decisionStatement = [string]$decisionStatement
+    reviewPriority = [string]$decisionReviewPriority
+    latestPair = [ordered]@{
+      index = [int](Coalesce $decisionLatestPair.index 0)
+      status = [string]$decisionLatestStatus
+      baseRef = [string](Coalesce $decisionLatestPair.baseRef '')
+      headRef = [string](Coalesce $decisionLatestPair.headRef '')
+      baseSubject = [string](Coalesce $decisionLatestPair.baseSubject '')
+      headSubject = [string](Coalesce $decisionLatestPair.headSubject '')
+      baseDate = [string](Coalesce $decisionLatestPair.baseDate '')
+      headDate = [string](Coalesce $decisionLatestPair.headDate '')
+    }
+    latestSignalPair = [ordered]@{
+      index = [int](Coalesce $decisionLatestSignalPair.index 0)
+      baseRef = [string](Coalesce $decisionLatestSignalPair.baseRef '')
+      headRef = [string](Coalesce $decisionLatestSignalPair.headRef '')
+      baseSubject = [string](Coalesce $decisionLatestSignalPair.baseSubject '')
+      headSubject = [string](Coalesce $decisionLatestSignalPair.headSubject '')
+      baseDate = [string](Coalesce $decisionLatestSignalPair.baseDate '')
+      headDate = [string](Coalesce $decisionLatestSignalPair.headDate '')
+    }
+    reviewSequence = @(
+      $decisionReviewSequence | ForEach-Object {
+        [ordered]@{
+          index = [int](Coalesce $_.index 0)
+          baseRef = [string](Coalesce $_.baseRef '')
+          headRef = [string](Coalesce $_.headRef '')
+          baseSubject = [string](Coalesce $_.baseSubject '')
+          headSubject = [string](Coalesce $_.headSubject '')
+          baseDate = [string](Coalesce $_.baseDate '')
+          headDate = [string](Coalesce $_.headDate '')
+        }
+      }
+    )
+    signalPairs = @($signalComparisonEntries | ForEach-Object { [int](Coalesce $_.index 0) })
+    collapsedPairs = @($collapsedComparisonEntries | ForEach-Object { [int](Coalesce $_.index 0) })
+    focusBuckets = @($decisionFocusBuckets.ToArray())
+    contextBuckets = @($decisionContextBuckets.ToArray())
+  }
   summary = [ordered]@{
     modes = if ($stats -and $stats.PSObject.Properties['modes']) { [int]$stats.modes } else { [int]$modeEntries.Count }
     comparisons = Get-IntPropertyValue -InputObject $stats -Name 'processed'
@@ -1801,7 +2190,7 @@ $historySummary = [ordered]@{
   modes = @($modeFacadeEntries)
 }
 $historySummary | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $SummaryJsonPath -Encoding utf8
-$summaryJsonOutPath = (Resolve-Path -LiteralPath $SummaryJsonPath).Path
+$summaryJsonOutPath = Convert-ToNativeFileSystemPath -PathValue $SummaryJsonPath
 
 Write-GitHubOutput -Key 'history-report-md' -Value $markdownOutPath -DestPath $GitHubOutputPath
 Write-GitHubOutput -Key 'history-summary-json' -Value $summaryJsonOutPath -DestPath $GitHubOutputPath

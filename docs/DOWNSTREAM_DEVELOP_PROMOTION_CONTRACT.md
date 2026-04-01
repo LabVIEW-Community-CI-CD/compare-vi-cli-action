@@ -19,8 +19,15 @@ It is not a second feature-development branch.
 - Optional LV32 shadow proof receipt output:
   `tests/results/_agent/promotion/vi-history-lv32-shadow-proof-receipt.json`
 - Template-agent verification lane report: `tests/results/_agent/promotion/template-agent-verification-report.json`
-- Authoritative template verification overlay: `tests/results/_agent/promotion/template-agent-verification-report.local.json`, projected during bootstrap from the latest matching downstream proving artifact for the current `develop` source SHA
-- Supported template-proof authority synthesis: `tests/results/_agent/promotion/template-agent-verification-report.supported.json`, projected from the latest supported `template-smoke` `workflow_dispatch` proof on a supported consumer fork when that proof is aligned to the current canonical template head
+- Authoritative template verification overlay:
+  `tests/results/_agent/promotion/template-agent-verification-report.local.json`,
+  projected during bootstrap from the latest matching downstream proving
+  artifact for the current `develop` source SHA
+- Supported template-proof authority synthesis:
+  `tests/results/_agent/promotion/template-agent-verification-report.supported.json`,
+  projected from the latest supported `template-smoke` `workflow_dispatch`
+  proof on a supported consumer fork when that proof is aligned to the current
+  canonical template head
 - Selection resolver: `tools/priority/resolve-downstream-proving-artifact.mjs`
 - Selection schema: `docs/schemas/downstream-proving-selection-v1.schema.json`
 - Selection output: `tests/results/_agent/release/downstream-proving-selection.json`
@@ -211,6 +218,13 @@ That means release should select the `downstream-promotion.yml` artifact whose
 
 Release evidence should retain the machine-readable selection report that points
 back to the exact downstream promotion run and scorecard artifact used.
+
+Because this contract proves `upstream/develop`, release automation must not
+fail closed on exact-SHA downstream proving during the first publication of a
+tag whose source commit does not yet match the current `develop` head. In that
+case the selection report remains required evidence, but release scorecard
+blocking is deferred until finalize/back-merge or another replay aligns
+`develop` to the released source commit.
 
 The proving artifact is authoritative even when the workflow cannot update
 `downstream/develop` directly because repository rules require the branch PR or
