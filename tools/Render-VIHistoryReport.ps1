@@ -22,6 +22,34 @@ try {
   }
 } catch {}
 
+function Convert-ToNativeFileSystemPath {
+  param([AllowNull()][string]$PathValue)
+  if ([string]::IsNullOrWhiteSpace($PathValue)) { return $PathValue }
+
+  $candidate = [string]$PathValue
+  $lastProviderSeparator = $candidate.LastIndexOf('::', [System.StringComparison]::Ordinal)
+  if ($lastProviderSeparator -ge 0) {
+    $candidate = $candidate.Substring($lastProviderSeparator + 2)
+  }
+  $candidate = ($candidate -replace '^[A-Za-z][A-Za-z0-9.+-]*::', '')
+  if ($candidate -match '^[\\/](wsl\.localhost|wsl\$)[\\/]') {
+    $candidate = [System.IO.Path]::DirectorySeparatorChar + $candidate
+  }
+  try {
+    $resolved = Resolve-Path -LiteralPath $candidate -ErrorAction Stop | Select-Object -First 1
+    $providerPath = [string]$resolved.ProviderPath
+    if (-not [string]::IsNullOrWhiteSpace($providerPath)) {
+      return [System.IO.Path]::GetFullPath($providerPath)
+    }
+  } catch {}
+
+  try {
+    return [System.IO.Path]::GetFullPath($candidate)
+  } catch {
+    return $candidate
+  }
+}
+
 function Resolve-ExistingPath {
   param(
     [string]$Path,
@@ -36,7 +64,7 @@ function Resolve-ExistingPath {
     if ($Optional.IsPresent) { return $null }
     throw ("{0} file not found: {1}" -f $Description, $Path)
   }
-  return (Resolve-Path -LiteralPath $Path).Path
+  return Convert-ToNativeFileSystemPath -PathValue $Path
 }
 
 function Ensure-Directory {
@@ -45,14 +73,14 @@ function Ensure-Directory {
   if (-not (Test-Path -LiteralPath $Path -PathType Container)) {
     New-Item -ItemType Directory -Force -Path $Path | Out-Null
   }
-  return (Resolve-Path -LiteralPath $Path).Path
+  return Convert-ToNativeFileSystemPath -PathValue $Path
 }
 
 function Resolve-FullPath {
   param([string]$Path)
   if ([string]::IsNullOrWhiteSpace($Path)) { return $null }
   try {
-    return (Resolve-Path -LiteralPath $Path -ErrorAction Stop).Path
+    return Convert-ToNativeFileSystemPath -PathValue $Path
   } catch {
     if ([System.IO.Path]::IsPathRooted($Path)) {
       return [System.IO.Path]::GetFullPath($Path)
@@ -1639,7 +1667,7 @@ if ($contextResolved) {
 
 $markdownContent = $summaryLines -join [Environment]::NewLine
 [System.IO.File]::WriteAllText($MarkdownPath, $markdownContent, [System.Text.Encoding]::UTF8)
-$markdownOutPath = (Resolve-Path -LiteralPath $MarkdownPath).Path
+$markdownOutPath = Convert-ToNativeFileSystemPath -PathValue $MarkdownPath
 
 $htmlOutPath = $null
 if ($emitHtml -and $HtmlPath) {
@@ -2041,7 +2069,7 @@ if ($emitHtml -and $HtmlPath) {
 
   $htmlContent = $htmlBuilder.ToString()
   [System.IO.File]::WriteAllText($HtmlPath, $htmlContent, [System.Text.Encoding]::UTF8)
-  $htmlOutPath = (Resolve-Path -LiteralPath $HtmlPath).Path
+  $htmlOutPath = Convert-ToNativeFileSystemPath -PathValue $HtmlPath
   Write-GitHubOutput -Key 'history-report-html' -Value $htmlOutPath -DestPath $GitHubOutputPath
 }
 
@@ -2162,7 +2190,7 @@ $historySummary = [ordered]@{
   modes = @($modeFacadeEntries)
 }
 $historySummary | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $SummaryJsonPath -Encoding utf8
-$summaryJsonOutPath = (Resolve-Path -LiteralPath $SummaryJsonPath).Path
+$summaryJsonOutPath = Convert-ToNativeFileSystemPath -PathValue $SummaryJsonPath
 
 Write-GitHubOutput -Key 'history-report-md' -Value $markdownOutPath -DestPath $GitHubOutputPath
 Write-GitHubOutput -Key 'history-summary-json' -Value $summaryJsonOutPath -DestPath $GitHubOutputPath

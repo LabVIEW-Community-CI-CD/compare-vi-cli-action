@@ -722,6 +722,47 @@ function Invoke-ProcessCapture {
   }
 }
 
+function Convert-ToNativeFileSystemPath {
+  param([AllowNull()][string]$PathValue)
+
+  if ([string]::IsNullOrWhiteSpace($PathValue)) {
+    return $PathValue
+  }
+
+  $candidate = [string]$PathValue
+  $lastProviderSeparator = $candidate.LastIndexOf('::', [System.StringComparison]::Ordinal)
+  if ($lastProviderSeparator -ge 0) {
+    $candidate = $candidate.Substring($lastProviderSeparator + 2)
+  }
+  $candidate = ($candidate -replace '^[A-Za-z][A-Za-z0-9.+-]*::', '')
+  if ($candidate -match '^[\\/](wsl\.localhost|wsl\$)[\\/]') {
+    $candidate = [System.IO.Path]::DirectorySeparatorChar + $candidate
+  }
+  try {
+    $resolved = Resolve-Path -LiteralPath $candidate -ErrorAction Stop | Select-Object -First 1
+    $providerPath = [string]$resolved.ProviderPath
+    if (-not [string]::IsNullOrWhiteSpace($providerPath)) {
+      return [System.IO.Path]::GetFullPath($providerPath)
+    }
+  } catch {}
+
+  try {
+    return [System.IO.Path]::GetFullPath($candidate)
+  } catch {
+    return $candidate
+  }
+}
+
+function Resolve-NativeExistingPath {
+  param([AllowNull()][string]$PathValue)
+
+  if ([string]::IsNullOrWhiteSpace($PathValue)) {
+    return $PathValue
+  }
+
+  return Convert-ToNativeFileSystemPath -PathValue $PathValue
+}
+
 function Invoke-Git {
   param(
     [Parameter(Mandatory = $true)][string[]]$Arguments,
@@ -1448,9 +1489,7 @@ if ($labVIEWIniPath) {
 }
 
 $repoRoot = Resolve-RepoRoot
-try {
-  $repoRoot = [System.IO.Path]::GetFullPath($repoRoot)
-} catch {}
+$repoRoot = Convert-ToNativeFileSystemPath -PathValue $repoRoot
 
 if ([string]::IsNullOrWhiteSpace($TargetPath)) {
   throw 'TargetPath cannot be empty.'
@@ -1461,7 +1500,7 @@ try {
   if (-not [System.IO.Path]::IsPathRooted($targetFullPath)) {
     $targetFullPath = Join-Path $repoRoot $targetFullPath
   }
-  $targetFullPath = [System.IO.Path]::GetFullPath($targetFullPath)
+  $targetFullPath = Convert-ToNativeFileSystemPath -PathValue $targetFullPath
 } catch {
   throw ("Unable to resolve TargetPath '{0}': {1}" -f $TargetPath, $_.Exception.Message)
 }
@@ -1470,25 +1509,40 @@ if (-not (Test-Path -LiteralPath $targetFullPath -PathType Leaf)) {
   Write-Verbose ("TargetPath '{0}' not found on disk; continuing with git history refs." -f $targetFullPath)
 }
 
-$targetRel = $targetFullPath
-try {
-  if ($repoRoot) {
-    $rootNormalized = [System.IO.Path]::GetFullPath($repoRoot)
-    $rootPrefix = $rootNormalized.TrimEnd('\','/')
-    if ($rootPrefix.Length -gt 0) {
-      $rootPrefix = $rootPrefix + [System.IO.Path]::DirectorySeparatorChar
+$targetRel = [string]$TargetPath
+$targetRelProviderStripped = $targetRel -replace '^[A-Za-z][A-Za-z0-9.+-]*::', ''
+$preferOriginalRelativeTargetPath = (
+  -not [string]::IsNullOrWhiteSpace($targetRelProviderStripped) -and
+  -not [System.IO.Path]::IsPathRooted($targetRelProviderStripped) -and
+  -not $targetRelProviderStripped.StartsWith('\\') -and
+  -not $targetRelProviderStripped.StartsWith('//')
+)
+
+if ($preferOriginalRelativeTargetPath) {
+  $targetRel = $targetRelProviderStripped
+} else {
+  $targetRel = $targetFullPath
+  try {
+    if ($repoRoot) {
+      $rootNormalized = [System.IO.Path]::GetFullPath($repoRoot)
+      $rootPrefix = $rootNormalized.TrimEnd('\','/')
+      if ($rootPrefix.Length -gt 0) {
+        $rootPrefix = $rootPrefix + [System.IO.Path]::DirectorySeparatorChar
+      }
+      if ($targetFullPath.StartsWith($rootPrefix, [System.StringComparison]::OrdinalIgnoreCase)) {
+        $targetRel = $targetFullPath.Substring($rootPrefix.Length).TrimStart('\','/')
+      }
     }
-    if ($targetFullPath.StartsWith($rootPrefix, [System.StringComparison]::OrdinalIgnoreCase)) {
-      $targetRel = $targetFullPath.Substring($rootPrefix.Length).TrimStart('\','/')
-    }
-  }
-} catch {}
+  } catch {}
+}
+
+$targetRel = ($targetRel -replace '^[A-Za-z][A-Za-z0-9.+-]*::', '')
 $targetRel = ($targetRel -replace '\\','/').Trim('/')
 if ([string]::IsNullOrWhiteSpace($targetRel)) {
   throw ("TargetPath '{0}' could not be normalized relative to repository root '{1}'." -f $TargetPath, $repoRoot)
 }
 Write-Verbose ("Normalized target path: {0}" -f $targetRel)
-$targetLeaf = Split-Path $targetRel -Leaf
+$targetLeaf = @($targetRel -split '/+' | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Last 1)
 if ([string]::IsNullOrWhiteSpace($targetLeaf)) { $targetLeaf = 'vi' }
 
 $startRef = if ([string]::IsNullOrWhiteSpace($StartRef)) { 'HEAD' } else { $StartRef.Trim() }
@@ -1544,8 +1598,9 @@ if ($resolvedStartRef -ne $startRef) {
 }
 
 $resultsRoot = if ([System.IO.Path]::IsPathRooted($ResultsDir)) { $ResultsDir } else { Join-Path $repoRoot $ResultsDir }
+$resultsRoot = Convert-ToNativeFileSystemPath -PathValue $resultsRoot
 New-Item -ItemType Directory -Path $resultsRoot -Force | Out-Null
-$resultsRootResolved = (Resolve-Path -LiteralPath $resultsRoot).Path
+$resultsRootResolved = Resolve-NativeExistingPath -PathValue $resultsRoot
 
 $aggregateManifestPath = if ($ManifestPath) {
   if ([System.IO.Path]::IsPathRooted($ManifestPath)) { $ManifestPath } else { Join-Path $repoRoot $ManifestPath }
@@ -1807,8 +1862,9 @@ foreach ($modeSpec in $modeSpecs) {
   Write-Verbose ("Mode {0} flags: {1}" -f $modeName, $mf)
 
   $modeResultsRoot = Join-Path $resultsRoot $modeSlug
+  $modeResultsRoot = Convert-ToNativeFileSystemPath -PathValue $modeResultsRoot
   New-Item -ItemType Directory -Path $modeResultsRoot -Force | Out-Null
-  $modeResultsResolved = (Resolve-Path -LiteralPath $modeResultsRoot).Path
+  $modeResultsResolved = Resolve-NativeExistingPath -PathValue $modeResultsRoot
   $modeResultsRelative = $null
   if ($modeResultsResolved) {
     try {
@@ -2076,7 +2132,7 @@ foreach ($modeSpec in $modeSpecs) {
         if (-not (Test-Path -LiteralPath $summaryPath -PathType Leaf)) {
           Write-Warning ("Summary not found at {0}; generating fallback summary from exec data." -f $summaryPath)
           $fallbackOut = [ordered]@{
-            execJson = if (Test-Path -LiteralPath $execPath -PathType Leaf) { (Resolve-Path -LiteralPath $execPath).Path } else { $null }
+            execJson = if (Test-Path -LiteralPath $execPath -PathType Leaf) { (Resolve-NativeExistingPath -PathValue $execPath) } else { $null }
           }
           $fallbackCli = [ordered]@{
             exitCode    = $null
@@ -2127,8 +2183,8 @@ foreach ($modeSpec in $modeSpecs) {
 
       $diff = [bool]$summaryJson.cli.diff
       $comparisonRecord.result = [ordered]@{
-        summaryPath = (Resolve-Path -LiteralPath $summaryPath).Path
-        execPath    = if (Test-Path -LiteralPath $execPath) { (Resolve-Path -LiteralPath $execPath).Path } else { $null }
+        summaryPath = Resolve-NativeExistingPath -PathValue $summaryPath
+        execPath    = if (Test-Path -LiteralPath $execPath) { (Resolve-NativeExistingPath -PathValue $execPath) } else { $null }
         diff        = $diff
         exitCode    = $summaryJson.cli.exitCode
         duration_s  = $summaryJson.cli.duration_s
@@ -2302,7 +2358,7 @@ foreach ($modeSpec in $modeSpecs) {
             Remove-Item -LiteralPath $artifactDir -Recurse -Force -ErrorAction SilentlyContinue
           }
         } elseif (Test-Path -LiteralPath $artifactDir) {
-          $comparisonRecord.result.artifactDir = (Resolve-Path -LiteralPath $artifactDir).Path
+          $comparisonRecord.result.artifactDir = Resolve-NativeExistingPath -PathValue $artifactDir
         }
       }
       $categoryDetails = $null
@@ -2450,7 +2506,7 @@ foreach ($modeSpec in $modeSpecs) {
   $collapsedNoiseStats.count = $noiseCollapsedCount
 
   $modeManifest | ConvertTo-Json -Depth 8 | Out-File -FilePath $modeManifestPath -Encoding utf8
-  $modeManifestResolved = (Resolve-Path -LiteralPath $modeManifestPath).Path
+  $modeManifestResolved = Resolve-NativeExistingPath -PathValue $modeManifestPath
 
   if (-not $hasStepSummary) {
     $summaryLines += ''
@@ -2724,7 +2780,7 @@ if ($executedModeNames.Count -gt 0) {
 }
 
 $aggregate | ConvertTo-Json -Depth 8 | Out-File -FilePath $aggregateManifestPath -Encoding utf8
-$aggregateManifestResolved = (Resolve-Path -LiteralPath $aggregateManifestPath).Path
+$aggregateManifestResolved = Resolve-NativeExistingPath -PathValue $aggregateManifestPath
 Write-GitHubOutput -Key 'manifest-path' -Value $aggregateManifestResolved -DestPath $GitHubOutputPath
 Write-GitHubOutput -Key 'results-dir' -Value $resultsRootResolved -DestPath $GitHubOutputPath
 Write-GitHubOutput -Key 'mode-count' -Value $aggregate.modes.Count -DestPath $GitHubOutputPath
@@ -2886,11 +2942,11 @@ if (-not $renderSucceeded) {
 }
 
 if (Test-Path -LiteralPath $historyReportMarkdownPath -PathType Leaf) {
-  $historyReportMarkdownResolved = (Resolve-Path -LiteralPath $historyReportMarkdownPath).Path
+  $historyReportMarkdownResolved = Resolve-NativeExistingPath -PathValue $historyReportMarkdownPath
   Write-GitHubOutput -Key 'history-report-md' -Value $historyReportMarkdownResolved -DestPath $GitHubOutputPath
 }
 if ($historyReportHtmlPath -and (Test-Path -LiteralPath $historyReportHtmlPath -PathType Leaf)) {
-  $historyReportHtmlResolved = (Resolve-Path -LiteralPath $historyReportHtmlPath).Path
+  $historyReportHtmlResolved = Resolve-NativeExistingPath -PathValue $historyReportHtmlPath
   Write-GitHubOutput -Key 'history-report-html' -Value $historyReportHtmlResolved -DestPath $GitHubOutputPath
 }
 

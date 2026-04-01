@@ -29,6 +29,36 @@ try { git --version | Out-Null } catch { throw 'git is required on PATH to fetch
 
 $repoRoot = (Get-Location).Path
 
+function Convert-ToNativeFileSystemPath {
+  param([AllowNull()][string]$PathValue)
+  if ([string]::IsNullOrWhiteSpace($PathValue)) { return $PathValue }
+
+  $candidate = [string]$PathValue
+  $lastProviderSeparator = $candidate.LastIndexOf('::', [System.StringComparison]::Ordinal)
+  if ($lastProviderSeparator -ge 0) {
+    $candidate = $candidate.Substring($lastProviderSeparator + 2)
+  }
+  $candidate = ($candidate -replace '^[A-Za-z][A-Za-z0-9.+-]*::', '')
+  if ($candidate -match '^[\\/](wsl\.localhost|wsl\$)[\\/]') {
+    $candidate = [System.IO.Path]::DirectorySeparatorChar + $candidate
+  }
+  try {
+    $resolved = Resolve-Path -LiteralPath $candidate -ErrorAction Stop | Select-Object -First 1
+    $providerPath = [string]$resolved.ProviderPath
+    if (-not [string]::IsNullOrWhiteSpace($providerPath)) {
+      return [System.IO.Path]::GetFullPath($providerPath)
+    }
+  } catch {}
+
+  try {
+    return [System.IO.Path]::GetFullPath($candidate)
+  } catch {
+    return $candidate
+  }
+}
+
+$repoRoot = Convert-ToNativeFileSystemPath -PathValue $repoRoot
+
 function Resolve-CompareVIScriptsRoot {
   param([string]$PrimaryRoot)
 
@@ -80,7 +110,13 @@ function Split-ArgString {
 function Normalize-ExistingPath {
   param([string]$Candidate)
   if ([string]::IsNullOrWhiteSpace($Candidate)) { return $null }
-  try { return (Resolve-Path -LiteralPath $Candidate -ErrorAction Stop).Path } catch { return $Candidate }
+  try { return Convert-ToNativeFileSystemPath -PathValue $Candidate } catch { return $Candidate }
+}
+
+function Resolve-NativeExistingPath {
+  param([string]$Candidate)
+  if ([string]::IsNullOrWhiteSpace($Candidate)) { return $null }
+  try { return Convert-ToNativeFileSystemPath -PathValue $Candidate } catch { return $Candidate }
 }
 
 function Resolve-TempRoot {
@@ -636,6 +672,7 @@ Get-FileAtRef -ref $RefA -relPath $Path -dest $base
 Get-FileAtRef -ref $RefB -relPath $Path -dest $head
 
 $rd = if ([System.IO.Path]::IsPathRooted($ResultsDir)) { $ResultsDir } else { Join-Path $repoRoot $ResultsDir }
+$rd = Convert-ToNativeFileSystemPath -PathValue $rd
 New-Item -ItemType Directory -Path $rd -Force | Out-Null
 $execPath = Join-Path $rd ("$OutName-exec.json")
 $sumPath  = Join-Path $rd ("$OutName-summary.json")
@@ -838,7 +875,7 @@ if ($detailRequested) {
       if (-not $candidatePath) { continue }
       if (Test-Path -LiteralPath $candidatePath -PathType Leaf) {
         try {
-          $leakResolvedPath = (Resolve-Path -LiteralPath $candidatePath).Path
+          $leakResolvedPath = Resolve-NativeExistingPath -Candidate $candidatePath
         } catch {
           $leakResolvedPath = $candidatePath
         }
@@ -875,18 +912,18 @@ if ($detailRequested) {
     }
   }
 
-  if (Test-Path -LiteralPath $capturePath) { $detailPaths.captureJson = (Resolve-Path -LiteralPath $capturePath).Path }
-  if (Test-Path -LiteralPath $stdoutPath)  { $detailPaths.stdout       = (Resolve-Path -LiteralPath $stdoutPath).Path }
-  if (Test-Path -LiteralPath $stderrPath)  { $detailPaths.stderr       = (Resolve-Path -LiteralPath $stderrPath).Path }
+  if (Test-Path -LiteralPath $capturePath) { $detailPaths.captureJson = Resolve-NativeExistingPath -Candidate $capturePath }
+  if (Test-Path -LiteralPath $stdoutPath)  { $detailPaths.stdout       = Resolve-NativeExistingPath -Candidate $stdoutPath }
+  if (Test-Path -LiteralPath $stderrPath)  { $detailPaths.stderr       = Resolve-NativeExistingPath -Candidate $stderrPath }
   $reportResolved = $null
   if ($reportFile -and (Test-Path -LiteralPath $reportFile)) {
-    $reportResolved = (Resolve-Path -LiteralPath $reportFile).Path
+    $reportResolved = Resolve-NativeExistingPath -Candidate $reportFile
     $detailPaths.reportPath = $reportResolved
     if ($reportFormatEffective -eq 'html') {
       $detailPaths.reportHtml = $reportResolved
     }
   }
-  if (Test-Path -LiteralPath $imagesDir)   { $detailPaths.imagesDir    = (Resolve-Path -LiteralPath $imagesDir).Path }
+  if (Test-Path -LiteralPath $imagesDir)   { $detailPaths.imagesDir    = Resolve-NativeExistingPath -Candidate $imagesDir }
   if ($reportFormatEffective -eq 'html' -and $reportResolved) {
     $includedAttributes = Get-IncludedAttributesFromReport -ReportPath $reportResolved
     $reportMetadata = Get-ReportCategoryMetadata -ReportPath $reportResolved
@@ -933,14 +970,14 @@ if (-not $cliDiff -and $cliExit -eq $null) { $cliExit = 0 }
 
 $exec = Get-Content -LiteralPath $execPath -Raw | ConvertFrom-Json -Depth 6
 
-$outPaths = [ordered]@{ execJson = (Resolve-Path -LiteralPath $execPath).Path }
+$outPaths = [ordered]@{ execJson = (Resolve-NativeExistingPath -Candidate $execPath) }
 foreach ($k in @('captureJson','stdout','stderr','reportHtml','reportPath','imagesDir')) {
   if ($detailPaths.Contains($k) -and $detailPaths[$k]) { $outPaths[$k] = $detailPaths[$k] }
 }
 if ($detailPaths.Contains('leakJson') -and $detailPaths['leakJson']) {
   $outPaths.leakJson = $detailPaths['leakJson']
 }
-if ($artifactDir) { $outPaths.artifactDir = (Resolve-Path -LiteralPath $artifactDir).Path }
+if ($artifactDir) { $outPaths.artifactDir = Resolve-NativeExistingPath -Candidate $artifactDir }
 
 $cliSummary = [ordered]@{
   exitCode    = $cliExit
