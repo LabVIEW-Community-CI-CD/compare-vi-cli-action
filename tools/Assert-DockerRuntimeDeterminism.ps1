@@ -90,6 +90,8 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+. (Join-Path $PSScriptRoot 'ProcessTimeoutHelper.ps1')
+
 function Write-GitHubOutput {
   param(
     [Parameter(Mandatory = $true)][string]$Key,
@@ -193,41 +195,13 @@ function Invoke-ProcessWithTimeout {
     exception = ''
   }
 
-  $psi = [System.Diagnostics.ProcessStartInfo]::new()
-  $psi.FileName = $resolvedFilePath
-  $psi.UseShellExecute = $false
-  $psi.RedirectStandardOutput = $true
-  $psi.RedirectStandardError = $true
-  $psi.CreateNoWindow = $true
-  foreach ($arg in @($effectiveArguments)) {
-    [void]$psi.ArgumentList.Add([string]$arg)
-  }
-
-  $proc = [System.Diagnostics.Process]::new()
-  $proc.StartInfo = $psi
-
-  try {
-    [void]$proc.Start()
-    $completed = $proc.WaitForExit($safeTimeout * 1000)
-    if (-not $completed) {
-      $result.timedOut = $true
-      try { $proc.Kill($true) } catch {}
-      return [pscustomobject]$result
-    }
-
-    $result.exitCode = [int]$proc.ExitCode
-    $result.stdout = @(Split-OutputLines -Text $proc.StandardOutput.ReadToEnd())
-    $result.stderr = @(Split-OutputLines -Text $proc.StandardError.ReadToEnd())
-  } catch {
-    $result.exception = [string]$_.Exception.Message
-    try {
-      if (-not $proc.HasExited) {
-        $proc.Kill($true)
-      }
-    } catch {}
-  } finally {
-    $proc.Dispose()
-  }
+  $invoke = Invoke-ProcessWithTimeoutCore -FilePath $resolvedFilePath -Arguments @($effectiveArguments) -TimeoutSeconds $safeTimeout
+  $result.timedOut = [bool]$invoke.TimedOut
+  $result.exitCode = $invoke.ExitCode
+  $result.stdout = @($invoke.Stdout | ForEach-Object { [string]$_ })
+  $result.stderr = @($invoke.Stderr | ForEach-Object { [string]$_ })
+  $result.command = [string]$invoke.Command
+  $result.exception = [string]$invoke.Exception
 
   return [pscustomobject]$result
 }
@@ -1000,9 +974,18 @@ if ($ExpectedOsType -eq 'windows') {
     $hostAlignmentOk = $false
     $reason = "RUNNER_OS is '$runnerOsRaw', expected Windows."
   }
-} elseif (-not [string]::IsNullOrWhiteSpace($runnerOsNormalized) -and $runnerOsNormalized -ne 'linux') {
-  $hostAlignmentOk = $false
-  $reason = "RUNNER_OS is '$runnerOsRaw', expected Linux for linux lane."
+} elseif (-not [string]::IsNullOrWhiteSpace($runnerOsNormalized)) {
+  # Linux Docker lanes are valid on Windows Docker Desktop / native-wsl hosts,
+  # but non-Windows hosts still need a Linux runner identity.
+  if ($hostIsWindows) {
+    if ($runnerOsNormalized -notin @('windows', 'linux')) {
+      $hostAlignmentOk = $false
+      $reason = "RUNNER_OS is '$runnerOsRaw', expected Windows or Linux for linux lane on a Windows host."
+    }
+  } elseif ($runnerOsNormalized -ne 'linux') {
+    $hostAlignmentOk = $false
+    $reason = "RUNNER_OS is '$runnerOsRaw', expected Linux for linux lane."
+  }
 }
 
 $observedDockerHost = if ([string]::IsNullOrWhiteSpace($env:DOCKER_HOST)) { $null } else { $env:DOCKER_HOST.Trim() }

@@ -952,12 +952,14 @@ function Build-FallbackHistoryContext {
     }
 
     $modeComparisons = New-Object System.Collections.Generic.List[object]
-    foreach ($comparisonEntry in @($modeManifest.comparisons)) {
-      if ($comparisonEntry) {
-        $modeComparisons.Add($comparisonEntry) | Out-Null
-      }
+    $comparisonEntries = @()
+    if ($modeManifest.PSObject.Properties['comparisons']) {
+      $comparisonEntries += @($modeManifest.comparisons)
     }
-    foreach ($comparisonEntry in @($modeManifest.collapsedComparisons)) {
+    if ($modeManifest.PSObject.Properties['collapsedComparisons']) {
+      $comparisonEntries += @($modeManifest.collapsedComparisons)
+    }
+    foreach ($comparisonEntry in @($comparisonEntries)) {
       if ($comparisonEntry) {
         $modeComparisons.Add($comparisonEntry) | Out-Null
       }

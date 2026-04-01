@@ -7,6 +7,28 @@ The format is based on Keep a Changelog, and this project adheres to Semantic Ve
 
 ## [Unreleased]
 
+## [v0.6.12] - 2026-04-01
+
+### Fixed
+
+- Reworked Windows preflight and Docker runtime-manager process capture so
+  large `docker manifest inspect` payloads no longer deadlock the bounded
+  timeout path, preserving truthful Windows NI preflight and runtime
+  determinism outcomes instead of hanging the release-proof surface.
+
+### Added
+
+- Regression coverage in `tests/Invoke-DockerRuntimeManager.Tests.ps1` and
+  `tests/Test-WindowsNI2026q1HostPreflight.Tests.ps1` proving large manifest
+  output still completes cleanly through the shared timeout helper.
+
+### Changed
+
+- Built the `v0.6.12` release line on top of the published `v0.6.11` stable
+  baseline, preserving the Windows NI proof authority and VI-history
+  native-path repair while adding the preflight deadlock fix required for a
+  clean release rail.
+
 ## [v0.6.11] - 2026-04-01
 
 ### Fixed

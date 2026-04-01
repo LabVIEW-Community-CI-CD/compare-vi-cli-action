@@ -76,6 +76,31 @@ if ($Args[0] -eq 'info') {
   exit 0
 }
 
+if ($Args[0] -eq 'manifest' -and $Args.Count -ge 3 -and $Args[1] -eq 'inspect') {
+  $paddingBytes = [Environment]::GetEnvironmentVariable('DOCKER_STUB_MANIFEST_PADDING_BYTES')
+  $padding = ''
+  if (-not [string]::IsNullOrWhiteSpace($paddingBytes)) {
+    $padding = ('x' * [int]$paddingBytes)
+  }
+  $manifest = [ordered]@{
+    schemaVersion = 2
+    annotations = [ordered]@{
+      padding = $padding
+    }
+    manifests = @(
+      [ordered]@{
+        digest = 'sha256:1111111111111111111111111111111111111111111111111111111111111111'
+        platform = [ordered]@{
+          os = 'windows'
+          architecture = 'amd64'
+        }
+      }
+    )
+  }
+  ($manifest | ConvertTo-Json -Depth 10) | Write-Output
+  exit 0
+}
+
 if ($Args[0] -eq 'image' -and $Args.Count -ge 2 -and $Args[1] -eq 'inspect') {
   $inspectSleep = [Environment]::GetEnvironmentVariable('DOCKER_STUB_INSPECT_SLEEP_SECONDS')
   if (-not [string]::IsNullOrWhiteSpace($inspectSleep)) {
@@ -165,6 +190,7 @@ exit 0
       DOCKER_STUB_INFO_EXITCODE = $env:DOCKER_STUB_INFO_EXITCODE
       DOCKER_STUB_RUN_STDERR = $env:DOCKER_STUB_RUN_STDERR
       DOCKER_STUB_RUN_EXITCODE = $env:DOCKER_STUB_RUN_EXITCODE
+      DOCKER_STUB_MANIFEST_PADDING_BYTES = $env:DOCKER_STUB_MANIFEST_PADDING_BYTES
       DOCKER_STUB_INSPECT_SLEEP_SECONDS = $env:DOCKER_STUB_INSPECT_SLEEP_SECONDS
       DOCKER_STUB_PULL_SLEEP_SECONDS = $env:DOCKER_STUB_PULL_SLEEP_SECONDS
       DOCKER_STUB_RUN_SLEEP_SECONDS = $env:DOCKER_STUB_RUN_SLEEP_SECONDS
@@ -350,5 +376,35 @@ exit 0
     $json.runtimeDeterminism.failureClass | Should -Be 'docker-engine-mismatch'
     $json.bootstrap.attempted | Should -BeFalse
     $json.probe.attempted | Should -BeFalse
+  }
+
+  It 'keeps desktop-local preflight ready when manifest output is large' {
+    $work = Join-Path $TestDrive 'desktop-local-large-manifest'
+    New-Item -ItemType Directory -Path $work -Force | Out-Null
+    & $script:CreateDockerHostedStubs -WorkRoot $work
+
+    Set-Item Env:DOCKER_STUB_CONTEXT 'desktop-windows'
+    Set-Item Env:DOCKER_STUB_OSTYPE 'windows'
+    Set-Item Env:DOCKER_STUB_IMAGE_EXISTS '1'
+    Set-Item Env:DOCKER_STUB_MANIFEST_PADDING_BYTES '20000'
+    Set-Item Env:RUNNER_TEMP (Join-Path $work 'runner-temp')
+
+    $resultsRoot = Join-Path $work 'results'
+    $outputJsonPath = Join-Path $resultsRoot 'windows-ni-2026q1-host-preflight.json'
+
+    $output = @(& pwsh -NoLogo -NoProfile -File $script:ToolPath `
+      -Image 'nationalinstruments/labview:2026q1-windows' `
+      -ResultsDir $resultsRoot `
+      -ExecutionSurface 'desktop-local' `
+      -CommandTimeoutSeconds 5 `
+      -OutputJsonPath $outputJsonPath `
+      -GitHubOutputPath '' `
+      -StepSummaryPath '' 2>&1)
+    $LASTEXITCODE | Should -Be 0 -Because ($output -join "`n")
+
+    $json = Get-Content -LiteralPath $outputJsonPath -Raw | ConvertFrom-Json -Depth 20
+    $json.status | Should -Be 'ready'
+    $json.bootstrap.imagePresent | Should -BeTrue
+    $json.probe.status | Should -Be 'success'
   }
 }

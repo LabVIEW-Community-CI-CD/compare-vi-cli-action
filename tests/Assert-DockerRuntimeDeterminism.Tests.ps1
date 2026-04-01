@@ -157,7 +157,7 @@ exit 0
 "@
       Set-Content -LiteralPath (Join-Path $binDir 'wsl.cmd') -Value $wslCmd -Encoding ascii
 
-      $env:PATH = "{0};{1}" -f $binDir, $env:PATH
+      $env:PATH = "{0}{1}{2}" -f $binDir, [System.IO.Path]::PathSeparator, $env:PATH
     }
   }
 
@@ -173,6 +173,7 @@ exit 0
       DOCKER_STUB_CONTEXT_USE_FAIL_TARGET = $env:DOCKER_STUB_CONTEXT_USE_FAIL_TARGET
       DOCKER_COMMAND_OVERRIDE = $env:DOCKER_COMMAND_OVERRIDE
       DOCKER_HOST = $env:DOCKER_HOST
+      RUNNER_OS = $env:RUNNER_OS
     }
   }
 
@@ -209,11 +210,13 @@ exit 0
 
     Set-Item Env:DOCKER_STUB_INFO_MODE 'daemon-unavailable'
     Set-Item Env:DOCKER_STUB_CONTEXT 'desktop-windows'
+    Set-Item Env:RUNNER_OS 'Windows'
 
     $snapshotPath = Join-Path $work 'runtime.json'
     $output = & pwsh -NoLogo -NoProfile -File $script:GuardScript `
       -ExpectedOsType windows `
       -ExpectedContext desktop-windows `
+      -HostPlatformOverride Windows `
       -AutoRepair:$false `
       -SnapshotPath $snapshotPath `
       -GitHubOutputPath '' 2>&1
@@ -259,11 +262,13 @@ exit 9
     Set-Item Env:DOCKER_COMMAND_OVERRIDE (Join-Path $work 'bin' 'docker.ps1')
     Set-Item Env:DOCKER_STUB_INFO_MODE 'parsed-linux'
     Set-Item Env:DOCKER_STUB_CONTEXT 'desktop-linux'
+    Set-Item Env:RUNNER_OS 'Windows'
 
     $snapshotPath = Join-Path $work 'runtime.json'
     $output = & pwsh -NoLogo -NoProfile -File $script:GuardScript `
       -ExpectedOsType linux `
       -ExpectedContext desktop-linux `
+      -HostPlatformOverride Windows `
       -AutoRepair:$false `
       -SnapshotPath $snapshotPath `
       -GitHubOutputPath '' 2>&1
@@ -281,12 +286,14 @@ exit 9
 
     Set-Item Env:DOCKER_STUB_INFO_MODE 'unparseable-success'
     Set-Item Env:DOCKER_STUB_CONTEXT 'desktop-windows'
+    Set-Item Env:RUNNER_OS 'Windows'
 
     $snapshotPath = Join-Path $work 'runtime.json'
     $githubOutput = Join-Path $work 'github-output.txt'
     $output = & pwsh -NoLogo -NoProfile -File $script:GuardScript `
       -ExpectedOsType windows `
       -ExpectedContext desktop-windows `
+      -HostPlatformOverride Windows `
       -AutoRepair:$false `
       -SnapshotPath $snapshotPath `
       -GitHubOutputPath $githubOutput 2>&1
@@ -308,11 +315,13 @@ exit 9
 
     Set-Item Env:DOCKER_STUB_INFO_MODE 'daemon-unavailable'
     Set-Item Env:DOCKER_STUB_CONTEXT 'desktop-windows'
+    Set-Item Env:RUNNER_OS 'Windows'
 
     $snapshotPath = Join-Path $work 'runtime.json'
     $output = & pwsh -NoLogo -NoProfile -File $script:GuardScript `
       -ExpectedOsType windows `
       -ExpectedContext desktop-windows `
+      -HostPlatformOverride Windows `
       -AutoRepair:$true `
       -ManageDockerEngine:$true `
       -SnapshotPath $snapshotPath `
@@ -333,11 +342,13 @@ exit 9
 
     Set-Item Env:DOCKER_STUB_INFO_MODE 'parsed-linux'
     Set-Item Env:DOCKER_STUB_CONTEXT 'desktop-linux'
+    Set-Item Env:RUNNER_OS 'Windows'
 
     $snapshotPath = Join-Path $work 'runtime.json'
     $output = & pwsh -NoLogo -NoProfile -File $script:GuardScript `
       -ExpectedOsType windows `
       -ExpectedContext desktop-windows `
+      -HostPlatformOverride Windows `
       -AutoRepair:$true `
       -ManageDockerEngine:$true `
       -AllowHostEngineMutation:$false `
@@ -365,6 +376,7 @@ exit 9
 
     Set-Item Env:DOCKER_STUB_INFO_MODE 'parsed-windows'
     Set-Item Env:DOCKER_STUB_CONTEXT 'desktop-windows'
+    Set-Item Env:RUNNER_OS 'Windows'
 
     $snapshotPath = Join-Path $work 'runtime.json'
     $githubOutput = Join-Path $work 'github-output.txt'
@@ -372,6 +384,7 @@ exit 9
     $output = & pwsh -NoLogo -NoProfile -File $script:GuardScript `
       -ExpectedOsType windows `
       -ExpectedContext desktop-windows `
+      -HostPlatformOverride Windows `
       -AutoRepair:$true `
       -SnapshotPath $snapshotPath `
       -GitHubOutputPath $githubOutput 2>&1
@@ -399,11 +412,13 @@ exit 9
 
     Set-Item Env:DOCKER_STUB_INFO_MODE 'parsed-windows'
     Set-Item Env:DOCKER_STUB_CONTEXT 'default'
+    Set-Item Env:RUNNER_OS 'Windows'
 
     $snapshotPath = Join-Path $work 'runtime.json'
     $output = & pwsh -NoLogo -NoProfile -File $script:GuardScript `
       -ExpectedOsType windows `
       -ExpectedContext desktop-windows `
+      -HostPlatformOverride Windows `
       -AutoRepair:$true `
       -SnapshotPath $snapshotPath `
       -GitHubOutputPath '' 2>&1
@@ -424,11 +439,13 @@ exit 9
     Set-Item Env:DOCKER_STUB_INFO_MODE 'parsed-windows'
     Set-Item Env:DOCKER_STUB_CONTEXT 'default'
     Set-Item Env:DOCKER_STUB_INFO_FAIL_CONTEXT 'desktop-windows'
+    Set-Item Env:RUNNER_OS 'Windows'
 
     $snapshotPath = Join-Path $work 'runtime.json'
     $output = & pwsh -NoLogo -NoProfile -File $script:GuardScript `
       -ExpectedOsType windows `
       -ExpectedContext desktop-windows `
+      -HostPlatformOverride Windows `
       -AutoRepair:$true `
       -SnapshotPath $snapshotPath `
       -GitHubOutputPath '' 2>&1
@@ -448,12 +465,14 @@ exit 9
     Set-Item Env:DOCKER_STUB_INFO_MODE 'parsed-linux'
     Set-Item Env:DOCKER_STUB_INFO_JSON '{"OSType":"linux","OperatingSystem":"Ubuntu 24.04.1 LTS","Name":"ubuntu-native","Platform":{"Name":"Docker Engine - Community"},"Labels":["maintainer=comparevi"]}'
     Set-Item Env:DOCKER_HOST 'unix:///var/run/docker.sock'
+    Set-Item Env:RUNNER_OS 'Windows'
 
     $snapshotPath = Join-Path $work 'runtime.json'
     $output = & pwsh -NoLogo -NoProfile -File $script:GuardScript `
       -ExpectedOsType linux `
       -RuntimeProvider native-wsl `
       -ExpectedDockerHost 'unix:///var/run/docker.sock' `
+      -HostPlatformOverride Windows `
       -AutoRepair:$true `
       -SnapshotPath $snapshotPath `
       -GitHubOutputPath '' 2>&1
@@ -478,12 +497,14 @@ exit 9
     Set-Item Env:DOCKER_STUB_INFO_MODE 'parsed-linux'
     Set-Item Env:DOCKER_STUB_INFO_JSON '{"OSType":"linux","OperatingSystem":"Docker Desktop","Name":"docker-desktop","Platform":{"Name":"Docker Desktop 4.41.0"},"Labels":["com.docker.desktop.address=npipe://"]}'
     Set-Item Env:DOCKER_HOST 'unix:///var/run/docker.sock'
+    Set-Item Env:RUNNER_OS 'Windows'
 
     $snapshotPath = Join-Path $work 'runtime.json'
     $output = & pwsh -NoLogo -NoProfile -File $script:GuardScript `
       -ExpectedOsType linux `
       -RuntimeProvider native-wsl `
       -ExpectedDockerHost 'unix:///var/run/docker.sock' `
+      -HostPlatformOverride Windows `
       -AutoRepair:$true `
       -SnapshotPath $snapshotPath `
       -GitHubOutputPath '' 2>&1

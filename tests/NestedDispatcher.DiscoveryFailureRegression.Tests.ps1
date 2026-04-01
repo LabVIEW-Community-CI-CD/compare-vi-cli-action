@@ -23,12 +23,26 @@ Describe 'Nested Dispatcher Discovery Failure Regression' -Tag 'Unit' {
     Set-Content -Path (Join-Path $testsDir 'Broken.Tests.ps1') -Value $badLines -Encoding UTF8
 
     $dispatcherCopy = Join-Path $workspace 'Invoke-PesterTests.ps1'
-    Copy-Item -Path (Join-Path (Split-Path $PSScriptRoot -Parent) 'Invoke-PesterTests.ps1') -Destination $dispatcherCopy
+    $repoRoot = Split-Path $PSScriptRoot -Parent
+    Copy-Item -Path (Join-Path $repoRoot 'Invoke-PesterTests.ps1') -Destination $dispatcherCopy
     $toolsDir = Join-Path $workspace 'tools'
-    $trackerModule = Join-Path (Split-Path $PSScriptRoot -Parent) 'tools' 'LabVIEWPidTracker.psm1'
-    if (Test-Path -LiteralPath $trackerModule -PathType Leaf) {
-      New-Item -ItemType Directory -Path $toolsDir -Force | Out-Null
-      Copy-Item -Path $trackerModule -Destination $toolsDir -Force
+    New-Item -ItemType Directory -Path $toolsDir -Force | Out-Null
+    $supportFiles = @(
+      'LabVIEWPidTracker.psm1',
+      'PesterExecutionPacks.ps1',
+      'Invoke-PesterExecutionPostprocess.ps1',
+      'PesterServiceModelSchema.ps1',
+      'Get-PesterResultXmlSummary.ps1'
+    )
+    foreach ($supportFile in $supportFiles) {
+      $supportPath = Join-Path $repoRoot 'tools' $supportFile
+      if (Test-Path -LiteralPath $supportPath -PathType Leaf) {
+        Copy-Item -Path $supportPath -Destination $toolsDir -Force
+      }
+    }
+    $dispatcherTools = Join-Path $repoRoot 'tools' 'Dispatcher'
+    if (Test-Path -LiteralPath $dispatcherTools -PathType Container) {
+      Copy-Item -Path $dispatcherTools -Destination (Join-Path $toolsDir 'Dispatcher') -Recurse -Force
     }
 
     Push-Location $workspace
