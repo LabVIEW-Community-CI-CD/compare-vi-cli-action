@@ -241,61 +241,20 @@
         "reportPath",
         "queueReportPath",
         "policySnapshotPath",
-        "dwellMinutes",
         "quarantineStaleHours"
       ],
       "properties": {
         "reportPath": { "type": "string" },
         "queueReportPath": { "type": "string" },
         "policySnapshotPath": { "type": "string" },
-        "dwellMinutes": { "type": "integer", "minimum": 0 },
         "quarantineStaleHours": { "type": "integer", "minimum": 0 }
       }
     },
     "gates": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["greenDwell", "queueHealth", "policySnapshot", "quarantine"],
+      "required": ["queueHealth", "policySnapshot", "quarantine"],
       "properties": {
-        "greenDwell": {
-          "type": "object",
-          "additionalProperties": false,
-          "required": ["status", "dwellMinutes", "evaluatedAt", "reasons", "workflows"],
-          "properties": {
-            "status": { "type": "string", "enum": ["pass", "fail"] },
-            "dwellMinutes": { "type": "integer", "minimum": 0 },
-            "evaluatedAt": { "type": "string", "format": "date-time" },
-            "reasons": {
-              "type": "array",
-              "items": { "type": "string" }
-            },
-            "workflows": {
-              "type": "array",
-              "items": {
-                "type": "object",
-                "additionalProperties": false,
-                "required": [
-                  "name",
-                  "file",
-                  "runCount",
-                  "inWindowCount",
-                  "successInWindow",
-                  "failureInWindow",
-                  "latestSuccessAt"
-                ],
-                "properties": {
-                  "name": { "type": "string" },
-                  "file": { "type": "string" },
-                  "runCount": { "type": "integer", "minimum": 0 },
-                  "inWindowCount": { "type": "integer", "minimum": 0 },
-                  "successInWindow": { "type": "boolean" },
-                  "failureInWindow": { "type": "boolean" },
-                  "latestSuccessAt": { "type": ["string", "null"] }
-                }
-              }
-            }
-          }
-        },
         "queueHealth": {
           "type": "object",
           "additionalProperties": false,
