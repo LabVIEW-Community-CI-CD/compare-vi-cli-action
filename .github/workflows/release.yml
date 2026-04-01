@@ -787,20 +787,24 @@ jobs:
         id: downstream_proving_policy
         if: always()
         shell: bash
+        env:
+          RELEASE_SOURCE_SHA: ${{ steps.release_source.outputs.source_sha }}
+          CURRENT_DEVELOP_SHA: ${{ steps.current_develop.outputs.develop_sha }}
         run: |
+          # shellcheck disable=SC2016
           set -euo pipefail
-          source_sha='${{ steps.release_source.outputs.source_sha }}'
-          develop_sha='${{ steps.current_develop.outputs.develop_sha }}'
-          mode='advisory-replay'
-          reason='release-publication-mode-not-publish'
+          source_sha="${RELEASE_SOURCE_SHA}"
+          develop_sha="${CURRENT_DEVELOP_SHA}"
+          mode="advisory-replay"
+          reason="release-publication-mode-not-publish"
 
-          if [[ "${RELEASE_PUBLICATION_MODE}" == 'publish' ]]; then
+          if [[ "${RELEASE_PUBLICATION_MODE}" == "publish" ]]; then
             if [[ "$source_sha" == "$develop_sha" ]]; then
-              mode='required'
-              reason='release-source-matches-current-develop'
+              mode="required"
+              reason="release-source-matches-current-develop"
             else
-              mode='deferred-release-source-not-current-develop'
-              reason='release-source-differs-from-current-develop'
+              mode="deferred-release-source-not-current-develop"
+              reason="release-source-differs-from-current-develop"
             fi
           fi
 

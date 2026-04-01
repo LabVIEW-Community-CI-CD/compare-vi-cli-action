@@ -10,18 +10,18 @@
 
 | Test ID | Coverage | Layer | Priority | Notes |
 | --- | --- | --- | --- | --- |
-| `TEST-VHLP-001` local Windows workflow replay coverage | Contract/Replay | High | Verifies the governed `vi-history-scenarios-windows` replay lane emits a bounded receipt and compare artifact paths, including bridge-backed Windows launch from Unix or WSL coordinators |
-| `TEST-VHLP-002` local refinement profile coverage | Execution/Local | High | Verifies `proof`, `dev-fast`, `warm-dev`, and `windows-mirror-proof` local refinement behavior and retained receipts |
-| `TEST-VHLP-003` local operator-session coverage | Operator/Local | High | Verifies local operator-session wrappers consume the refinement helper and emit canonical local session contracts |
-| `TEST-VHLP-004` workflow-readiness envelope coverage | Evidence/Decision | High | Verifies the VI History workflow-readiness envelope captures lane lifecycle, verdict, and recommendation |
-| `TEST-VHLP-005` local autonomy-loop coverage | Assurance/Contract | High | Verifies local VI History CI emits a report, ranked backlog, and next-step artifact |
-| `TEST-VHLP-006` next-step escalation coverage | Assurance/Contract | High | Verifies local VI History CI emits a machine-readable escalation step to the shared Windows Docker Desktop + NI image surface only after native or reachable bridge-backed Windows checks cannot satisfy it |
-| `TEST-VHLP-007` shared local-program selector coverage | Assurance/Contract | High | Verifies the shared program selector can choose VI History requirement work explicitly and merge the shared Windows Docker Desktop + NI image escalation across sibling packets |
-| `TEST-VHLP-008` clone-backed live-history candidate governance coverage | Assurance/Contract | High | Verifies the packet names `ni/labview-icon-editor` plus `Tooling/deployment/VIP_Pre-Uninstall Custom Action.vi` as the governed clone-backed live-history candidate |
-| `TEST-VHLP-009` live-history candidate readiness coverage | Assurance/Contract | High | Verifies local VI History CI validates clone presence, target path presence, and git history, then emits a bounded clone-preparation escalation when the candidate is unavailable |
-| `TEST-VHLP-010` explicit Windows replay next-step coverage | Assurance/Contract | High | Verifies local VI History CI emits `vi-history-windows-workflow-replay` as the next step when the shared Windows surface and live-history candidate are ready, instead of launching the replay lane during packet selection |
-| `TEST-VHLP-011` bounded Windows replay lifecycle coverage | Contract/Replay | High | Verifies the governed Windows workflow replay lane terminates or fails closed within bounded helper-process timeouts and still emits a replay receipt on timeout |
-| `TEST-VHLP-012` replay receipt consumption coverage | Assurance/Contract | High | Verifies local VI History CI treats an existing passing `vi-history-scenarios-windows` replay receipt as satisfied local replay proof and advances beyond replay re-selection |
+| `TEST-VHLP-001` | Local Windows workflow replay coverage | Contract/Replay | High | Verifies the governed `vi-history-scenarios-windows` replay lane emits a bounded receipt and compare artifact paths, including bridge-backed Windows launch from Unix or WSL coordinators |
+| `TEST-VHLP-002` | Local refinement profile coverage | Execution/Local | High | Verifies `proof`, `dev-fast`, `warm-dev`, and `windows-mirror-proof` local refinement behavior and retained receipts |
+| `TEST-VHLP-003` | Local operator-session coverage | Operator/Local | High | Verifies local operator-session wrappers consume the refinement helper and emit canonical local session contracts |
+| `TEST-VHLP-004` | Workflow-readiness envelope coverage | Evidence/Decision | High | Verifies the VI History workflow-readiness envelope captures lane lifecycle, verdict, and recommendation |
+| `TEST-VHLP-005` | Local autonomy-loop coverage | Assurance/Contract | High | Verifies local VI History CI emits a report, ranked backlog, and next-step artifact |
+| `TEST-VHLP-006` | Next-step escalation coverage | Assurance/Contract | High | Verifies local VI History CI emits a machine-readable escalation step to the shared Windows Docker Desktop + NI image surface only after native or reachable bridge-backed Windows checks cannot satisfy it |
+| `TEST-VHLP-007` | Shared local-program selector coverage | Assurance/Contract | High | Verifies the shared program selector can choose VI History requirement work explicitly and merge the shared Windows Docker Desktop + NI image escalation across sibling packets |
+| `TEST-VHLP-008` | Clone-backed live-history candidate governance coverage | Assurance/Contract | High | Verifies the packet names `ni/labview-icon-editor` plus `Tooling/deployment/VIP_Pre-Uninstall Custom Action.vi` as the governed clone-backed live-history candidate |
+| `TEST-VHLP-009` | Live-history candidate readiness coverage | Assurance/Contract | High | Verifies local VI History CI validates clone presence, target path presence, and git history, then emits a bounded clone-preparation escalation when the candidate is unavailable |
+| `TEST-VHLP-010` | Explicit Windows replay next-step coverage | Assurance/Contract | High | Verifies local VI History CI emits `vi-history-windows-workflow-replay` as the next step when the shared Windows surface and live-history candidate are ready, instead of launching the replay lane during packet selection |
+| `TEST-VHLP-011` | Bounded Windows replay lifecycle coverage | Contract/Replay | High | Verifies the governed Windows workflow replay lane terminates or fails closed within bounded helper-process timeouts and still emits a replay receipt on timeout |
+| `TEST-VHLP-012` | Replay receipt consumption coverage | Assurance/Contract | High | Verifies local VI History CI treats an existing passing `vi-history-scenarios-windows` replay receipt as satisfied local replay proof and advances beyond replay re-selection |
 
 ## Entry Criteria
 
@@ -33,7 +33,8 @@
 - Contract tests and PowerShell tests covering the packet pass.
 - The local VI History CI emits a machine-readable next step.
 - The clone-backed live-history candidate is governed explicitly.
-- If the current host cannot satisfy the Windows replay lane, the next step is an explicit escalation packet rather than a prose-only advisory.
+- If the current host cannot satisfy the Windows replay lane, the next step is
+  an explicit escalation packet rather than a prose-only advisory.
 
 ## Traceability Notes
 

@@ -14,6 +14,7 @@ yet fully specified or traceable as a control plane.
 ## Decision
 
 Create a dedicated assurance packet for the Pester service model with:
+
 - an SRS
 - an RTM
 - an architecture packet

@@ -10,10 +10,10 @@
 
 | Test ID | Coverage | Layer | Priority | Notes |
 | --- | --- | --- | --- | --- |
-| `TEST-LPAP-001` packet aggregation and requirement ranking coverage | Assurance/Program | High | Verifies the program consumes sibling packet next-step artifacts and ranks requirement work ahead of escalation work |
-| `TEST-LPAP-002` shared-surface escalation merge coverage | Assurance/Program | High | Verifies shared escalations to the same external surface collapse into one bounded handoff packet |
-| `TEST-LPAP-003` post-local promotion escalation coverage | Assurance/Program | High | Verifies the program emits a machine-readable promotion escalation instead of `null` when local packets are complete |
-| `TEST-LPAP-004` concurrent bundle workspace safety coverage | Assurance/Program | High | Verifies packet-local CI surfaces use run-scoped audit bundle roots instead of deleting a shared `surface-bundle` workspace |
+| `TEST-LPAP-001` | Packet aggregation and requirement ranking coverage | Assurance/Program | High | Verifies the program consumes sibling packet next-step artifacts and ranks requirement work ahead of escalation work |
+| `TEST-LPAP-002` | Shared-surface escalation merge coverage | Assurance/Program | High | Verifies shared escalations to the same external surface collapse into one bounded handoff packet |
+| `TEST-LPAP-003` | Post-local promotion escalation coverage | Assurance/Program | High | Verifies the program emits a machine-readable promotion escalation instead of `null` when local packets are complete |
+| `TEST-LPAP-004` | Concurrent bundle workspace safety coverage | Assurance/Program | High | Verifies packet-local CI surfaces use run-scoped audit bundle roots instead of deleting a shared `surface-bundle` workspace |
 
 ## Entry Criteria
 

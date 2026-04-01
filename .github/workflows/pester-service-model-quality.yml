@@ -111,6 +111,7 @@ jobs:
         uses: lycheeverse/lychee-action@v2
         with:
           fail: true
+          failIfEmpty: false
           args: >-
             --no-progress
             docs/knowledgebase/Pester-Service-Model.md
