@@ -7,6 +7,26 @@ The format is based on Keep a Changelog, and this project adheres to Semantic Ve
 
 ## [Unreleased]
 
+## [v0.6.10] - 2026-04-01
+
+### Changed
+
+- Promoted the Windows NI proof authority path and the local-proof autonomy
+  program onto the stable release line, so the hosted Windows image-backed
+  proof now owns VI-binary CI truth while local iteration can choose the next
+  truthful proof surface before escalating.
+- Carried the stable release-control-plane repairs onto the promoted baseline:
+  generic queue stabilization no longer blocks stable release conduction,
+  green-dwell is removed, first-time signed tag publication can replay
+  authoritatively, and release scorecard defers exact-SHA downstream proving
+  until `develop` realigns with the published source.
+
+### Added
+
+- The layered Pester service-model control plane, release-evidence packet, and
+  Windows shared-surface contracts are now part of the released baseline
+  instead of living only on the integration rail.
+
 ## [v0.6.9] - 2026-03-30
 
 ### Fixed
