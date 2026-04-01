@@ -1,14 +1,14 @@
-# v0.6.11 Tag Preparation Checklist
+# v0.6.12 Tag Preparation Checklist
 <!-- markdownlint-disable-next-line MD041 -->
 
-Helper reference for cutting or replaying the `v0.6.11` maintenance release.
+Helper reference for cutting or replaying the `v0.6.12` maintenance release.
 Aligns with the archived release notes
-(`../archive/releases/RELEASE_NOTES_v0.6.11.md`) and the checked-in stable
+(`../archive/releases/RELEASE_NOTES_v0.6.12.md`) and the checked-in stable
 release surfaces.
 
 ## 1. Pre-flight Verification
 
-- [ ] Work from `release/v0.6.11` and ensure it contains the final maintenance
+- [ ] Work from `release/v0.6.12` and ensure it contains the final maintenance
       changes.
 - [ ] CI is green on the release branch (`lint`, `pester / normalize`,
       `smoke-gate`, `Policy Guard (Upstream) / policy-guard`,
@@ -22,26 +22,30 @@ release surfaces.
 ## 2. Version & Metadata Consistency
 
 - [ ] `CHANGELOG.md` contains a finalized
-      `## [v0.6.11] - 2026-04-01` section.
-- [ ] Stable docs reference `v0.6.10` consistently until `v0.6.11` publication
-      completes, and the release helper packet references `v0.6.11`
+      `## [v0.6.12] - 2026-04-01` section.
+- [ ] Stable docs reference `v0.6.11` consistently until `v0.6.12` publication
+      completes, and the release helper packet references `v0.6.12`
       consistently.
 - [ ] `package.json`, `Directory.Build.props`, and
-      `tools/CompareVI.Tools/CompareVI.Tools.psd1` all report `0.6.11`.
+      `tools/CompareVI.Tools/CompareVI.Tools.psd1` all report `0.6.12`.
 - [ ] `docs/action-outputs.md` still matches `action.yml`.
 - [ ] Update `docs/documentation-manifest.json` if release-doc coverage changed.
 
-## 3. Bundle Contract Regression Validation
+## 3. Windows Preflight Regression Validation
 
-- [ ] Focused bundle regression tests pass locally:
+- [ ] Focused Windows preflight/runtime-manager regression tests pass locally:
 
 ```bash
-pwsh -NoLogo -NoProfile -File tools/Test-CompareVIHistoryBundleCertification.ps1 -BundleArchivePath tests/results/_agent/bundle-fix/artifacts/CompareVI.Tools-v0.6.11.zip -ResultsDir tests/results/_agent/bundle-fix/certification -SummaryJsonPath tests/results/_agent/bundle-fix/certification/summary.json
+pwsh -NoLogo -NoProfile -File Invoke-PesterTests.ps1 -TestsPath tests/Invoke-DockerRuntimeManager.Tests.ps1
+pwsh -NoLogo -NoProfile -File Invoke-PesterTests.ps1 -TestsPath tests/Test-WindowsNI2026q1HostPreflight.Tests.ps1
 ```
 
 - [ ] Confirm the released Windows NI / LabVIEW Docker image proof surface is intact:
 
 - [ ] The released surface still includes:
+      `tools/ProcessTimeoutHelper.ps1`
+      `tools/Invoke-DockerRuntimeManager.ps1`
+      and
       `tools/Run-NIWindowsContainerCompare.ps1`
       and
       `tools/Test-WindowsNI2026q1HostPreflight.ps1`
@@ -56,9 +60,9 @@ pwsh -NoLogo -NoProfile -File tools/Test-CompareVIHistoryBundleCertification.ps1
 ## 4. Release Materials Review
 
 - [ ] `PR_NOTES.md`, this checklist, and
-      `../archive/releases/RELEASE_NOTES_v0.6.11.md` are consistent.
-- [ ] `README.md` and `docs/USAGE_GUIDE.md` still treat `v0.6.10` as the
-      previously released stable pin until `v0.6.11` publication completes.
+      `../archive/releases/RELEASE_NOTES_v0.6.12.md` are consistent.
+- [ ] `README.md` and `docs/USAGE_GUIDE.md` still treat `v0.6.11` as the
+      previously released stable pin until `v0.6.12` publication completes.
 
 ## 5. Tag Creation
 
@@ -66,7 +70,7 @@ pwsh -NoLogo -NoProfile -File tools/Test-CompareVIHistoryBundleCertification.ps1
 
 ```pwsh
 node tools/npm/run-script.mjs priority:release:signing:readiness
-node tools/npm/run-script.mjs priority:release:conductor -- --apply --channel stable --version 0.6.11
+node tools/npm/run-script.mjs priority:release:conductor -- --apply --channel stable --version 0.6.12
 ```
 
 - [ ] Confirm `tests/results/_agent/release/release-signing-readiness.json`
@@ -77,35 +81,35 @@ node tools/npm/run-script.mjs priority:release:conductor -- --apply --channel st
 - [ ] Create an annotated stable tag:
 
 ```pwsh
-git tag -a v0.6.11 -m "v0.6.11: repair VI history native paths on Windows proof surfaces"
+git tag -a v0.6.12 -m "v0.6.12: fix Windows preflight process capture deadlock"
 ```
 
 - [ ] Push the tag:
 
 ```pwsh
-git push origin v0.6.11
+git push origin v0.6.12
 ```
 
 ## 6. Validation After Publish
 
-- [ ] Run `node tools/npm/run-script.mjs release:finalize -- 0.6.11` from a
+- [ ] Run `node tools/npm/run-script.mjs release:finalize -- 0.6.12` from a
       clean helper lane to fast-forward `main` and `develop`, then record the
       finalize metadata.
-- [ ] Install the bundle via `@v0.6.11` in a sample workflow and confirm the
+- [ ] Install the bundle via `@v0.6.12` in a sample workflow and confirm the
       released Windows NI and hosted VI-history contracts execute without a
       local source-tree override.
 - [ ] Optional maintainer fast loop: run the local Windows Docker replay lane
       for `vi-history-scenarios-windows` and confirm it still mirrors the
       hosted contract without replacing the hosted proof requirement.
-- [ ] Re-pin `comparevi-history` to `v0.6.11` and confirm the clone-backed
+- [ ] Re-pin `comparevi-history` to `v0.6.12` and confirm the clone-backed
       `ni/labview-icon-editor` proof reaches real comparisons on the released
       backend.
 
 ## 7. Communication
 
-- [ ] Announce the maintenance cut, calling out the promoted Windows NI Docker
-      proof surface and the required `comparevi-history` repin.
-- [ ] Notify consumers that `v0.6.11` supersedes `v0.6.10` as the supported
+- [ ] Announce the maintenance cut, calling out the Windows preflight deadlock
+      fix and the required `comparevi-history` repin.
+- [ ] Notify consumers that `v0.6.12` supersedes `v0.6.11` as the supported
       stable pin.
 
---- Updated: 2026-04-01 (prepared for the `v0.6.11` maintenance cut).
+--- Updated: 2026-04-01 (prepared for the `v0.6.12` maintenance cut).
