@@ -130,6 +130,8 @@ test('release workflow resolves downloaded artifacts through the shared helper b
   const releaseContractJob = workflow?.jobs?.['release-contract'];
   const releaseContractSteps = releaseContractJob?.steps ?? [];
   const releaseSourceIndex = releaseContractSteps.findIndex((step) => step?.name === 'Resolve release source commit');
+  const currentDevelopIndex = releaseContractSteps.findIndex((step) => step?.name === 'Resolve current develop head');
+  const downstreamPolicyIndex = releaseContractSteps.findIndex((step) => step?.name === 'Decide downstream proving enforcement mode');
   const downstreamResolveIndex = releaseContractSteps.findIndex((step) => step?.name === 'Resolve downstream proving artifact selection');
   const buildScorecardIndex = releaseContractSteps.findIndex((step) => step?.name === 'Build release scorecard');
 
@@ -139,7 +141,15 @@ test('release workflow resolves downloaded artifacts through the shared helper b
   assert.ok(uploadScenarioIndex > writeScenarioIndex, 'validate-cli-artifacts should upload scenario summaries after writing them');
   assert.ok(enforceValidationIndex > uploadScenarioIndex, 'validate-cli-artifacts should fail only after scenario artifacts upload');
   assert.ok(releaseSourceIndex >= 0, 'release-contract should resolve the expected release source commit');
-  assert.ok(downstreamResolveIndex > releaseSourceIndex, 'release-contract should resolve downstream proving artifacts after the release source is known');
+  assert.ok(currentDevelopIndex > releaseSourceIndex, 'release-contract should resolve the current develop head after the release source is known');
+  assert.ok(
+    downstreamPolicyIndex > currentDevelopIndex,
+    'release-contract should decide downstream proving enforcement after resolving the current develop head'
+  );
+  assert.ok(
+    downstreamResolveIndex > downstreamPolicyIndex,
+    'release-contract should resolve downstream proving artifacts after the enforcement mode is known'
+  );
   assert.ok(buildScorecardIndex > downstreamResolveIndex, 'release-contract should build the release scorecard after downstream proving resolution');
   assert.match(workflowRaw, /name: Resolve validation artifact paths/);
   assert.match(workflowRaw, /Resolve-DownloadedArtifactPath\.ps1/);
@@ -156,6 +166,16 @@ test('release workflow resolves downloaded artifacts through the shared helper b
   assert.match(workflowRaw, /name: Resolve release source commit/);
   assert.match(workflowRaw, /git fetch --force --tags origin "refs\/tags\/\$\{RELEASE_TAG\}:refs\/tags\/\$\{RELEASE_TAG\}"/);
   assert.match(workflowRaw, /git rev-parse "\$\{RELEASE_TAG\}\^\{commit\}"/);
+  assert.match(workflowRaw, /name: Resolve current develop head/);
+  assert.match(workflowRaw, /git fetch --force origin "refs\/heads\/develop:refs\/remotes\/origin\/develop"/);
+  assert.match(workflowRaw, /git rev-parse "refs\/remotes\/origin\/develop\^\{commit\}"/);
+  assert.match(workflowRaw, /name: Decide downstream proving enforcement mode/);
+  assert.match(workflowRaw, /mode='advisory-replay'/);
+  assert.match(workflowRaw, /if \[\[ "\$\{RELEASE_PUBLICATION_MODE\}" == 'publish' \]\]; then/);
+  assert.match(workflowRaw, /if \[\[ "\$source_sha" == "\$develop_sha" \]\]; then/);
+  assert.match(workflowRaw, /mode='required'/);
+  assert.match(workflowRaw, /mode='deferred-release-source-not-current-develop'/);
+  assert.match(workflowRaw, /## Downstream Proving Gate/);
   assert.match(workflowRaw, /RELEASE_PUBLICATION_MODE:\s*\$\{\{\s*needs\.certification-matrix\.outputs\.publication_mode\s*\}\}/);
   assert.match(workflowRaw, /name: Download supply-chain trust artifact/);
   assert.match(workflowRaw, /path:\s*tests\/results\/_agent/);
@@ -169,8 +189,14 @@ test('release workflow resolves downloaded artifacts through the shared helper b
   assert.match(workflowRaw, /steps\.downstream_proving_artifacts\.outputs\.downstream_proving_scorecard_path/);
   assert.match(workflowRaw, /downstream_promotion_path="\$\{\{\s*steps\.downstream_proving_artifacts\.outputs\.downstream_proving_scorecard_path\s*\}\}"/);
   assert.match(workflowRaw, /downstream_proving_selection_path='tests\/results\/_agent\/release\/downstream-proving-selection\.json'/);
-  assert.match(workflowRaw, /if \[\[ "\$\{RELEASE_PUBLICATION_MODE\}" == 'publish' \]\]; then/);
-  assert.match(workflowRaw, /scorecard_args\+=\(\s*--downstream-proving-selection "\$\{downstream_proving_selection_path\}"\s*--require-downstream-proving\s*\)/ms);
+  assert.match(
+    workflowRaw,
+    /if \[\[ "\$\{\{\s*steps\.downstream_proving_policy\.outputs\.mode\s*\}\}" == 'required' \]\]; then/
+  );
+  assert.match(
+    workflowRaw,
+    /scorecard_args\+=\(\s*--downstream-proving-selection "\$\{downstream_proving_selection_path\}"\s*--require-downstream-proving\s*\)/ms
+  );
   assert.match(workflowRaw, /if \[ -n "\$\{downstream_promotion_path\}" \]; then/);
   assert.match(workflowRaw, /scorecard_args\+=\(--downstream-promotion "\$\{downstream_promotion_path\}"\)/);
   assert.match(workflowRaw, /tools\/release-review\/Evaluate-ReleaseReviewPolicy\.ps1/);

@@ -212,6 +212,13 @@ That means release should select the `downstream-promotion.yml` artifact whose
 Release evidence should retain the machine-readable selection report that points
 back to the exact downstream promotion run and scorecard artifact used.
 
+Because this contract proves `upstream/develop`, release automation must not
+fail closed on exact-SHA downstream proving during the first publication of a
+tag whose source commit does not yet match the current `develop` head. In that
+case the selection report remains required evidence, but release scorecard
+blocking is deferred until finalize/back-merge or another replay aligns
+`develop` to the released source commit.
+
 The proving artifact is authoritative even when the workflow cannot update
 `downstream/develop` directly because repository rules require the branch PR or
 merge-queue path. In that case the workflow records the handoff in the step
