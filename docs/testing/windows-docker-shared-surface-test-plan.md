@@ -10,16 +10,16 @@
 
 | Test ID | Coverage | Layer | Priority | Notes |
 | --- | --- | --- | --- | --- |
-| `TEST-WDSS-001` shared-surface readiness probe coverage | Probe/Receipt | High | Verifies the shared Windows readiness probe emits bounded readiness states and a machine-readable receipt |
-| `TEST-WDSS-002` bootstrap and preflight contract coverage | Bootstrap/Host | High | Verifies the deterministic Windows host bootstrap/preflight commands remain explicit and stable |
-| `TEST-WDSS-003` path-hygiene coverage | Safety/Local | High | Verifies the shared surface detects OneDrive-like managed roots and emits a relocation escalation |
-| `TEST-WDSS-004` local assurance-loop coverage | Assurance/Contract | High | Verifies the shared-surface local CI emits a report, proof checks, and next-step artifact |
-| `TEST-WDSS-005` host-unavailable escalation coverage | Assurance/Contract | High | Verifies local CI emits a machine-readable escalation to `windows-docker-desktop-ni-image` when the current host cannot satisfy the surface |
-| `TEST-WDSS-006` shared local-program selector coverage | Assurance/Contract | High | Verifies the shared surface participates explicitly in the program selector beside Pester and VI History |
-| `TEST-WDSS-007` reachable Windows host bridge coverage | Assurance/Contract | High | Verifies a Unix or WSL coordinator uses a reachable Windows host bridge for probe and preflight work before emitting host-unavailable escalation |
-| `TEST-WDSS-008` UNC-backed WSL staging coverage | Runtime/Windows Docker | High | Verifies UNC-backed WSL inputs and report paths are staged into a Windows-local mount root, synchronized back, and cleaned up after compare execution |
-| `TEST-WDSS-009` authoritative CI gate coverage | Workflow/Contract | High | Verifies Windows image-backed CI gates route through the shared Windows NI proof workflow and not through the generic Pester reusable workflow |
-| `TEST-WDSS-010` bounded timeout coverage | Runtime/Workflow | High | Verifies Windows preflight and runtime-manager Docker operations fail closed on timeout and the hosted preflight step carries an explicit workflow timeout |
+| `TEST-WDSS-001` | Shared-surface readiness probe coverage | Probe/Receipt | High | Verifies the shared Windows readiness probe emits bounded readiness states and a machine-readable receipt |
+| `TEST-WDSS-002` | Bootstrap and preflight contract coverage | Bootstrap/Host | High | Verifies the deterministic Windows host bootstrap/preflight commands remain explicit and stable |
+| `TEST-WDSS-003` | Path-hygiene coverage | Safety/Local | High | Verifies the shared surface detects OneDrive-like managed roots and emits a relocation escalation |
+| `TEST-WDSS-004` | Local assurance-loop coverage | Assurance/Contract | High | Verifies the shared-surface local CI emits a report, proof checks, and next-step artifact |
+| `TEST-WDSS-005` | Host-unavailable escalation coverage | Assurance/Contract | High | Verifies local CI emits a machine-readable escalation to `windows-docker-desktop-ni-image` when the current host cannot satisfy the surface |
+| `TEST-WDSS-006` | Shared local-program selector coverage | Assurance/Contract | High | Verifies the shared surface participates explicitly in the program selector beside Pester and VI History |
+| `TEST-WDSS-007` | Reachable Windows host bridge coverage | Assurance/Contract | High | Verifies a Unix or WSL coordinator uses a reachable Windows host bridge for probe and preflight work before emitting host-unavailable escalation |
+| `TEST-WDSS-008` | UNC-backed WSL staging coverage | Runtime/Windows Docker | High | Verifies UNC-backed WSL inputs and report paths are staged into a Windows-local mount root, synchronized back, and cleaned up after compare execution |
+| `TEST-WDSS-009` | Authoritative CI gate coverage | Workflow/Contract | High | Verifies Windows image-backed CI gates route through the shared Windows NI proof workflow and not through the generic Pester reusable workflow |
+| `TEST-WDSS-010` | Bounded timeout coverage | Runtime/Workflow | High | Verifies Windows preflight and runtime-manager Docker operations fail closed on timeout and the hosted preflight step carries an explicit workflow timeout |
 
 ## Entry Criteria
 
@@ -30,7 +30,8 @@
 
 - Contract and local-CI tests covering the packet pass.
 - The shared-surface local CI emits a machine-readable next step.
-- On a non-Windows host with no reachable Windows bridge, the next step is an explicit escalation packet rather than prose-only guidance.
+- On a non-Windows host with no reachable Windows bridge, the next step is an
+  explicit escalation packet rather than prose-only guidance.
 
 ## Traceability Notes
 

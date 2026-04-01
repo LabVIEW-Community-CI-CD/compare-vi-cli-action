@@ -103,10 +103,15 @@
   `REQ-PSM-012` maps to selection plus explicit execution-pack entrypoints.
   `REQ-PSM-013` maps to `tools/PesterPathHygiene.ps1`, local harness path
   hygiene, and session-lock safety before dispatch.
-  `REQ-PSM-014` maps to `tools/Replay-PesterServiceModelArtifacts.Local.ps1`, `tools/Invoke-PesterEvidenceClassification.ps1`, and local replay of retained postprocess and evidence layers.
+  `REQ-PSM-014` maps to
+  `tools/Replay-PesterServiceModelArtifacts.Local.ps1`,
+  `tools/Invoke-PesterEvidenceClassification.ps1`, and local replay of
+  retained postprocess and evidence layers.
   `REQ-PSM-015` maps to the dispatch/finalize/postprocess/evidence split.
   `REQ-PSM-016` maps to durable execution telemetry.
-  `REQ-PSM-017` maps to schema-governed retained artifacts and readers, including explicit `unsupported-schema` outcomes for postprocess, evidence, and local replay.
+  `REQ-PSM-017` maps to schema-governed retained artifacts and readers,
+  including explicit `unsupported-schema` outcomes for postprocess, evidence,
+  and local replay.
   `REQ-PSM-018` maps to `pester-service-model-promotion-comparison.json`,
   release-evidence bundles, and representative baseline comparison rendered into
   the promotion dossier.
@@ -115,13 +120,22 @@
   `release-evidence-provenance.json`, and
   `promotion-dossier-provenance.json` across evidence, local replay, and
   promotion views.
-  `REQ-PSM-021` maps to operator-explainable gate outcomes, including `pester-operator-outcome.json` and shared summary or top-failure rendering from the same outcome contract.
-  `REQ-PSM-022` maps to the local autonomy loop that selects the next bounded requirement slice.
+  `REQ-PSM-021` maps to operator-explainable gate outcomes, including
+  `pester-operator-outcome.json` and shared summary or top-failure rendering
+  from the same outcome contract.
+  `REQ-PSM-022` maps to the local autonomy loop that selects the next bounded
+  requirement slice.
   `REQ-PSM-023` maps to the explicit autonomy policy and stop-condition surface.
-  `REQ-PSM-024` maps to representative retained-artifact replay compatibility, including schema-lite summary repair and legacy receipt tolerance.
-  `REQ-PSM-025` maps to the bounded local Windows-container surrogate for Docker Desktop Windows engine plus the pinned NI Windows image.
-  `REQ-PSM-026` maps to proof-check aware autonomy that reopens implemented requirements when representative replay regresses.
-  `REQ-PSM-027` maps to the machine-readable next-step escalation packet that hands off to the required proof surface when the current host cannot satisfy it.
+  `REQ-PSM-024` maps to representative retained-artifact replay
+  compatibility, including schema-lite summary repair and legacy receipt
+  tolerance.
+  `REQ-PSM-025` maps to the bounded local Windows-container surrogate for
+  Docker Desktop Windows engine plus the pinned NI Windows image.
+  `REQ-PSM-026` maps to proof-check aware autonomy that reopens implemented
+  requirements when representative replay regresses.
+  `REQ-PSM-027` maps to the machine-readable next-step escalation packet that
+  hands off to the required proof surface when the current host cannot satisfy
+  it.
 - Decision rationale:
   The service model exists to separate concerns and make failures classifiable by
   layer instead of inferred from one coupled self-hosted run.

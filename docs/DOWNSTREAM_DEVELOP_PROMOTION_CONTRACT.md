@@ -19,8 +19,15 @@ It is not a second feature-development branch.
 - Optional LV32 shadow proof receipt output:
   `tests/results/_agent/promotion/vi-history-lv32-shadow-proof-receipt.json`
 - Template-agent verification lane report: `tests/results/_agent/promotion/template-agent-verification-report.json`
-- Authoritative template verification overlay: `tests/results/_agent/promotion/template-agent-verification-report.local.json`, projected during bootstrap from the latest matching downstream proving artifact for the current `develop` source SHA
-- Supported template-proof authority synthesis: `tests/results/_agent/promotion/template-agent-verification-report.supported.json`, projected from the latest supported `template-smoke` `workflow_dispatch` proof on a supported consumer fork when that proof is aligned to the current canonical template head
+- Authoritative template verification overlay:
+  `tests/results/_agent/promotion/template-agent-verification-report.local.json`,
+  projected during bootstrap from the latest matching downstream proving
+  artifact for the current `develop` source SHA
+- Supported template-proof authority synthesis:
+  `tests/results/_agent/promotion/template-agent-verification-report.supported.json`,
+  projected from the latest supported `template-smoke` `workflow_dispatch`
+  proof on a supported consumer fork when that proof is aligned to the current
+  canonical template head
 - Selection resolver: `tools/priority/resolve-downstream-proving-artifact.mjs`
 - Selection schema: `docs/schemas/downstream-proving-selection-v1.schema.json`
 - Selection output: `tests/results/_agent/release/downstream-proving-selection.json`
