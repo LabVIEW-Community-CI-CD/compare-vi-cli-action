@@ -7,7 +7,7 @@ work.
 ## Contents
 
 - `PR_NOTES.md` - release PR summary helper
-- `RELEASE_EVIDENCE_v0.6.6.md` - latest immutable release and certified-consumer evidence packet retained in-repo while the `v0.6.11` cut supersedes the published `v0.6.10` baseline
+- `RELEASE_EVIDENCE_v0.6.6.md` - latest immutable release and certified-consumer evidence packet retained in-repo while the `v0.6.12` cut supersedes the published `v0.6.11` baseline
 - `TAG_PREP_CHECKLIST.md` - tag preparation checklist
 - `POST_RELEASE_FOLLOWUPS.md` - post-release backlog tracker
 - `ROLLBACK_PLAN.md` - rollback procedure reference

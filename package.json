@@ -1,7 +1,7 @@
 {
   "name": "compare-vi-cli-action",
   "private": true,
-  "version": "0.6.11",
+  "version": "0.6.12",
   "license": "BSD-3-Clause",
   "type": "module",
   "scripts": {
@@ -74,6 +74,7 @@
     "intake:draft": "pwsh -NoLogo -NoProfile -File tools/New-GitHubIntakeDraft.ps1",
     "intake:invoke": "pwsh -NoLogo -NoProfile -File tools/Invoke-GitHubIntakeScenario.ps1",
     "intake:route": "pwsh -NoLogo -NoProfile -File tools/Resolve-GitHubIntakeRoute.ps1",
+    "lint": "node tools/npm/run-script.mjs lint:md",
     "lint:md": "node tools/lint-markdown.mjs --all",
     "lint:md:changed": "node tools/lint-markdown.mjs",
     "local-collab:assist:vi-history": "node tools/local-collab/assist/vi-history/run-operator-assistance.mjs",

@@ -7,6 +7,28 @@ The format is based on Keep a Changelog, and this project adheres to Semantic Ve
 
 ## [Unreleased]
 
+## [v0.6.12] - 2026-04-01
+
+### Fixed
+
+- Repaired Windows preflight process capture on the NI Windows Docker proof
+  surface, so large `docker manifest inspect` output no longer deadlocks the
+  bounded helper path and the hosted `windows-ni-proof` lane can either fail
+  closed or proceed deterministically instead of stalling mid-preflight.
+
+### Changed
+
+- Built the `v0.6.12` release line on top of `v0.6.11`, preserving the stable
+  Windows NI proof authority, the released VI-history Windows path repair, and
+  the release-control-plane fixes while adding the shared timeout-safe process
+  capture helper used by the Windows Docker preflight scripts.
+
+### Added
+
+- `tools/ProcessTimeoutHelper.ps1` as the shared compiled helper for the stable
+  Windows NI proof line, plus regression coverage proving large Docker manifest
+  output does not wedge the preflight helper on the self-hosted Windows plane.
+
 ## [v0.6.11] - 2026-04-01
 
 ### Fixed

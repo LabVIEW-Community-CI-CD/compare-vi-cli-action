@@ -22,7 +22,7 @@ tuning.
 
 ## Trust and support status
 
-- Supported stable release line: `v0.6.10`
+- Supported stable release line: `v0.6.11`
 - Future pre-release work may use `v0.6.x-rc` tags only when a later stable
   cut is being prepared
 - License: `BSD-3-Clause`
@@ -36,8 +36,8 @@ tuning.
 - Minimal adopter contract: [`docs/MINIMAL_ADOPTER_CONTRACT.md`](./docs/MINIMAL_ADOPTER_CONTRACT.md)
 - Maintainer continuity profile: [`docs/MAINTAINER_CONTINUITY_PROFILE.md`](./docs/MAINTAINER_CONTINUITY_PROFILE.md)
 - Release evidence: [`docs/release/RELEASE_EVIDENCE_v0.6.6.md`](./docs/release/RELEASE_EVIDENCE_v0.6.6.md)
-  (latest immutable in-repo evidence packet retained while the `v0.6.11`
-  stable cut supersedes the published `v0.6.10` baseline)
+  (latest immutable in-repo evidence packet retained while the `v0.6.12`
+  stable cut supersedes the published `v0.6.11` baseline)
 - Certified downstream consumer ring:
   `LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate` on `develop` and
   `LabVIEW-Community-CI-CD/comparevi-history` on `main`, monitored by the weekly/manual

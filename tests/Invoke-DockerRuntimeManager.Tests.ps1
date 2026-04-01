@@ -479,7 +479,7 @@ exit 0
     $output = @(& pwsh -NoLogo -NoProfile -File $script:ManagerScript `
       -ProbeScope windows `
       -OutputJsonPath $jsonPath `
-      -CommandTimeoutSeconds 5 `
+      -CommandTimeoutSeconds 15 `
       -SwitchRetryCount 1 `
       -SwitchTimeoutSeconds 30 2>&1)
 
