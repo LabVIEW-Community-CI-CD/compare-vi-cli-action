@@ -228,7 +228,39 @@ async function readJsonOptional(filePath) {
   }
 }
 
-export function evaluateQueueHealthGate(queueReportEnvelope) {
+function normalizeRefName(value) {
+  return String(value ?? '')
+    .trim()
+    .toLowerCase();
+}
+
+function isReleaseRefName(value) {
+  return normalizeRefName(value).startsWith('release/');
+}
+
+function getCompetingReleaseCandidates(queueReport, { currentReleaseBranch = null } = {}) {
+  const currentBranch = asOptional(currentReleaseBranch)?.toLowerCase() ?? null;
+  const candidates = Array.isArray(queueReport?.candidates) ? queueReport.candidates : [];
+  return candidates.filter((candidate) => {
+    const headRefName = normalizeRefName(candidate?.headRefName);
+    const baseRefName = normalizeRefName(candidate?.baseRefName);
+    const releaseCandidate = isReleaseRefName(headRefName) || isReleaseRefName(baseRefName);
+    if (!releaseCandidate) {
+      return false;
+    }
+    if (currentBranch && headRefName === currentBranch) {
+      return false;
+    }
+    return true;
+  });
+}
+
+function hasActiveCompetingReleaseQueueActivity(queueReport, { currentReleaseBranch = null } = {}) {
+  const competingReleaseCandidates = getCompetingReleaseCandidates(queueReport, { currentReleaseBranch });
+  return competingReleaseCandidates.some((candidate) => Boolean(candidate?.eligible) || Boolean(candidate?.isInMergeQueue));
+}
+
+export function evaluateQueueHealthGate(queueReportEnvelope, { currentReleaseBranch = null } = {}) {
   if (!queueReportEnvelope.exists || queueReportEnvelope.error || !queueReportEnvelope.payload) {
     return {
       status: 'fail',
@@ -260,11 +292,11 @@ export function evaluateQueueHealthGate(queueReportEnvelope) {
     Boolean(controls?.pausedByVariable) ||
     Boolean(controls?.queueAutopilotPaused) ||
     controllerMode === 'pause';
-  const activeReleaseQueueActivity =
+  const activeCompetingReleaseQueueActivity =
     Boolean(burst?.active) &&
-    (Boolean(triggerSignals?.releaseWindow) ||
-      Boolean(triggerSignals?.releaseBranchPullRequest) ||
-      Boolean(triggerSignals?.releaseBurstLabel));
+    hasActiveCompetingReleaseQueueActivity(queueReport, { currentReleaseBranch });
+  const explicitReleaseBurstActivity = Boolean(burst?.active) && Boolean(triggerSignals?.releaseBurstLabel);
+  const activeReleaseQueueActivity = activeCompetingReleaseQueueActivity || explicitReleaseBurstActivity;
 
   const reasons = [];
   if (successRateThrottlePause && !explicitOperatorPause && !activeReleaseQueueActivity) {
@@ -702,9 +734,11 @@ export async function runReleaseConductor(options = {}) {
   const environment = options.environment ?? process.env;
 
   const repository = resolveRepositorySlug(repoRoot, args.repo, environment);
+  const targetTag = resolveTargetTag(args.version);
+  const currentReleaseBranch = targetTag ? `release/${targetTag}` : null;
   const queueReportEnvelope = await readJsonOptionalFn(path.resolve(repoRoot, args.queueReportPath));
   const policySnapshotEnvelope = await readJsonOptionalFn(path.resolve(repoRoot, args.policySnapshotPath));
-  const queueHealthGate = evaluateQueueHealthGate(queueReportEnvelope);
+  const queueHealthGate = evaluateQueueHealthGate(queueReportEnvelope, { currentReleaseBranch });
   const policySnapshotGate = evaluatePolicySnapshotGate(policySnapshotEnvelope);
   const quarantineGate = evaluateQuarantineGate({
     queueReportEnvelope,
@@ -757,7 +791,6 @@ export async function runReleaseConductor(options = {}) {
   }
 
   const signingMaterial = detectSigningMaterial({ runCommandFn, repoRoot, environment });
-  const targetTag = resolveTargetTag(args.version);
   let tagCreated = false;
   let tagPushed = false;
   let tagError = null;
