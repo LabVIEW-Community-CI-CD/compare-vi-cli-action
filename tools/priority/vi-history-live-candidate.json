@@ -1,0 +1,21 @@
+{
+  "$schema": "../../docs/schemas/vi-history-live-candidate-v1.schema.json",
+  "schemaVersion": "1.0.0",
+  "id": "ni-icon-editor-vip-preuninstall-live-history",
+  "repoSlug": "ni/labview-icon-editor",
+  "repoUrl": "https://github.com/ni/labview-icon-editor",
+  "defaultBranch": "develop",
+  "cloneRootEnvVar": "COMPAREVI_VI_HISTORY_CANDIDATE_ROOT",
+  "preferredLocalCloneRoots": [
+    "/tmp/labview-icon-editor"
+  ],
+  "targetViPath": "Tooling/deployment/VIP_Pre-Uninstall Custom Action.vi",
+  "historyExpectation": {
+    "minCommits": 2
+  },
+  "iterationRationale": "Use a real downstream repo clone with live commit history for VI History iteration instead of relying only on retained fixtures or public proof seeds.",
+  "notes": [
+    "This manifest governs the local clone-backed iteration candidate only.",
+    "Public accepted corpus targets may differ until target-specific public proof is promoted."
+  ]
+}

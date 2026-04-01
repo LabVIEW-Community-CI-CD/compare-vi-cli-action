@@ -1,0 +1,13 @@
+{
+  "schema": "pester-execution-receipt@v1",
+  "generatedAtUtc": "2026-03-31T21:27:07.6826294Z",
+  "contextStatus": "ready",
+  "readinessStatus": "ready",
+  "selectionStatus": "ready",
+  "executionJobResult": "success",
+  "dispatcherExitCode": -1,
+  "status": "results-xml-truncated",
+  "rawArtifactName": "pester-run-raw",
+  "rawArtifactExpected": true,
+  "source": "pester-run/finalize"
+}

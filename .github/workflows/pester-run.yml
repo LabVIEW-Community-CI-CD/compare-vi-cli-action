@@ -121,6 +121,8 @@ jobs:
       dispatcher_exit_code: ${{ steps.execution_receipt.outputs.dispatcher_exit_code }}
       raw_artifact_name: ${{ steps.execution_receipt.outputs.raw_artifact_name }}
       execution_receipt_status: ${{ steps.execution_receipt.outputs.status }}
+      selection_execution_pack: ${{ steps.selection_receipt.outputs.execution_pack }}
+      selection_execution_pack_source: ${{ steps.selection_receipt.outputs.execution_pack_source }}
     steps:
       - uses: actions/checkout@v5
         with:
@@ -211,12 +213,17 @@ jobs:
           if ($receipt.status -ne 'ready') {
             throw ("Selection receipt status is not ready: {0}" -f $receipt.status)
           }
-          $patternsJson = @($receipt.selection.includePatterns) | ConvertTo-Json -Compress
-          if (-not $patternsJson) { $patternsJson = '[]' }
+          $refinePatternsJson = @($receipt.selection.refineIncludePatterns) | ConvertTo-Json -Compress
+          if (-not $refinePatternsJson) { $refinePatternsJson = '[]' }
+          $effectivePatternsJson = @($receipt.selection.effectiveIncludePatterns) | ConvertTo-Json -Compress
+          if (-not $effectivePatternsJson) { $effectivePatternsJson = '[]' }
           "path=$receiptPath" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "execution_pack=$($receipt.selection.executionPack)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "execution_pack_source=$($receipt.selection.executionPackSource)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
           "integration_mode=$($receipt.selection.integrationMode)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
           "fixture_required=$(([string]$receipt.selection.fixtureRequired).ToLowerInvariant())" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
-          "include_patterns_json=$patternsJson" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "refine_include_patterns_json=$refinePatternsJson" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "effective_include_patterns_json=$effectivePatternsJson" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
           "timeout_seconds=$($receipt.dispatcherProfile.timeoutSeconds)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
           "emit_failures_json_always=$($receipt.dispatcherProfile.emitFailuresJsonAlways)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
           "detect_leaks=$($receipt.dispatcherProfile.detectLeaks)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
@@ -292,6 +299,10 @@ jobs:
           }
           $bound = [ordered]@{}
           $bound.TestsPath = 'tests'
+          $executionPack = '${{ steps.selection_receipt.outputs.execution_pack }}'
+          if ($executionPack) {
+            $bound.ExecutionPack = $executionPack
+          }
           $integrationMode = '${{ steps.selection_receipt.outputs.integration_mode }}'
           if ($integrationMode) {
             $bound.IntegrationMode = $integrationMode
@@ -299,7 +310,7 @@ jobs:
           $bound.ResultsPath = 'tests/results'
           if ($env:DISPATCHER_LIVE_OUTPUT -ne '0') { $bound.LiveOutput = $true }
           if ('${{ steps.dprofile.outputs.emit_failures_json_always }}' -eq 'true') { $bound.EmitFailuresJsonAlways = $true }
-          $patterns = '${{ steps.selection_receipt.outputs.include_patterns_json }}' | ConvertFrom-Json -ErrorAction Stop
+          $patterns = '${{ steps.selection_receipt.outputs.refine_include_patterns_json }}' | ConvertFrom-Json -ErrorAction Stop
           if ($patterns -and @($patterns).Count -gt 0) {
             $bound.IncludePatterns = @($patterns)
           }
@@ -308,6 +319,12 @@ jobs:
             $bound.TimeoutSeconds = [double]$timeoutSeconds
           }
           $lockScript = Join-Path (Get-Location) 'tools/Session-Lock.ps1'
+          $stepOutputPath = $env:GITHUB_OUTPUT
+          $dispatcherOutputTrace = Join-Path (Get-Location) 'tests/results/dispatcher-github-output.txt'
+          $dispatcherOutputDir = Split-Path -Parent $dispatcherOutputTrace
+          if ($dispatcherOutputDir -and -not (Test-Path -LiteralPath $dispatcherOutputDir)) {
+            New-Item -ItemType Directory -Path $dispatcherOutputDir -Force | Out-Null
+          }
           $heartbeatSeconds = 15
           $heartbeatJob = Start-ThreadJob -ScriptBlock {
             param($scriptPath,$seconds)
@@ -331,15 +348,13 @@ jobs:
             }
             pwsh -NoLogo -NoProfile -File $lockScript -Action Heartbeat | Out-Null
           }
-          if (-not $env:GITHUB_OUTPUT) {
-            $fallbackOutput = Join-Path (Get-Location) 'tests/results/dispatcher-github-output.txt'
-            $fallbackDir = Split-Path -Parent $fallbackOutput
-            if (-not (Test-Path -LiteralPath $fallbackDir)) {
-              New-Item -ItemType Directory -Path $fallbackDir -Force | Out-Null
-            }
-            $env:GITHUB_OUTPUT = [System.IO.Path]::GetFullPath($fallbackOutput)
+          if (-not [string]::IsNullOrWhiteSpace($stepOutputPath)) {
+            $env:GITHUB_OUTPUT = $stepOutputPath
+          } else {
+            $env:GITHUB_OUTPUT = [System.IO.Path]::GetFullPath($dispatcherOutputTrace)
           }
           "exit_code=$exitCode" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "exit_code=$exitCode" | Out-File -FilePath $dispatcherOutputTrace -Append -Encoding utf8
           if ($exitCode -ne 0) {
             Write-Warning ("Dispatcher exited with code {0}" -f $exitCode)
           }
@@ -353,6 +368,17 @@ jobs:
           $toolPath = Join-Path (Get-Location) 'tools/Invoke-PesterExecutionPostprocess.ps1'
           if (-not (Test-Path -LiteralPath $toolPath -PathType Leaf)) {
             throw "Postprocess tool not found at $toolPath"
+          }
+          pwsh -NoLogo -NoProfile -File $toolPath -ResultsDir 'tests/results'
+
+      - name: Materialize execution telemetry
+        id: telemetry
+        if: always()
+        shell: pwsh
+        run: |
+          $toolPath = Join-Path (Get-Location) 'tools/Invoke-PesterExecutionTelemetry.ps1'
+          if (-not (Test-Path -LiteralPath $toolPath -PathType Leaf)) {
+            throw "Telemetry tool not found at $toolPath"
           }
           pwsh -NoLogo -NoProfile -File $toolPath -ResultsDir 'tests/results'
 
@@ -372,10 +398,21 @@ jobs:
           }
           $summaryPath = Join-Path $resultsDir 'pester-summary.json'
           $postprocessPath = Join-Path $resultsDir 'pester-execution-postprocess.json'
+          $telemetryPath = Join-Path $resultsDir 'pester-execution-telemetry.json'
           $dispatcherExitCode = '${{ steps.dispatcher.outputs.exit_code }}'
+          $dispatcherOutputTrace = Join-Path $resultsDir 'dispatcher-github-output.txt'
           $status = 'seam-defect'
           $postprocessStatus = ''
           $resultsXmlStatus = ''
+          $telemetryStatus = ''
+          $telemetryLastKnownPhase = ''
+          $telemetryEventCount = 0
+          if ($dispatcherExitCode -eq '' -and (Test-Path -LiteralPath $dispatcherOutputTrace)) {
+            $traceLine = Get-Content -LiteralPath $dispatcherOutputTrace -ErrorAction SilentlyContinue | Select-Object -Last 1
+            if ($traceLine -match '^exit_code=(?<value>-?\d+)$') {
+              $dispatcherExitCode = $matches.value
+            }
+          }
           if ($dispatcherExitCode -eq '') {
             $dispatcherExitCode = '-1'
           }
@@ -391,7 +428,17 @@ jobs:
               Write-Warning ("Failed to parse postprocess report: {0}" -f $_.Exception.Message)
             }
           }
-          if ($postprocessStatus -in @('results-xml-truncated', 'invalid-results-xml', 'missing-results-xml')) {
+          if (Test-Path -LiteralPath $telemetryPath) {
+            try {
+              $telemetry = Get-Content -LiteralPath $telemetryPath -Raw | ConvertFrom-Json -ErrorAction Stop
+              $telemetryStatus = [string]$telemetry.telemetryStatus
+              $telemetryLastKnownPhase = [string]$telemetry.lastKnownPhase
+              $telemetryEventCount = [int]$telemetry.eventCount
+            } catch {
+              Write-Warning ("Failed to parse execution telemetry report: {0}" -f $_.Exception.Message)
+            }
+          }
+          if ($postprocessStatus -in @('results-xml-truncated', 'invalid-results-xml', 'missing-results-xml', 'unsupported-schema')) {
             $status = $postprocessStatus
           } elseif ((Test-Path -LiteralPath $summaryPath) -and $dispatcherExitCode -eq '0') {
             $status = 'completed'
@@ -414,9 +461,16 @@ jobs:
             selectionStatus    = '${{ inputs.selection_status }}'
             selectionReceiptPath = '${{ steps.selection_receipt.outputs.path }}'
             selectionReceiptPresent = $selectionReceiptPresent
+            selectionExecutionPack = '${{ steps.selection_receipt.outputs.execution_pack }}'
+            selectionExecutionPackSource = '${{ steps.selection_receipt.outputs.execution_pack_source }}'
             selectionIntegrationMode = '${{ steps.selection_receipt.outputs.integration_mode }}'
             selectionFixtureRequired = '${{ steps.selection_receipt.outputs.fixture_required }}'
             dispatcherExitCode = [int]$dispatcherExitCode
+            telemetryPath      = $telemetryPath
+            telemetryPresent   = Test-Path -LiteralPath $telemetryPath
+            telemetryStatus    = $telemetryStatus
+            telemetryLastKnownPhase = $telemetryLastKnownPhase
+            telemetryEventCount = $telemetryEventCount
             postprocessStatus  = $postprocessStatus
             resultsXmlStatus   = $resultsXmlStatus
             summaryPresent     = Test-Path -LiteralPath $summaryPath
@@ -465,7 +519,7 @@ jobs:
           } elseif ('${{ inputs.selection_status }}' -ne 'ready') {
             $executionStatus = 'skipped'
             if ([string]::IsNullOrWhiteSpace($receiptStatus)) { $receiptStatus = 'selection-blocked' }
-          } elseif ($receiptStatus -in @('results-xml-truncated', 'invalid-results-xml', 'missing-results-xml')) {
+          } elseif ($receiptStatus -in @('results-xml-truncated', 'invalid-results-xml', 'missing-results-xml', 'unsupported-schema')) {
             $executionStatus = $receiptStatus
             $rawArtifactName = 'pester-run-raw'
           } else {
@@ -508,6 +562,8 @@ jobs:
             contextStatus      = '${{ inputs.context_status }}'
             readinessStatus    = '${{ inputs.readiness_status }}'
             selectionStatus    = '${{ inputs.selection_status }}'
+            selectionExecutionPack = '${{ needs.pester.outputs.selection_execution_pack }}'
+            selectionExecutionPackSource = '${{ needs.pester.outputs.selection_execution_pack_source }}'
             executionJobResult = '${{ needs.pester.result }}'
             dispatcherExitCode = [int]$dispatcherExitCode
             status             = $receiptStatus

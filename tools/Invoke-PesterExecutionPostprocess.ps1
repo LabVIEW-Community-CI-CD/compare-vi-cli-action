@@ -23,6 +23,14 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+$defaultPesterSummarySchemaVersion = '1.7.1'
+
+$schemaToolPath = Join-Path $PSScriptRoot 'PesterServiceModelSchema.ps1'
+if (-not (Test-Path -LiteralPath $schemaToolPath -PathType Leaf)) {
+  throw "Schema tool not found: $schemaToolPath"
+}
+. $schemaToolPath
+
 function Set-ObjectProperty {
   param(
     [Parameter(Mandatory = $true)]$InputObject,
@@ -38,18 +46,29 @@ function Set-ObjectProperty {
   }
 }
 
-function Read-JsonObject {
-  param([Parameter(Mandatory = $true)][string]$PathValue)
+function Test-RepairableLegacySummaryState {
+  param(
+    [Parameter(Mandatory = $true)]$State
+  )
 
-  if (-not (Test-Path -LiteralPath $PathValue -PathType Leaf)) {
-    return $null
+  if (-not $State.present -or $State.valid) {
+    return $false
   }
 
-  try {
-    return (Get-Content -LiteralPath $PathValue -Raw | ConvertFrom-Json -ErrorAction Stop)
-  } catch {
-    return $null
+  if ([string]$State.reason -ne 'pester-summary-schema-version-missing') {
+    return $false
   }
+
+  $document = $State.document
+  if (-not $document) {
+    return $false
+  }
+
+  return (
+    ($document.PSObject.Properties.Name -contains 'total') -and
+    ($document.PSObject.Properties.Name -contains 'failed') -and
+    ($document.PSObject.Properties.Name -contains 'errors')
+  )
 }
 
 $resolvedResultsDir = [System.IO.Path]::GetFullPath($ResultsDir)
@@ -65,21 +84,30 @@ if (-not (Test-Path -LiteralPath $xmlSummaryToolPath -PathType Leaf)) {
   throw "XML summary tool not found: $xmlSummaryToolPath"
 }
 
-$existingSummary = Read-JsonObject -PathValue $summaryPath
-$summaryPresentBefore = [bool]$existingSummary
+$existingSummaryState = Test-PesterServiceModelSchemaContract `
+  -DocumentState (Read-PesterServiceModelJsonDocument -PathValue $summaryPath -ContractName 'pester-summary') `
+  -ExpectedSchemaVersionMajor 1 `
+  -RequireSchemaVersion
+$repairableLegacySummary = Test-RepairableLegacySummaryState -State $existingSummaryState
+$existingSummary = if ($existingSummaryState.valid -or $repairableLegacySummary) { $existingSummaryState.document } else { $null }
+$summaryPresentBefore = [bool]$existingSummaryState.present
 $xmlSummary = & $xmlSummaryToolPath -XmlPath $xmlPath -StabilizationTimeoutSeconds $XmlStabilizationTimeoutSeconds -PollIntervalMilliseconds $XmlPollIntervalMilliseconds
 if (-not $xmlSummary) {
   throw 'Get-PesterResultXmlSummary.ps1 returned no result.'
 }
 
-$postprocessStatus = switch ([string]$xmlSummary.status) {
-  'complete' { 'complete'; break }
-  'truncated-root' { 'results-xml-truncated'; break }
-  'truncated' { 'results-xml-truncated'; break }
-  'invalid-root-attributes' { 'invalid-results-xml'; break }
-  'invalid' { 'invalid-results-xml'; break }
-  'missing' { 'missing-results-xml'; break }
-  default { 'seam-defect'; break }
+$postprocessStatus = if ($existingSummaryState.present -and -not $existingSummaryState.valid -and -not $repairableLegacySummary) {
+  'unsupported-schema'
+} else {
+  switch ([string]$xmlSummary.status) {
+    'complete' { 'complete'; break }
+    'truncated-root' { 'results-xml-truncated'; break }
+    'truncated' { 'results-xml-truncated'; break }
+    'invalid-root-attributes' { 'invalid-results-xml'; break }
+    'invalid' { 'invalid-results-xml'; break }
+    'missing' { 'missing-results-xml'; break }
+    default { 'seam-defect'; break }
+  }
 }
 
 $summaryWritten = $false
@@ -98,6 +126,9 @@ if ($canWriteSummary) {
   Set-ObjectProperty -InputObject $summaryPayload -Name 'skipped' -Value $xmlSummary.skipped
   if (-not $summaryPayload.PSObject.Properties['timestamp']) {
     Set-ObjectProperty -InputObject $summaryPayload -Name 'timestamp' -Value ([DateTime]::UtcNow.ToString('o'))
+  }
+  if (-not $summaryPayload.PSObject.Properties['schemaVersion']) {
+    Set-ObjectProperty -InputObject $summaryPayload -Name 'schemaVersion' -Value $defaultPesterSummarySchemaVersion
   }
   Set-ObjectProperty -InputObject $summaryPayload -Name 'resultsXmlStatus' -Value ([string]$xmlSummary.status)
   Set-ObjectProperty -InputObject $summaryPayload -Name 'resultsXmlSummarySource' -Value $xmlSummary.summarySource
@@ -119,6 +150,9 @@ $report = [ordered]@{
   xmlPath                 = $xmlPath
   summaryPath             = $summaryPath
   summaryPresentBefore    = $summaryPresentBefore
+  summarySchemaStatus     = if ($summaryPresentBefore -and $repairableLegacySummary) { 'legacy-schema-lite' } elseif ($summaryPresentBefore) { [string]$existingSummaryState.classification } else { 'missing' }
+  summarySchemaReason     = if ($summaryPresentBefore) { [string]$existingSummaryState.reason } else { 'pester-summary-missing' }
+  summarySchemaVersion    = if ($summaryPresentBefore) { [string]$existingSummaryState.actualSchemaVersion } else { $null }
   summaryWritten          = $summaryWritten
   status                  = $postprocessStatus
   resultsXmlStatus        = [string]$xmlSummary.status
@@ -131,6 +165,8 @@ $report = [ordered]@{
   errors                  = $xmlSummary.errors
   skipped                 = $xmlSummary.skipped
   parseError              = [string]$xmlSummary.parseError
+  schemaClassification    = if ($summaryPresentBefore -and -not $existingSummaryState.valid -and -not $repairableLegacySummary) { 'unsupported-schema' } elseif ($repairableLegacySummary) { 'legacy-schema-lite' } else { 'ok' }
+  schemaClassificationReason = if ($summaryPresentBefore -and -not $existingSummaryState.valid) { [string]$existingSummaryState.reason } else { 'schema-ok' }
 }
 $report | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $reportPath -Encoding UTF8
 

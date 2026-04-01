@@ -1,0 +1,218 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://comparevi.dev/schemas/comparevi-local-program-ci-report-v1.schema.json",
+  "title": "CompareVI Local Program CI Report",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "generated_at",
+    "repo_root",
+    "packets",
+    "ranked_requirements",
+    "escalations",
+    "overall"
+  ],
+  "properties": {
+    "schema_version": { "type": "string" },
+    "generated_at": { "type": "string", "format": "date-time" },
+    "repo_root": { "type": "string" },
+    "packets": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "label",
+          "report_path",
+          "next_step_path",
+          "overall_status",
+          "overall_reason"
+        ],
+        "properties": {
+          "id": { "type": "string" },
+          "label": { "type": "string" },
+          "report_path": { "type": "string" },
+          "next_step_path": { "type": "string" },
+          "overall_status": { "type": "string" },
+          "overall_reason": { "type": "string" },
+          "next_step_type": {
+            "anyOf": [
+              { "type": "string" },
+              { "type": "null" }
+            ]
+          },
+          "next_requirement_id": {
+            "anyOf": [
+              { "type": "string" },
+              { "type": "null" }
+            ]
+          },
+          "required_surface": {
+            "anyOf": [
+              { "type": "string" },
+              { "type": "null" }
+            ]
+          }
+        },
+        "additionalProperties": true
+      }
+    },
+    "ranked_requirements": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/requirement"
+      }
+    },
+    "escalations": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/escalation"
+      }
+    },
+    "next_step": {
+      "anyOf": [
+        { "$ref": "#/$defs/requirement" },
+        { "$ref": "#/$defs/escalation" },
+        { "type": "null" }
+      ]
+    },
+    "overall": {
+      "type": "object",
+      "required": [
+        "status",
+        "reason"
+      ],
+      "properties": {
+        "status": { "type": "string" },
+        "reason": { "type": "string" }
+      },
+      "additionalProperties": true
+    }
+  },
+  "$defs": {
+    "requirement": {
+      "type": "object",
+      "required": [
+        "type",
+        "packet_id",
+        "packet_label",
+        "source_report_path",
+        "source_next_step_path",
+        "req_id",
+        "priority",
+        "status",
+        "phase",
+        "score",
+        "why_now",
+        "requirement",
+        "test_id",
+        "code_refs",
+        "suggested_loop"
+      ],
+      "properties": {
+        "type": { "const": "requirement" },
+        "packet_id": { "type": "string" },
+        "packet_label": { "type": "string" },
+        "source_report_path": { "type": "string" },
+        "source_next_step_path": { "type": "string" },
+        "req_id": { "type": "string" },
+        "priority": { "type": "string" },
+        "status": { "type": "string" },
+        "phase": { "type": "string" },
+        "score": { "type": "number" },
+        "program_score": { "type": "number" },
+        "why_now": { "type": "string" },
+        "requirement": { "type": "string" },
+        "test_id": { "type": "string" },
+        "test_artifact": { "type": "string" },
+        "code_refs": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "suggested_loop": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      },
+      "additionalProperties": true
+    },
+    "escalation": {
+      "type": "object",
+      "required": [
+        "type",
+        "escalation_id",
+        "status",
+        "mode",
+        "why_now",
+        "reason",
+        "required_surface",
+        "current_surface_status",
+        "current_host_platform",
+        "packet_ids",
+        "packet_labels",
+        "governing_requirements",
+        "blocked_requirements",
+        "proof_check_ids",
+        "receipt_paths",
+        "source_next_step_paths",
+        "suggested_loop",
+        "recommended_commands",
+        "stop_conditions"
+      ],
+      "properties": {
+        "type": { "const": "escalation" },
+        "escalation_id": { "type": "string" },
+        "status": { "type": "string" },
+        "mode": { "type": "string" },
+        "why_now": { "type": "string" },
+        "reason": { "type": "string" },
+        "required_surface": { "type": "string" },
+        "current_surface_status": { "type": "string" },
+        "current_host_platform": { "type": "string" },
+        "packet_count": { "type": "number" },
+        "packet_ids": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "packet_labels": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "governing_requirements": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "blocked_requirements": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "proof_check_ids": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "receipt_paths": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "source_next_step_paths": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "suggested_loop": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "recommended_commands": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "stop_conditions": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": true
+}

@@ -24,7 +24,13 @@ test('pester service-model release-evidence workflow retains hosted promotion ev
   assert.match(workflow, /coverage\.xml/);
   assert.match(workflow, /Docs link check \/ lychee/);
   assert.doesNotMatch(workflow, /fork-lane-local-assurance-ci\.mjs/);
+  assert.match(workflow, /pester-service-model-provenance\.mjs/);
+  assert.match(workflow, /pester-service-model-promotion-comparison\.json/);
+  assert.match(workflow, /pester-promotion-comparison-v1\.schema\.json/);
+  assert.match(workflow, /pester-service-model-release-evidence-provenance\.test\.mjs/);
   assert.match(workflow, /materialize-pester-service-model-release-evidence\.mjs/);
   assert.match(workflow, /render-pester-service-model-promotion-dossier\.mjs/);
+  assert.match(workflow, /release-evidence-provenance\.json/);
+  assert.match(workflow, /promotion-dossier-provenance\.json/);
   assert.match(workflow, /Upload release-evidence bundle/);
 });

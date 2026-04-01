@@ -1,0 +1,96 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://comparevi.dev/schemas/vi-history-live-candidate-readiness-v1.schema.json",
+  "title": "VI History Live Candidate Readiness",
+  "type": "object",
+  "required": [
+    "schema",
+    "generatedAt",
+    "status",
+    "candidateId",
+    "repoSlug",
+    "repoUrl",
+    "defaultBranch",
+    "targetViPath",
+    "cloneRootCandidates",
+    "recommendedCommands"
+  ],
+  "properties": {
+    "schema": {
+      "const": "vi-history/live-candidate-readiness@v1"
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "status": {
+      "enum": [
+        "ready",
+        "missing-clone",
+        "missing-target",
+        "missing-history",
+        "git-failed"
+      ]
+    },
+    "candidateId": {
+      "type": "string"
+    },
+    "repoSlug": {
+      "type": "string"
+    },
+    "repoUrl": {
+      "type": "string",
+      "format": "uri"
+    },
+    "defaultBranch": {
+      "type": "string"
+    },
+    "cloneRootEnvVar": {
+      "type": "string"
+    },
+    "cloneRootCandidates": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "resolvedCloneRoot": {
+      "anyOf": [
+        { "type": "string" },
+        { "type": "null" }
+      ]
+    },
+    "targetViPath": {
+      "type": "string"
+    },
+    "historyExpectation": {
+      "type": "object"
+    },
+    "history": {
+      "type": "object",
+      "properties": {
+        "commitCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "latestCommit": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": true
+    },
+    "reason": {
+      "type": "string"
+    },
+    "recommendedCommands": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "additionalProperties": true
+}

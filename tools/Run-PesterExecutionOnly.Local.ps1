@@ -6,6 +6,8 @@ param(
   [string]$ContextReceiptPath,
   [string]$ReadinessReceiptPath,
   [string]$SelectionReceiptPath,
+  [ValidateSet('full', 'comparevi', 'dispatcher', 'workflow', 'fixtures', 'psummary', 'schema', 'loop')]
+  [string]$ExecutionPack = 'full',
   [ValidateSet('auto', 'include', 'exclude')]
   [string]$IntegrationMode = 'exclude',
   [string[]]$IncludePatterns,
@@ -25,7 +27,10 @@ param(
   [int]$SessionLockQueueWaitSeconds = 15,
   [int]$SessionLockQueueMaxAttempts = 40,
   [int]$SessionLockStaleSeconds = 300,
-  [int]$SessionHeartbeatSeconds = 15
+  [int]$SessionHeartbeatSeconds = 15,
+  [ValidateSet('auto', 'relocate', 'block', 'off')]
+  [string]$PathHygieneMode = 'auto',
+  [string]$PathHygieneSafeRoot
 )
 
 Set-StrictMode -Version Latest
@@ -257,20 +262,40 @@ function Write-JsonFile {
   $Payload | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $PathValue -Encoding UTF8
 }
 
+function Write-ExecutionReceiptFiles {
+  param(
+    [Parameter(Mandatory = $true)][string]$ReceiptRoot,
+    [Parameter(Mandatory = $true)]$Receipt
+  )
+
+  $resolvedReceiptRoot = [System.IO.Path]::GetFullPath($ReceiptRoot)
+  $receiptPath = Join-Path $resolvedReceiptRoot 'pester-run-receipt.json'
+  $contractReceiptPath = Join-Path $resolvedReceiptRoot 'pester-execution-contract' 'pester-run-receipt.json'
+  Write-JsonFile -PathValue $receiptPath -Payload $Receipt
+  Write-JsonFile -PathValue $contractReceiptPath -Payload $Receipt
+  return [pscustomobject]@{
+    receiptPath = $receiptPath
+    contractReceiptPath = $contractReceiptPath
+  }
+}
+
 $repoRoot = Resolve-RepoRoot
-$resolvedResultsPath = Resolve-OutputPath -RepoRoot $repoRoot -PathValue $ResultsPath
+$requestedResultsPath = Resolve-OutputPath -RepoRoot $repoRoot -PathValue $ResultsPath
 $resolvedContextReceiptPath = Resolve-OutputPath -RepoRoot $repoRoot -PathValue $ContextReceiptPath
 $resolvedReadinessReceiptPath = Resolve-OutputPath -RepoRoot $repoRoot -PathValue $ReadinessReceiptPath
 $resolvedSelectionReceiptPath = Resolve-OutputPath -RepoRoot $repoRoot -PathValue $SelectionReceiptPath
-$resolvedSessionLockRoot = if ([string]::IsNullOrWhiteSpace($SessionLockRoot)) {
-  Join-Path $resolvedResultsPath '_session_lock'
+$requestedSessionLockRoot = if ([string]::IsNullOrWhiteSpace($SessionLockRoot)) {
+  Join-Path $requestedResultsPath '_session_lock'
 } else {
   Resolve-OutputPath -RepoRoot $repoRoot -PathValue $SessionLockRoot
 }
+$resolvedResultsPath = $requestedResultsPath
+$resolvedSessionLockRoot = $requestedSessionLockRoot
 
 $contextReceipt = $null
 $readinessReceipt = $null
 $selectionReceipt = $null
+$executionPackResolution = $null
 $preparedFixtures = $null
 $dispatcherExitCode = -1
 $postprocessStatus = 'seam-defect'
@@ -283,9 +308,104 @@ $lvComparePath = $null
 $dotnetReady = $false
 $sessionLockPath = $null
 $sessionLockId = $null
+$summaryPresent = $false
+$receiptRoot = $resolvedResultsPath
+$receiptPaths = $null
+$pathHygienePlan = $null
+$pathHygieneRecord = $null
 
 Push-Location $repoRoot
 try {
+  . (Join-Path $repoRoot 'tools/PesterExecutionPacks.ps1')
+  . (Join-Path $repoRoot 'tools/PesterPathHygiene.ps1')
+
+  $pathHygienePlan = Resolve-PesterPathHygienePlan -ResultsPath $requestedResultsPath -SessionLockRoot $requestedSessionLockRoot -Mode $PathHygieneMode -SafeRoot $PathHygieneSafeRoot
+  if ([string]::IsNullOrWhiteSpace([string]$pathHygienePlan.receiptRoot)) {
+    $receiptRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("compare-vi-cli-action-path-hygiene-" + [Guid]::NewGuid().ToString('N'))
+  } else {
+    $receiptRoot = [System.IO.Path]::GetFullPath([string]$pathHygienePlan.receiptRoot)
+  }
+  if (-not [string]::IsNullOrWhiteSpace([string]$pathHygienePlan.effectiveResultsPath)) {
+    $resolvedResultsPath = [System.IO.Path]::GetFullPath([string]$pathHygienePlan.effectiveResultsPath)
+  }
+  if (-not [string]::IsNullOrWhiteSpace([string]$pathHygienePlan.effectiveSessionLockRoot)) {
+    $resolvedSessionLockRoot = [System.IO.Path]::GetFullPath([string]$pathHygienePlan.effectiveSessionLockRoot)
+  }
+
+  $pathHygieneRecord = [ordered]@{
+    mode = [string]$pathHygienePlan.mode
+    status = [string]$pathHygienePlan.status
+    requestedResultsPath = ConvertTo-PortablePath $requestedResultsPath
+    effectiveResultsPath = ConvertTo-PortablePath $resolvedResultsPath
+    requestedSessionLockRoot = ConvertTo-PortablePath $requestedSessionLockRoot
+    effectiveSessionLockRoot = ConvertTo-PortablePath $resolvedSessionLockRoot
+    receiptRoot = ConvertTo-PortablePath $receiptRoot
+    safeRoot = ConvertTo-PortablePath ([string]$pathHygienePlan.safeRoot)
+    risks = @($pathHygienePlan.risks)
+  }
+
+  if ([string]$pathHygienePlan.status -eq 'path-hygiene-blocked') {
+    $executionStatus = 'path-hygiene-blocked'
+    $executionJobResult = 'skipped'
+    $postprocessStatus = 'not-run'
+    $repository = Resolve-RepositorySlug -RepoRoot $repoRoot
+    $blockedReceipt = [ordered]@{
+      schema = 'pester-execution-receipt@v1'
+      generatedAtUtc = [DateTime]::UtcNow.ToString('o')
+      source = 'local-harness'
+      repository = $repository
+      contextStatus = 'local-ready'
+      contextReceiptPath = ConvertTo-PortablePath $resolvedContextReceiptPath
+      contextReceiptPresent = $false
+      standingPriorityIssue = $null
+      readinessStatus = 'local-ready'
+      readinessReceiptPath = ConvertTo-PortablePath $resolvedReadinessReceiptPath
+      readinessReceiptPresent = $false
+      selectionStatus = 'local-ready'
+      selectionReceiptPath = ConvertTo-PortablePath $resolvedSelectionReceiptPath
+      selectionReceiptPresent = $false
+      dispatcherExitCode = $dispatcherExitCode
+      postprocessStatus = $postprocessStatus
+      resultsXmlStatus = $null
+      executionJobResult = $executionJobResult
+      summaryPresent = $summaryPresent
+      status = $executionStatus
+      pathHygieneStatus = [string]$pathHygienePlan.status
+      rawArtifactName = 'pester-run-raw-local'
+      localHarness = [ordered]@{
+        dotnetReady = $false
+        lvComparePath = $null
+        fixtureBase = $null
+        fixtureHead = $null
+        timeoutSeconds = 0
+        emitFailuresJsonAlways = $false
+        detectLeaks = $false
+        failOnLeaks = $false
+        killLeaks = $false
+        leakGraceSeconds = $LeakGraceSeconds
+        cleanLabVIEWBefore = $false
+        cleanAfter = $false
+        trackArtifacts = $false
+        sessionLockGroup = $SessionLockGroup
+        sessionLockRoot = ConvertTo-PortablePath $resolvedSessionLockRoot
+        sessionLockPath = $null
+        postprocessReportPath = $null
+        preSnapshotPath = $null
+        dispatcherLogPath = $null
+        pathHygiene = $pathHygieneRecord
+      }
+    }
+    $receiptPaths = Write-ExecutionReceiptFiles -ReceiptRoot $receiptRoot -Receipt $blockedReceipt
+
+    Write-Host '### Local Pester execution harness' -ForegroundColor Cyan
+    Write-Host ("status      : {0}" -f $executionStatus)
+    Write-Host ("requested   : {0}" -f $requestedResultsPath)
+    Write-Host ("effective   : {0}" -f ($resolvedResultsPath ?? '<blocked>'))
+    Write-Host ("receipt     : {0}" -f $receiptPaths.receiptPath)
+    Write-Host ("contract    : {0}" -f $receiptPaths.contractReceiptPath)
+    throw ("Local path hygiene blocked unsafe synchronized or externally managed roots. Receipt: {0}" -f $receiptPaths.receiptPath)
+  }
+
   New-Item -ItemType Directory -Path $resolvedResultsPath -Force | Out-Null
   New-Item -ItemType Directory -Path $resolvedSessionLockRoot -Force | Out-Null
 
@@ -296,16 +416,27 @@ try {
   $repository = if ($contextReceipt) { [string]$contextReceipt.repository } else { Resolve-RepositorySlug -RepoRoot $repoRoot }
   $standingPriorityIssue = if ($contextReceipt) { $contextReceipt.standingPriority.issueNumber } else { $null }
 
+  $effectiveExecutionPack = if ($selectionReceipt -and -not $PSBoundParameters.ContainsKey('ExecutionPack')) {
+    [string]$selectionReceipt.selection.executionPack
+  } else {
+    $ExecutionPack
+  }
+
   $effectiveIntegrationMode = if ($selectionReceipt -and -not $PSBoundParameters.ContainsKey('IntegrationMode')) {
     [string]$selectionReceipt.selection.integrationMode
   } else {
     $IntegrationMode
   }
   $effectiveIncludePatterns = if ($selectionReceipt -and -not $PSBoundParameters.ContainsKey('IncludePatterns')) {
-    @($selectionReceipt.selection.includePatterns)
+    if ($selectionReceipt.selection.PSObject.Properties.Name -contains 'refineIncludePatterns') {
+      @($selectionReceipt.selection.refineIncludePatterns)
+    } else {
+      @($selectionReceipt.selection.includePatterns)
+    }
   } else {
     @($IncludePatterns)
   }
+  $executionPackResolution = Resolve-PesterExecutionPack -ExecutionPack $effectiveExecutionPack -RefineIncludePatterns $effectiveIncludePatterns
   $fixtureRequired = if ($selectionReceipt) {
     ConvertTo-Bool $selectionReceipt.selection.fixtureRequired
   } else {
@@ -435,9 +566,10 @@ try {
   $invokeParams = @{
     TestsPath = $TestsPath
     ResultsPath = $resolvedResultsPath
+    ExecutionPack = $executionPackResolution.executionPack
     IntegrationMode = $effectiveIntegrationMode
   }
-  $effectiveIncludePatternsList = @($effectiveIncludePatterns | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) })
+  $effectiveIncludePatternsList = @($executionPackResolution.refineIncludePatterns | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) })
   if ($effectiveIncludePatternsList.Count -gt 0) {
     $invokeParams.IncludePatterns = $effectiveIncludePatternsList
   }
@@ -453,8 +585,13 @@ try {
 
   $dispatcherPath = Join-Path $repoRoot 'Invoke-PesterTests.ps1'
   $logPath = Join-Path $resolvedResultsPath 'pester-dispatcher.log'
+  $dispatcherOutputTrace = Join-Path $resolvedResultsPath 'dispatcher-github-output.txt'
+  $originalGitHubOutput = $env:GITHUB_OUTPUT
   if (Test-Path -LiteralPath $logPath) {
     Remove-Item -LiteralPath $logPath -Force
+  }
+  if (Test-Path -LiteralPath $dispatcherOutputTrace) {
+    Remove-Item -LiteralPath $dispatcherOutputTrace -Force
   }
 
   try {
@@ -467,6 +604,11 @@ try {
     $dispatcherExitCode = if ($null -ne $LASTEXITCODE -and [int]$LASTEXITCODE -ne 0) { [int]$LASTEXITCODE } else { 1 }
   } finally {
     $ErrorActionPreference = $previousErrorActionPreference
+    if ($null -ne $originalGitHubOutput) {
+      $env:GITHUB_OUTPUT = $originalGitHubOutput
+    } else {
+      Remove-Item -Path Env:GITHUB_OUTPUT -ErrorAction SilentlyContinue
+    }
     if ($heartbeatJob) {
       Stop-Job -Id $heartbeatJob.Id -ErrorAction SilentlyContinue | Out-Null
       Remove-Job -Id $heartbeatJob.Id -Force -ErrorAction SilentlyContinue | Out-Null
@@ -479,6 +621,8 @@ try {
       pwsh -NoLogo -NoProfile -File $lockScript -Action Release -Group $SessionLockGroup -LockRoot $resolvedSessionLockRoot | Out-Null
     }
   }
+
+  "exit_code=$dispatcherExitCode" | Out-File -FilePath $dispatcherOutputTrace -Append -Encoding utf8
 
   $postprocessToolPath = Join-Path $repoRoot 'tools/Invoke-PesterExecutionPostprocess.ps1'
   if (-not (Test-Path -LiteralPath $postprocessToolPath -PathType Leaf)) {
@@ -495,9 +639,24 @@ try {
     $resultsXmlStatus = [string]$postprocessReport.resultsXmlStatus
   }
 
+  $telemetryToolPath = Join-Path $repoRoot 'tools/Invoke-PesterExecutionTelemetry.ps1'
+  if (-not (Test-Path -LiteralPath $telemetryToolPath -PathType Leaf)) {
+    throw "Telemetry tool not found: $telemetryToolPath"
+  }
+  & $telemetryToolPath -ResultsDir $resolvedResultsPath | Out-Host
+  if ($LASTEXITCODE -ne 0) {
+    throw "Pester execution telemetry failed with exit code $LASTEXITCODE."
+  }
+  $telemetryReportPath = Join-Path $resolvedResultsPath 'pester-execution-telemetry.json'
+  $telemetryReport = if (Test-Path -LiteralPath $telemetryReportPath -PathType Leaf) {
+    Read-JsonFile -PathValue $telemetryReportPath
+  } else {
+    $null
+  }
+
   $summaryPath = Join-Path $resolvedResultsPath 'pester-summary.json'
   $summaryPresent = Test-Path -LiteralPath $summaryPath
-  if ($postprocessStatus -in @('results-xml-truncated', 'invalid-results-xml', 'missing-results-xml')) {
+  if ($postprocessStatus -in @('results-xml-truncated', 'invalid-results-xml', 'missing-results-xml', 'unsupported-schema')) {
     $executionStatus = $postprocessStatus
     $executionJobResult = 'failure'
   } elseif ($summaryPresent -and $dispatcherExitCode -eq 0) {
@@ -526,15 +685,25 @@ try {
     selectionStatus = if ($selectionReceipt) { [string]$selectionReceipt.status } else { 'local-ready' }
     selectionReceiptPath = ConvertTo-PortablePath $resolvedSelectionReceiptPath
     selectionReceiptPresent = [bool]$selectionReceipt
+    selectionExecutionPack = [string]$executionPackResolution.executionPack
+    selectionExecutionPackSource = [string]$executionPackResolution.executionPackSource
     selectionIntegrationMode = $effectiveIntegrationMode
     selectionFixtureRequired = $fixtureRequired
-    includePatterns = @($effectiveIncludePatternsList)
+    baseIncludePatterns = @($executionPackResolution.baseIncludePatterns)
+    refineIncludePatterns = @($executionPackResolution.refineIncludePatterns)
+    effectiveIncludePatterns = @($executionPackResolution.effectiveIncludePatterns)
+    includePatterns = @($executionPackResolution.effectiveIncludePatterns)
     dispatcherExitCode = $dispatcherExitCode
+    telemetryPresent = [bool]$telemetryReport
+    telemetryStatus = if ($telemetryReport) { [string]$telemetryReport.telemetryStatus } else { '' }
+    telemetryLastKnownPhase = if ($telemetryReport) { [string]$telemetryReport.lastKnownPhase } else { '' }
+    telemetryEventCount = if ($telemetryReport) { [int]$telemetryReport.eventCount } else { 0 }
     postprocessStatus = $postprocessStatus
     resultsXmlStatus  = $resultsXmlStatus
     executionJobResult = $executionJobResult
     summaryPresent = $summaryPresent
     status = $executionStatus
+    pathHygieneStatus = if ($pathHygienePlan) { [string]$pathHygienePlan.status } else { 'clean' }
     rawArtifactName = 'pester-run-raw-local'
     localHarness = [ordered]@{
       dotnetReady = $dotnetReady
@@ -554,22 +723,24 @@ try {
       sessionLockRoot = ConvertTo-PortablePath $resolvedSessionLockRoot
       sessionLockPath = ConvertTo-PortablePath $sessionLockPath
       postprocessReportPath = ConvertTo-PortablePath $postprocessReportPath
+      telemetryReportPath = ConvertTo-PortablePath $telemetryReportPath
       preSnapshotPath = ConvertTo-PortablePath $preSnapshotPath
       dispatcherLogPath = ConvertTo-PortablePath $logPath
+      pathHygiene = $pathHygieneRecord
     }
   }
 
-  $receiptPath = Join-Path $resolvedResultsPath 'pester-run-receipt.json'
-  $contractReceiptPath = Join-Path $resolvedResultsPath 'pester-execution-contract' 'pester-run-receipt.json'
-  Write-JsonFile -PathValue $receiptPath -Payload $receipt
-  Write-JsonFile -PathValue $contractReceiptPath -Payload $receipt
+  $receiptPaths = Write-ExecutionReceiptFiles -ReceiptRoot $receiptRoot -Receipt $receipt
 
   Write-Host '### Local Pester execution harness' -ForegroundColor Cyan
+  Write-Host ("executionPack : {0}" -f $executionPackResolution.executionPack)
   Write-Host ("status      : {0}" -f $executionStatus)
   Write-Host ("exitCode    : {0}" -f $dispatcherExitCode)
   Write-Host ("summary     : {0}" -f $summaryPresent)
-  Write-Host ("receipt     : {0}" -f $receiptPath)
-  Write-Host ("contract    : {0}" -f $contractReceiptPath)
+  $telemetryStatusDisplay = if ($telemetryReport) { [string]$telemetryReport.telemetryStatus } else { 'missing' }
+  Write-Host ("telemetry   : {0}" -f $telemetryStatusDisplay)
+  Write-Host ("receipt     : {0}" -f $receiptPaths.receiptPath)
+  Write-Host ("contract    : {0}" -f $receiptPaths.contractReceiptPath)
 }
 finally {
   if ($preparedFixtures -and $preparedFixtures.tempDir -and (Test-Path -LiteralPath $preparedFixtures.tempDir -PathType Container)) {

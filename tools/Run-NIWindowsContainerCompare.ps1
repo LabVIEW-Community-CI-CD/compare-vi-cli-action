@@ -247,10 +247,14 @@ function Resolve-ExistingFilePath {
   }
   try {
     $resolved = Resolve-Path -LiteralPath $effectiveInput -ErrorAction Stop
-    if (-not (Test-Path -LiteralPath $resolved.Path -PathType Leaf)) {
+    $providerPath = [string]$resolved.ProviderPath
+    if ([string]::IsNullOrWhiteSpace($providerPath)) {
+      throw ("Path is not a provider-backed file: {0}" -f $effectiveInput)
+    }
+    if (-not (Test-Path -LiteralPath $providerPath -PathType Leaf)) {
       throw ("Path is not a file: {0}" -f $effectiveInput)
     }
-    return $resolved.Path
+    return [System.IO.Path]::GetFullPath($providerPath)
   } catch {
     throw ("Unable to resolve -{0} file path '{1}'." -f $ParameterName, $effectiveInput)
   }
@@ -291,14 +295,15 @@ function Resolve-OutputReportPath {
     [string]$PathValue,
     [Parameter(Mandatory)][string]$Extension
   )
+  $resolveAbsolutePath = {
+    param([Parameter(Mandatory)][string]$Candidate)
+    $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($Candidate)
+  }
   if ([string]::IsNullOrWhiteSpace($PathValue)) {
-    $defaultRoot = Join-Path (Resolve-Path '.').Path 'tests/results/ni-windows-container'
+    $defaultRoot = Join-Path (& $resolveAbsolutePath '.') 'tests/results/ni-windows-container'
     return (Join-Path $defaultRoot ("compare-report.{0}" -f $Extension))
   }
-  if ([System.IO.Path]::IsPathRooted($PathValue)) {
-    return [System.IO.Path]::GetFullPath($PathValue)
-  }
-  return [System.IO.Path]::GetFullPath((Join-Path (Resolve-Path '.').Path $PathValue))
+  return & $resolveAbsolutePath $PathValue
 }
 
 function Get-DockerServerOsType {
@@ -337,6 +342,182 @@ function Convert-HostFileToContainerPath {
   $hostDir = Split-Path -Parent $HostFilePath
   $containerDir = Get-OrAddMountPath -Map $MountMap -Index $MountIndex -HostDirectory $hostDir
   return (Join-Path $containerDir (Split-Path -Leaf $HostFilePath))
+}
+
+function Test-PathRequiresWindowsDockerLocalStage {
+  param([AllowNull()][string]$PathValue)
+
+  if ([string]::IsNullOrWhiteSpace($PathValue)) {
+    return $false
+  }
+  $normalized = [string]$PathValue
+  return $normalized.StartsWith('\\')
+}
+
+function Resolve-NativeProviderPath {
+  param([Parameter(Mandatory)][string]$PathValue)
+
+  $resolved = Resolve-Path -LiteralPath $PathValue -ErrorAction Stop
+  $providerPath = [string]$resolved.ProviderPath
+  if ([string]::IsNullOrWhiteSpace($providerPath)) {
+    $providerPath = [string]$resolved.Path
+  }
+  if ([string]::IsNullOrWhiteSpace($providerPath)) {
+    throw ("Unable to resolve native provider path: {0}" -f $PathValue)
+  }
+  return [System.IO.Path]::GetFullPath($providerPath)
+}
+
+function New-WindowsDockerMountStage {
+  param(
+    [Parameter(Mandatory)][string]$BaseViPath,
+    [Parameter(Mandatory)][string]$HeadViPath,
+    [Parameter(Mandatory)][string]$ReportPath
+  )
+
+  $stageRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("comparevi-windows-docker-stage-{0}" -f ([guid]::NewGuid().ToString('N')))
+  $inputRoot = Join-Path $stageRoot 'inputs'
+  $outputRoot = Join-Path $stageRoot 'output'
+  New-Item -ItemType Directory -Path $inputRoot -Force | Out-Null
+  New-Item -ItemType Directory -Path $outputRoot -Force | Out-Null
+
+  $baseExtension = [System.IO.Path]::GetExtension($BaseViPath)
+  $headExtension = [System.IO.Path]::GetExtension($HeadViPath)
+  $stagedBaseViPath = Join-Path $inputRoot ('Base' + ($(if ($baseExtension) { $baseExtension } else { '' })))
+  $stagedHeadViPath = Join-Path $inputRoot ('Head' + ($(if ($headExtension) { $headExtension } else { '' })))
+  $stagedReportPath = Join-Path $outputRoot (Split-Path -Leaf $ReportPath)
+
+  Copy-Item -LiteralPath $BaseViPath -Destination $stagedBaseViPath -Force
+  Copy-Item -LiteralPath $HeadViPath -Destination $stagedHeadViPath -Force
+
+  return [ordered]@{
+    enabled = $true
+    reason = 'windows-docker-unc-mount-stage'
+    stageRoot = (Resolve-NativeProviderPath -PathValue $stageRoot)
+    inputRoot = (Resolve-NativeProviderPath -PathValue $inputRoot)
+    outputRoot = (Resolve-NativeProviderPath -PathValue $outputRoot)
+    requestedBaseViPath = $BaseViPath
+    requestedHeadViPath = $HeadViPath
+    requestedReportPath = $ReportPath
+    stagedBaseViPath = (Resolve-NativeProviderPath -PathValue $stagedBaseViPath)
+    stagedHeadViPath = (Resolve-NativeProviderPath -PathValue $stagedHeadViPath)
+    stagedReportPath = [System.IO.Path]::GetFullPath($stagedReportPath)
+  }
+}
+
+function Convert-WindowsDockerStagePathToRequestedPath {
+  param(
+    [AllowNull()][hashtable]$Stage,
+    [AllowNull()][string]$PathValue
+  )
+
+  if ($null -eq $Stage -or [string]::IsNullOrWhiteSpace($PathValue)) {
+    return $PathValue
+  }
+
+  $stageOutputRoot = [string]$Stage.outputRoot
+  if ([string]::IsNullOrWhiteSpace($stageOutputRoot)) {
+    return $PathValue
+  }
+
+  $comparison = [System.StringComparison]::OrdinalIgnoreCase
+  if (-not ([string]$PathValue).StartsWith($stageOutputRoot, $comparison)) {
+    return $PathValue
+  }
+
+  $requestedReportDirectory = Split-Path -Parent ([string]$Stage.requestedReportPath)
+  $suffix = ([string]$PathValue).Substring($stageOutputRoot.Length).TrimStart('\')
+  if ([string]::IsNullOrWhiteSpace($suffix)) {
+    return $requestedReportDirectory
+  }
+  return (Join-Path $requestedReportDirectory $suffix)
+}
+
+function Sync-WindowsDockerMountStageArtifacts {
+  param(
+    [Parameter(Mandatory)][hashtable]$Stage,
+    [Parameter(Mandatory)][object]$ExportResult
+  )
+
+  $requestedReportPath = [string]$Stage.requestedReportPath
+  $requestedReportDirectory = Split-Path -Parent $requestedReportPath
+  if (-not (Test-Path -LiteralPath $requestedReportDirectory -PathType Container)) {
+    New-Item -ItemType Directory -Path $requestedReportDirectory -Force | Out-Null
+  }
+
+  $reportCopied = $false
+  $exportCopied = $false
+  $stagedReportPath = [string]$Stage.stagedReportPath
+  if (Test-Path -LiteralPath $stagedReportPath -PathType Leaf) {
+    Copy-Item -LiteralPath $stagedReportPath -Destination $requestedReportPath -Force
+    $reportCopied = $true
+
+    $stageAssetDir = Join-Path (Split-Path -Parent $stagedReportPath) ("{0}_files" -f [System.IO.Path]::GetFileNameWithoutExtension($stagedReportPath))
+    if (Test-Path -LiteralPath $stageAssetDir -PathType Container) {
+      $assetDestination = Join-Path $requestedReportDirectory (Split-Path -Leaf $stageAssetDir)
+      if (Test-Path -LiteralPath $assetDestination -PathType Container) {
+        Remove-Item -LiteralPath $assetDestination -Recurse -Force -ErrorAction SilentlyContinue
+      }
+      Copy-Item -LiteralPath $stageAssetDir -Destination $assetDestination -Recurse -Force
+    }
+  }
+
+  $stageExportDir = Join-Path ([string]$Stage.outputRoot) 'container-export'
+  $requestedExportDir = Join-Path $requestedReportDirectory 'container-export'
+  if (Test-Path -LiteralPath $stageExportDir -PathType Container) {
+    if (Test-Path -LiteralPath $requestedExportDir -PathType Container) {
+      Remove-Item -LiteralPath $requestedExportDir -Recurse -Force -ErrorAction SilentlyContinue
+    }
+    Copy-Item -LiteralPath $stageExportDir -Destination $requestedReportDirectory -Recurse -Force
+    $exportCopied = $true
+  }
+
+  $mappedCopiedPaths = @(
+    foreach ($copiedPath in @($ExportResult.copiedPaths)) {
+      Convert-WindowsDockerStagePathToRequestedPath -Stage $Stage -PathValue ([string]$copiedPath)
+    }
+  )
+  $mappedCopyAttempts = @(
+    foreach ($attempt in @($ExportResult.copyAttempts)) {
+      [ordered]@{
+        sourcePath = [string]$attempt.sourcePath
+        destinationPath = (Convert-WindowsDockerStagePathToRequestedPath -Stage $Stage -PathValue ([string]$attempt.destinationPath))
+        exitCode = [int]$attempt.exitCode
+        artifactPresent = [bool]$attempt.artifactPresent
+        recoveredFromNonZeroExit = [bool]$attempt.recoveredFromNonZeroExit
+        recoveredFromHostReport = [bool]$attempt.recoveredFromHostReport
+        recoveryKind = [string]$attempt.recoveryKind
+      }
+    }
+  )
+
+  return [ordered]@{
+    reportCopied = $reportCopied
+    exportCopied = $exportCopied
+    exportResult = [ordered]@{
+      exportDir = (Convert-WindowsDockerStagePathToRequestedPath -Stage $Stage -PathValue ([string]$ExportResult.exportDir))
+      copiedPaths = $mappedCopiedPaths
+      copyAttempts = $mappedCopyAttempts
+      copyStatus = [string]$ExportResult.copyStatus
+      recoveredCopyCount = [int]$ExportResult.recoveredCopyCount
+      reportPathExtracted = (Convert-WindowsDockerStagePathToRequestedPath -Stage $Stage -PathValue ([string]$ExportResult.reportPathExtracted))
+    }
+  }
+}
+
+function Remove-WindowsDockerMountStage {
+  param([AllowNull()][hashtable]$Stage)
+
+  if ($null -eq $Stage) {
+    return
+  }
+  $stageRoot = [string]$Stage.stageRoot
+  if ([string]::IsNullOrWhiteSpace($stageRoot)) {
+    return
+  }
+  if (Test-Path -LiteralPath $stageRoot -PathType Container) {
+    Remove-Item -LiteralPath $stageRoot -Recurse -Force -ErrorAction Stop
+  }
 }
 
 function New-ContainerCommand {
@@ -955,6 +1136,18 @@ $capture = [ordered]@{
   baseVi        = $null
   headVi        = $null
   reportPath    = $null
+  staging       = [ordered]@{
+    enabled = $false
+    reason = ''
+    stageRoot = ''
+    inputRoot = ''
+    outputRoot = ''
+    activeBaseViPath = ''
+    activeHeadViPath = ''
+    activeReportPath = ''
+    outputSyncStatus = 'not-required'
+    cleanupStatus = 'not-attempted'
+  }
   labviewPath   = $null
   flags         = @()
   command       = $null
@@ -1014,6 +1207,8 @@ $reportDirectoryForExport = ''
 $additionalExportPaths = @()
 $previousCompareLabVIEWPath = $null
 $restoreCompareLabVIEWPath = $false
+$activeReportPathForExport = ''
+$windowsMountStage = $null
 
 try {
   Assert-Tool -Name 'docker'
@@ -1023,14 +1218,10 @@ try {
     throw ("Runtime guard script not found: {0}" -f $runtimeGuardPath)
   }
   $runtimeSnapshot = if ([string]::IsNullOrWhiteSpace($RuntimeSnapshotPath)) {
-    $defaultRoot = Join-Path (Resolve-Path '.').Path 'tests/results/ni-windows-container'
+    $defaultRoot = Join-Path ($ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath('.')) 'tests/results/ni-windows-container'
     Join-Path $defaultRoot 'runtime-determinism.json'
   } else {
-    if ([System.IO.Path]::IsPathRooted($RuntimeSnapshotPath)) {
-      [System.IO.Path]::GetFullPath($RuntimeSnapshotPath)
-    } else {
-      [System.IO.Path]::GetFullPath((Join-Path (Resolve-Path '.').Path $RuntimeSnapshotPath))
-    }
+    $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($RuntimeSnapshotPath)
   }
 
   & pwsh -NoLogo -NoProfile -File $runtimeGuardPath `
@@ -1099,6 +1290,32 @@ try {
       Remove-Item -LiteralPath $resolvedReportPath -Force -ErrorAction SilentlyContinue
     }
 
+    $activeBaseViPath = $baseViPath
+    $activeHeadViPath = $headViPath
+    $activeReportPath = $resolvedReportPath
+    if (
+      (Test-PathRequiresWindowsDockerLocalStage -PathValue $baseViPath) -or
+      (Test-PathRequiresWindowsDockerLocalStage -PathValue $headViPath) -or
+      (Test-PathRequiresWindowsDockerLocalStage -PathValue $resolvedReportPath)
+    ) {
+      $windowsMountStage = New-WindowsDockerMountStage -BaseViPath $baseViPath -HeadViPath $headViPath -ReportPath $resolvedReportPath
+      $activeBaseViPath = [string]$windowsMountStage.stagedBaseViPath
+      $activeHeadViPath = [string]$windowsMountStage.stagedHeadViPath
+      $activeReportPath = [string]$windowsMountStage.stagedReportPath
+      $capture.staging = [ordered]@{
+        enabled = $true
+        reason = [string]$windowsMountStage.reason
+        stageRoot = [string]$windowsMountStage.stageRoot
+        inputRoot = [string]$windowsMountStage.inputRoot
+        outputRoot = [string]$windowsMountStage.outputRoot
+        activeBaseViPath = $activeBaseViPath
+        activeHeadViPath = $activeHeadViPath
+        activeReportPath = $activeReportPath
+        outputSyncStatus = 'pending'
+        cleanupStatus = 'pending'
+      }
+    }
+
     $capturePath = Join-Path $reportDirectory 'ni-windows-container-capture.json'
     $stdoutPath = Join-Path $reportDirectory 'ni-windows-container-stdout.txt'
     $stderrPath = Join-Path $reportDirectory 'ni-windows-container-stderr.txt'
@@ -1130,14 +1347,15 @@ try {
     $mounts = @{}
     $mountIndex = 0
     $mountRef = [ref]$mountIndex
-    $containerBaseVi = Convert-HostFileToContainerPath -HostFilePath $baseViPath -MountMap $mounts -MountIndex $mountRef
-    $containerHeadVi = Convert-HostFileToContainerPath -HostFilePath $headViPath -MountMap $mounts -MountIndex $mountRef
-    $containerReportPath = Convert-HostFileToContainerPath -HostFilePath $resolvedReportPath -MountMap $mounts -MountIndex $mountRef
+    $containerBaseVi = Convert-HostFileToContainerPath -HostFilePath $activeBaseViPath -MountMap $mounts -MountIndex $mountRef
+    $containerHeadVi = Convert-HostFileToContainerPath -HostFilePath $activeHeadViPath -MountMap $mounts -MountIndex $mountRef
+    $containerReportPath = Convert-HostFileToContainerPath -HostFilePath $activeReportPath -MountMap $mounts -MountIndex $mountRef
 
     $containerName = 'ni-compare-{0}' -f ([guid]::NewGuid().ToString('N').Substring(0, 12))
     $containerNameForCleanup = $containerName
     $containerReportPathForExport = $containerReportPath
-    $reportDirectoryForExport = $reportDirectory
+    $reportDirectoryForExport = Split-Path -Parent $activeReportPath
+    $activeReportPathForExport = $activeReportPath
     $containerCommand = New-ContainerCommand
     $encodedContainerCommand = Convert-ToEncodedCommand -CommandText $containerCommand
 
@@ -1258,17 +1476,34 @@ try {
     $exportResult = Export-ContainerArtifacts `
       -ContainerName $containerNameForCleanup `
       -ContainerReportPath $containerReportPathForExport `
-      -HostReportPath $resolvedReportPath `
+      -HostReportPath $activeReportPathForExport `
       -ReportDirectory $reportDirectoryForExport `
       -AdditionalContainerPaths $additionalExportPaths
-    $capture.containerArtifacts = [ordered]@{
-      exportDir = [string]$exportResult.exportDir
-      copiedPaths = @($exportResult.copiedPaths)
-      copyAttempts = @($exportResult.copyAttempts)
-      copyStatus = [string]$exportResult.copyStatus
-      recoveredCopyCount = [int]$exportResult.recoveredCopyCount
+    $effectiveExportResult = $exportResult
+    if ($windowsMountStage) {
+      try {
+        $syncResult = Sync-WindowsDockerMountStageArtifacts -Stage $windowsMountStage -ExportResult $exportResult
+        $effectiveExportResult = $syncResult.exportResult
+        $capture.staging.outputSyncStatus = if ($syncResult.reportCopied -or $syncResult.exportCopied) { 'synchronized' } else { 'no-artifacts' }
+      } catch {
+        $capture.staging.outputSyncStatus = 'sync-failed'
+        $capture.status = 'error'
+        $capture.classification = 'staging-sync-error'
+        $capture.message = ("Windows Docker staging sync failed: {0}" -f $_.Exception.Message)
+        if (($null -eq $capture.exitCode) -or ([int]$capture.exitCode -eq 0)) {
+          $capture.exitCode = 1
+          $finalExitCode = 1
+        }
+      }
     }
-    $capture.reportAnalysis = Get-ReportAnalysis -ExtractedReportPath ([string]$exportResult.reportPathExtracted)
+    $capture.containerArtifacts = [ordered]@{
+      exportDir = [string]$effectiveExportResult.exportDir
+      copiedPaths = @($effectiveExportResult.copiedPaths)
+      copyAttempts = @($effectiveExportResult.copyAttempts)
+      copyStatus = [string]$effectiveExportResult.copyStatus
+      recoveredCopyCount = [int]$effectiveExportResult.recoveredCopyCount
+    }
+    $capture.reportAnalysis = Get-ReportAnalysis -ExtractedReportPath ([string]$effectiveExportResult.reportPathExtracted)
   }
 
   if (-not [string]::IsNullOrWhiteSpace($containerNameForCleanup)) {
@@ -1277,6 +1512,18 @@ try {
 
   if ($restoreCompareLabVIEWPath) {
     [Environment]::SetEnvironmentVariable('COMPARE_LABVIEW_PATH', $previousCompareLabVIEWPath, 'Process')
+  }
+
+  if ($windowsMountStage) {
+    try {
+      Remove-WindowsDockerMountStage -Stage $windowsMountStage
+      $capture.staging.cleanupStatus = 'removed'
+    } catch {
+      $capture.staging.cleanupStatus = 'cleanup-failed'
+      if ([string]::IsNullOrWhiteSpace([string]$capture.message)) {
+        $capture.message = ("Windows Docker staging cleanup failed: {0}" -f $_.Exception.Message)
+      }
+    }
   }
 
   $runtimeStatusForClassification = ''

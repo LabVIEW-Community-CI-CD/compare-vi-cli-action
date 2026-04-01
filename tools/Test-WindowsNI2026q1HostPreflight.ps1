@@ -34,10 +34,7 @@ $ErrorActionPreference = 'Stop'
 
 function Resolve-AbsolutePath {
   param([Parameter(Mandatory)][string]$Path)
-  if ([System.IO.Path]::IsPathRooted($Path)) {
-    return [System.IO.Path]::GetFullPath($Path)
-  }
-  return [System.IO.Path]::GetFullPath((Join-Path (Get-Location).Path $Path))
+  return $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($Path)
 }
 
 function Write-GitHubOutput {

@@ -1,0 +1,132 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://comparevi.dev/schemas/vi-history-local-next-step-v1.schema.json",
+  "title": "VI History Local Next Step",
+  "anyOf": [
+    {
+      "$ref": "#/$defs/nextStepRequirement"
+    },
+    {
+      "$ref": "#/$defs/nextStepEscalation"
+    },
+    {
+      "type": "null"
+    }
+  ],
+  "$defs": {
+    "rankedRequirement": {
+      "type": "object",
+      "required": [
+        "req_id",
+        "priority",
+        "status",
+        "phase",
+        "score",
+        "why_now",
+        "requirement",
+        "test_id",
+        "code_refs",
+        "suggested_loop"
+      ],
+      "properties": {
+        "req_id": { "type": "string" },
+        "priority": { "type": "string" },
+        "status": { "type": "string" },
+        "phase": { "type": "string" },
+        "score": { "type": "number" },
+        "why_now": { "type": "string" },
+        "requirement": { "type": "string" },
+        "test_id": { "type": "string" },
+        "code_refs": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "suggested_loop": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "test_artifact": { "type": "string" },
+        "active_now": { "type": "boolean" },
+        "mode": { "type": "string" },
+        "preferred_commands": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "stop_conditions": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "escalate_when": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      },
+      "additionalProperties": true
+    },
+    "nextStepRequirement": {
+      "allOf": [
+        { "$ref": "#/$defs/rankedRequirement" },
+        {
+          "type": "object",
+          "required": [ "type" ],
+          "properties": {
+            "type": { "const": "requirement" }
+          }
+        }
+      ]
+    },
+    "nextStepEscalation": {
+      "type": "object",
+      "required": [
+        "type",
+        "escalation_id",
+        "governing_requirement",
+        "blocked_requirement",
+        "proof_check_id",
+        "status",
+        "mode",
+        "why_now",
+        "reason",
+        "required_surface",
+        "current_surface_status",
+        "current_host_platform",
+        "suggested_loop",
+        "recommended_commands",
+        "stop_conditions"
+      ],
+      "properties": {
+        "type": { "const": "escalation" },
+        "escalation_id": { "type": "string" },
+        "governing_requirement": { "type": "string" },
+        "blocked_requirement": { "type": "string" },
+        "proof_check_id": { "type": "string" },
+        "status": { "type": "string" },
+        "mode": { "type": "string" },
+        "why_now": { "type": "string" },
+        "reason": { "type": "string" },
+        "required_surface": { "type": "string" },
+        "current_surface_status": { "type": "string" },
+        "current_host_platform": { "type": "string" },
+        "receipt_path": {
+          "anyOf": [
+            { "type": "string" },
+            { "type": "null" }
+          ]
+        },
+        "suggested_loop": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "recommended_commands": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "stop_conditions": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      },
+      "additionalProperties": true
+    }
+  }
+}

@@ -1,0 +1,164 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://comparevi.dev/schemas/windows-docker-shared-surface-local-ci-report-v1.schema.json",
+  "title": "Windows Docker Shared Surface Local CI Report",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "generated_at",
+    "repo_root",
+    "audit_surface",
+    "standards_audit",
+    "requirement_summary",
+    "proof_checks",
+    "ranked_requirements",
+    "escalations",
+    "next_requirement",
+    "next_step",
+    "overall"
+  ],
+  "properties": {
+    "schema_version": { "const": "1.0.0" },
+    "generated_at": { "type": "string", "format": "date-time" },
+    "repo_root": { "type": "string" },
+    "audit_surface": {
+      "type": "object",
+      "required": ["id", "description", "manifest_path", "bundle_root", "included_paths"],
+      "properties": {
+        "id": { "type": "string" },
+        "description": { "type": "string" },
+        "manifest_path": { "type": "string" },
+        "bundle_root": { "type": "string" },
+        "included_paths": { "type": "array", "items": { "type": "string" } }
+      },
+      "additionalProperties": true
+    },
+    "worktree_status": {
+      "type": "object",
+      "required": ["branch", "modified_paths", "active_requirement_refs"],
+      "properties": {
+        "branch": { "type": "string" },
+        "modified_paths": { "type": "array", "items": { "type": "string" } },
+        "active_requirement_refs": { "type": "array", "items": { "type": "string" } }
+      },
+      "additionalProperties": true
+    },
+    "standards_audit": {
+      "type": "object",
+      "required": ["status", "evidence_path", "score_path"],
+      "properties": {
+        "status": { "type": "string" },
+        "evidence_path": { "type": "string" },
+        "score_path": { "type": "string" },
+        "weak_areas": { "type": "array", "items": { "type": "string" } }
+      },
+      "additionalProperties": true
+    },
+    "requirement_summary": {
+      "type": "object",
+      "required": ["total", "implemented", "gaps"],
+      "properties": {
+        "total": { "type": "integer", "minimum": 0 },
+        "implemented": { "type": "integer", "minimum": 0 },
+        "gaps": { "type": "integer", "minimum": 0 }
+      },
+      "additionalProperties": true
+    },
+    "proof_checks": {
+      "type": "object",
+      "required": ["blocking_failures", "advisories", "checks"],
+      "properties": {
+        "blocking_failures": { "type": "integer", "minimum": 0 },
+        "advisories": { "type": "integer", "minimum": 0 },
+        "checks": { "type": "array", "items": { "$ref": "#/$defs/proofCheck" } }
+      },
+      "additionalProperties": true
+    },
+    "ranked_requirements": { "type": "array", "items": { "$ref": "#/$defs/rankedRequirement" } },
+    "escalations": { "type": "array", "items": { "$ref": "#/$defs/nextStepEscalation" } },
+    "next_requirement": { "anyOf": [{ "$ref": "#/$defs/rankedRequirement" }, { "type": "null" }] },
+    "next_step": {
+      "anyOf": [
+        { "$ref": "#/$defs/nextStepRequirement" },
+        { "$ref": "#/$defs/nextStepEscalation" },
+        { "type": "null" }
+      ]
+    },
+    "overall": {
+      "type": "object",
+      "required": ["status", "reason"],
+      "properties": {
+        "status": { "type": "string" },
+        "reason": { "type": "string" }
+      },
+      "additionalProperties": true
+    }
+  },
+  "$defs": {
+    "rankedRequirement": {
+      "type": "object",
+      "required": ["req_id", "priority", "status", "phase", "score", "why_now", "requirement", "test_id", "code_refs", "suggested_loop"],
+      "properties": {
+        "req_id": { "type": "string" },
+        "priority": { "type": "string" },
+        "status": { "type": "string" },
+        "phase": { "type": "string" },
+        "score": { "type": "number" },
+        "why_now": { "type": "string" },
+        "requirement": { "type": "string" },
+        "test_id": { "type": "string" },
+        "code_refs": { "type": "array", "items": { "type": "string" } },
+        "suggested_loop": { "type": "array", "items": { "type": "string" } },
+        "test_artifact": { "type": "string" },
+        "active_now": { "type": "boolean" },
+        "mode": { "type": "string" },
+        "preferred_commands": { "type": "array", "items": { "type": "string" } },
+        "stop_conditions": { "type": "array", "items": { "type": "string" } },
+        "escalate_when": { "type": "array", "items": { "type": "string" } }
+      },
+      "additionalProperties": true
+    },
+    "nextStepRequirement": {
+      "allOf": [
+        { "$ref": "#/$defs/rankedRequirement" },
+        { "type": "object", "required": ["type"], "properties": { "type": { "const": "requirement" } } }
+      ]
+    },
+    "nextStepEscalation": {
+      "type": "object",
+      "required": ["type", "escalation_id", "governing_requirement", "blocked_requirement", "proof_check_id", "status", "mode", "why_now", "reason", "required_surface", "current_surface_status", "current_host_platform", "suggested_loop", "recommended_commands", "stop_conditions"],
+      "properties": {
+        "type": { "const": "escalation" },
+        "escalation_id": { "type": "string" },
+        "governing_requirement": { "type": "string" },
+        "blocked_requirement": { "type": "string" },
+        "proof_check_id": { "type": "string" },
+        "status": { "type": "string" },
+        "mode": { "type": "string" },
+        "why_now": { "type": "string" },
+        "reason": { "type": "string" },
+        "required_surface": { "type": "string" },
+        "current_surface_status": { "type": "string" },
+        "current_host_platform": { "type": "string" },
+        "receipt_path": { "anyOf": [{ "type": "string" }, { "type": "null" }] },
+        "suggested_loop": { "type": "array", "items": { "type": "string" } },
+        "recommended_commands": { "type": "array", "items": { "type": "string" } },
+        "stop_conditions": { "type": "array", "items": { "type": "string" } }
+      },
+      "additionalProperties": true
+    },
+    "proofCheck": {
+      "type": "object",
+      "required": ["id", "owner_requirement", "status", "blocking", "summary"],
+      "properties": {
+        "id": { "type": "string" },
+        "owner_requirement": { "type": "string" },
+        "status": { "type": "string" },
+        "blocking": { "type": "boolean" },
+        "summary": { "type": "string" }
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": true
+}
