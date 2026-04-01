@@ -1,0 +1,20 @@
+{
+  "schema": "pester-failures@v2",
+  "schemaVersion": "1.1.0",
+  "detailStatus": "available",
+  "detailCount": 1,
+  "summary": {
+    "total": 4,
+    "failed": 1,
+    "errors": 0,
+    "skipped": 1
+  },
+  "results": [
+    {
+      "name": "RepresentativeReplay.fails",
+      "file": "tests/RepresentativeReplayFixture.Tests.ps1",
+      "status": "failed",
+      "message": "Expected 0, but got 1."
+    }
+  ]
+}

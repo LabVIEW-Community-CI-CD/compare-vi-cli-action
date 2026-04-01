@@ -1,0 +1,36 @@
+{
+  "schema_version": "1.0.0",
+  "phase_guidance": {
+    "foundation": {
+      "mode": "local-first",
+      "preferred_commands": [
+        "npm run tests:windows-surface:probe",
+        "npm run docker:ni:windows:bootstrap",
+        "npm run compare:docker:ni:windows:probe"
+      ],
+      "stop_conditions": [
+        "stop when the shared-surface packet tests pass and the next-step artifact no longer ranks the edited requirement first",
+        "stop when the current host and any reachable Windows host bridge still cannot satisfy the shared Windows surface and the loop emits an escalation step"
+      ],
+      "escalate_when": [
+        "the current host is not Windows and no reachable Windows host bridge is available",
+        "the shared Windows Docker Desktop + NI image surface must still be prepared on another host after bridge-backed probe or preflight"
+      ]
+    },
+    "autonomy": {
+      "mode": "local-first",
+      "preferred_commands": [
+        "npm run priority:windows-surface:local-ci",
+        "npm run priority:windows-surface:next-step"
+      ],
+      "stop_conditions": [
+        "stop when the next-step artifact becomes an escalation or null",
+        "stop when all tracked shared-surface requirements are implemented and only a host-bound proof remains"
+      ],
+      "escalate_when": [
+        "the next-step artifact names windows-docker-desktop-ni-image as the required surface",
+        "unsafe synced roots require relocation before Windows proof is run"
+      ]
+    }
+  }
+}

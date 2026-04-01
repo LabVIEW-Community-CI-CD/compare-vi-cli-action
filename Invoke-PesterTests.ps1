@@ -31,6 +31,10 @@ param(
   [string]$TestsPath = 'tests',
 
   [Parameter(Mandatory = $false)]
+  [ValidateSet('full', 'comparevi', 'dispatcher', 'workflow', 'fixtures', 'psummary', 'schema', 'loop', 'all', 'default', 'compare-vi', 'dispatch', 'orchestration', 'fixture', 'summary', 'schemas', 'control-loop')]
+  [string]$ExecutionPack = 'full',
+
+  [Parameter(Mandatory = $false)]
   [ValidateSet('auto','include','exclude')]
   [string]$IntegrationMode = 'auto',
 
@@ -158,6 +162,10 @@ param(
 $dispatcherSelectionModule = Join-Path $PSScriptRoot 'tools' 'Dispatcher' 'TestSelection.psm1'
 if (Test-Path -LiteralPath $dispatcherSelectionModule) {
   Import-Module $dispatcherSelectionModule -Force
+}
+$failurePayloadTool = Join-Path $PSScriptRoot 'tools' 'PesterFailurePayload.ps1'
+if (Test-Path -LiteralPath $failurePayloadTool -PathType Leaf) {
+  . $failurePayloadTool
 }
 
 $PesterPolicyVersion = '5.7.1'
@@ -553,11 +561,18 @@ function _Finalize-LabVIEWPidTracker {
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'tools/PesterExecutionPacks.ps1')
 
 # Default for includeIntegrationBool to avoid uninitialized usage during early helper calls
 if (-not (Get-Variable -Name includeIntegrationBool -Scope Script -ErrorAction SilentlyContinue)) {
   $script:includeIntegrationBool = $false
 }
+$script:executionPackResolved = 'full'
+$script:executionPackReason = 'default'
+$script:executionPackBaseIncludePatterns = @()
+$script:executionPackRefineIncludePatterns = @()
+$script:executionPackEffectiveIncludePatterns = @()
+$script:executionPackDescription = 'Full Pester suite'
 
 function Test-EnvTruthy {
   param([string]$Value)
@@ -734,6 +749,14 @@ switch ($resolvedIntegrationMode) {
 }
 $script:integrationModeResolved = $resolvedIntegrationMode
 $includeIntegrationBool = [bool]$script:includeIntegrationBool
+$executionPackResolution = Resolve-PesterExecutionPack -ExecutionPack $ExecutionPack -RefineIncludePatterns $IncludePatterns
+$script:executionPackResolved = [string]$executionPackResolution.executionPack
+$script:executionPackReason = [string]$executionPackResolution.executionPackSource
+$script:executionPackBaseIncludePatterns = @($executionPackResolution.baseIncludePatterns)
+$script:executionPackRefineIncludePatterns = @($executionPackResolution.refineIncludePatterns)
+$script:executionPackEffectiveIncludePatterns = @($executionPackResolution.effectiveIncludePatterns)
+$script:executionPackDescription = [string]$executionPackResolution.executionPackDescription
+$IncludePatterns = @($script:executionPackEffectiveIncludePatterns)
 $script:fastModeTemporarilySet = $false
 if (-not $includeIntegrationBool) {
   $fastPesterPresent = $false
@@ -787,7 +810,7 @@ elseif ($TimeoutMinutes -gt 0) { $effectiveTimeoutSeconds = [double]$TimeoutMinu
 
 # Schema version identifiers for emitted JSON artifacts (increment on breaking schema changes)
 $SchemaSummaryVersion  = '1.7.1'
-$SchemaFailuresVersion = '1.0.0'
+$SchemaFailuresVersion = '1.1.0'
 $SchemaManifestVersion = '1.0.0'
 ${SchemaLeakReportVersion} = '1.0.0'
 ${SchemaDiagnosticsVersion} = '1.1.0'
@@ -813,6 +836,8 @@ if ($sessionLockEnabled) {
 function Ensure-FailuresJson {
   param(
     [Parameter(Mandatory)][string]$Directory,
+    [Parameter()]$SummaryObject,
+    [Parameter()][string]$FailuresSchemaVersion = '1.1.0',
     [Parameter()][switch]$Force,
     [Parameter()][switch]$Normalize,
     [Parameter()][switch]$Quiet
@@ -823,14 +848,34 @@ function Ensure-FailuresJson {
     }
     $path = Join-Path $Directory 'pester-failures.json'
     if ($Force -or -not (Test-Path -LiteralPath $path -PathType Leaf)) {
-      '[]' | Out-File -FilePath $path -Encoding utf8 -ErrorAction Stop
+      $payloadSummary = if ($null -ne $SummaryObject) {
+        $SummaryObject
+      } else {
+        [pscustomobject]@{
+          total   = 0
+          failed  = 0
+          errors  = 0
+          skipped = 0
+        }
+      }
+      Write-PesterFailurePayload -PathValue $path -SummaryObject $payloadSummary -FailureEntries @() -SchemaVersion $FailuresSchemaVersion | Out-Null
       if (-not $Quiet) { Write-Host "Created empty failures JSON at: $path" -ForegroundColor Gray }
     } elseif ($Normalize) {
       try {
         $info = Get-Item -LiteralPath $path -ErrorAction Stop
         if ($info.Length -eq 0 -or -not (Get-Content -LiteralPath $path -Raw).Trim()) {
-          '[]' | Out-File -FilePath $path -Encoding utf8 -Force
-          if (-not $Quiet) { Write-Host 'Normalized zero-byte failures JSON to []' -ForegroundColor Gray }
+          $payloadSummary = if ($null -ne $SummaryObject) {
+            $SummaryObject
+          } else {
+            [pscustomobject]@{
+              total   = 0
+              failed  = 0
+              errors  = 0
+              skipped = 0
+            }
+          }
+          Write-PesterFailurePayload -PathValue $path -SummaryObject $payloadSummary -FailureEntries @() -SchemaVersion $FailuresSchemaVersion | Out-Null
+          if (-not $Quiet) { Write-Host 'Normalized zero-byte failures JSON to canonical empty payload' -ForegroundColor Gray }
         }
       } catch {
         Write-Warning "Failed to normalize failures JSON: $_"
@@ -885,134 +930,14 @@ function Clear-DispatcherGuardCrumb {
   }
 }
 
-function Write-ArtifactManifest {
-  param(
-    [Parameter(Mandatory)] [string]$Directory,
-    [Parameter(Mandatory)] [string]$SummaryJsonPath,
-    [Parameter(Mandatory)] [string]$ManifestVersion
-  )
-  try {
-    if ([string]::IsNullOrWhiteSpace($Directory)) {
-      Write-Warning "Artifact manifest emission skipped: Directory parameter was null or empty"
-      return
-    }
-    # Ensure directory exists (it should, but tests may simulate deletion scenarios)
-    if (-not (Test-Path -LiteralPath $Directory -PathType Container)) {
-      try { New-Item -ItemType Directory -Force -Path $Directory | Out-Null } catch { Write-Warning "Failed to (re)create artifact directory '$Directory': $_" }
-    }
-
-    $artifacts = @()
-    
-    # Add artifacts if they exist
-    $xmlPath = Join-Path $Directory 'pester-results.xml'
-    if (Test-Path -LiteralPath $xmlPath) {
-      $artifacts += [PSCustomObject]@{ file = 'pester-results.xml'; type = 'nunitXml' }
-    }
-    
-    $txtPath = Join-Path $Directory 'pester-summary.txt'
-    if (Test-Path -LiteralPath $txtPath) {
-      $artifacts += [PSCustomObject]@{ file = 'pester-summary.txt'; type = 'textSummary' }
-    }
-    # Include rendered compare report(s) if present
-    $cmpPath = Join-Path $Directory 'compare-report.html'
-    if (Test-Path -LiteralPath $cmpPath) {
-      $artifacts += [PSCustomObject]@{ file = 'compare-report.html'; type = 'htmlCompare' }
-    }
-    # Include results index if present
-    $idxPath = Join-Path $Directory 'results-index.html'
-    if (Test-Path -LiteralPath $idxPath) {
-      $artifacts += [PSCustomObject]@{ file = 'results-index.html'; type = 'htmlIndex' }
-    }
-    try {
-      $extraHtml = @(Get-ChildItem -LiteralPath $Directory -Filter '*compare-report*.html' -File -ErrorAction SilentlyContinue | Where-Object { $_.Name -ne 'compare-report.html' })
-      foreach ($h in $extraHtml) {
-        $artifacts += [PSCustomObject]@{ file = $h.Name; type = 'htmlCompare' }
-      }
-    } catch {}
-    
-    if (-not [string]::IsNullOrWhiteSpace($SummaryJsonPath)) {
-      try {
-        $jsonSummaryFile = Split-Path -Leaf $SummaryJsonPath
-        $jsonPath = Join-Path $Directory $jsonSummaryFile
-        if (Test-Path -LiteralPath $jsonPath) {
-          $artifacts += [PSCustomObject]@{ file = $jsonSummaryFile; type = 'jsonSummary'; schemaVersion = $SchemaSummaryVersion }
-        }
-      } catch {
-        Write-Warning "Failed to process summary JSON path '$SummaryJsonPath' for manifest: $_"
-      }
-    }
-    
-    $failuresPath = Join-Path $Directory 'pester-failures.json'
-    if (Test-Path -LiteralPath $failuresPath) {
-      $artifacts += [PSCustomObject]@{ file = 'pester-failures.json'; type = 'jsonFailures'; schemaVersion = $SchemaFailuresVersion }
-    }
-    $trailPath = Join-Path $Directory 'pester-artifacts-trail.json'
-    if (Test-Path -LiteralPath $trailPath) {
-      $artifacts += [PSCustomObject]@{ file = 'pester-artifacts-trail.json'; type = 'jsonTrail' }
-    }
-    $sessionIdx = Join-Path $Directory 'session-index.json'
-    if (Test-Path -LiteralPath $sessionIdx) {
-      $artifacts += [PSCustomObject]@{ file = 'session-index.json'; type = 'jsonSessionIndex' }
-    }
-    $leakPath = Join-Path $Directory 'pester-leak-report.json'
-    if (Test-Path -LiteralPath $leakPath) {
-      $artifacts += [PSCustomObject]@{ file = 'pester-leak-report.json'; type = 'jsonLeaks'; schemaVersion = $SchemaLeakReportVersion }
-    }
-    # Optional diagnostics files (result shapes)
-    $diagTxt = Join-Path $Directory 'result-shapes.txt'
-    if (Test-Path -LiteralPath $diagTxt) {
-      $artifacts += [PSCustomObject]@{ file = 'result-shapes.txt'; type = 'textDiagnostics' }
-    }
-    $diagJson = Join-Path $Directory 'result-shapes.json'
-    if (Test-Path -LiteralPath $diagJson) {
-      $artifacts += [PSCustomObject]@{ file = 'result-shapes.json'; type = 'jsonDiagnostics'; schemaVersion = ${SchemaDiagnosticsVersion} }
-    }
-    
-    # Optional: include lightweight metrics if summary JSON exists
-  $metrics = $null
-    try {
-      $jsonSummaryFile = Split-Path -Leaf $SummaryJsonPath
-      if ($jsonSummaryFile) {
-        $jsonPath = Join-Path $Directory $jsonSummaryFile
-        if (Test-Path -LiteralPath $jsonPath) {
-          $summaryJson = Get-Content -LiteralPath $jsonPath -Raw | ConvertFrom-Json -ErrorAction Stop
-          $aggMsValue = $null
-          if ($summaryJson.PSObject.Properties.Name -contains 'aggregatorBuildMs' -and $null -ne $summaryJson.aggregatorBuildMs) {
-            $aggMsValue = $summaryJson.aggregatorBuildMs
-          }
-          $metrics = [PSCustomObject]@{
-            totalTests       = $summaryJson.total
-            failed           = $summaryJson.failed
-            skipped          = $summaryJson.skipped
-            duration_s       = $summaryJson.duration_s
-            meanTest_ms      = $summaryJson.meanTest_ms
-            p95Test_ms       = $summaryJson.p95Test_ms
-            maxTest_ms       = $summaryJson.maxTest_ms
-            aggregatorBuildMs = $aggMsValue
-          }
-        }
-      }
-    } catch { Write-Warning "Failed to enrich manifest metrics: $_" }
-
-    $manifest = [PSCustomObject]@{
-      manifestVersion = $ManifestVersion
-      generatedAt     = (Get-Date).ToString('o')
-      artifacts       = $artifacts
-      metrics         = $metrics
-    }
-    $manifestPath = Join-Path $Directory 'pester-artifacts.json'
-    $manifest | ConvertTo-Json -Depth 5 | Out-File -FilePath $manifestPath -Encoding utf8 -ErrorAction Stop
-    Write-Host "Artifact manifest written to: $manifestPath" -ForegroundColor Gray
-  } catch {
-    Write-Warning "Failed to write artifact manifest: $_"
-  }
-}
-
 function Write-FailureDiagnostics {
   param(
     [Parameter(Mandatory)] $PesterResult,
     [Parameter(Mandatory)] [string]$ResultsDirectory,
     [Parameter(Mandatory)] [int]$SkippedCount,
+    [Parameter(Mandatory)] [int]$TotalCount,
+    [Parameter(Mandatory)] [int]$FailedCount,
+    [Parameter(Mandatory)] [int]$ErrorCount,
     [Parameter(Mandatory)] [string]$FailuresSchemaVersion
   )
   try {
@@ -1041,18 +966,26 @@ function Write-FailureDiagnostics {
         $failArray = @()
         foreach ($t in $failedTests) {
           $failArray += [PSCustomObject]@{
-            name          = $t.Name
-            path          = $t.Path
-            duration_ms   = if ($t.Duration) { [math]::Round($t.Duration.TotalMilliseconds,2) } else { $null }
-            message       = if ($t.ErrorRecord) { ($t.ErrorRecord.Exception.Message | Out-String).Trim() } else { $null }
-            schemaVersion = $FailuresSchemaVersion
+            name        = $t.Name
+            result      = 'Failed'
+            path        = $t.Path
+            file        = $t.Path
+            duration    = if ($t.Duration) { [math]::Round($t.Duration.TotalSeconds, 6) } else { $null }
+            duration_ms = if ($t.Duration) { [math]::Round($t.Duration.TotalMilliseconds, 2) } else { $null }
+            message     = if ($t.ErrorRecord) { ($t.ErrorRecord.Exception.Message | Out-String).Trim() } else { $null }
           }
         }
         $failJsonPath = Join-Path $ResultsDirectory 'pester-failures.json'
         if (-not (Test-Path -LiteralPath $ResultsDirectory -PathType Container)) {
           New-Item -ItemType Directory -Force -Path $ResultsDirectory | Out-Null
         }
-        $failArray | ConvertTo-Json -Depth 4 | Out-File -FilePath $failJsonPath -Encoding utf8 -ErrorAction Stop
+        $failSummary = [pscustomobject]@{
+          total   = $TotalCount
+          failed  = $FailedCount
+          errors  = $ErrorCount
+          skipped = $SkippedCount
+        }
+        Write-PesterFailurePayload -PathValue $failJsonPath -SummaryObject $failSummary -FailureEntries $failArray -SchemaVersion $FailuresSchemaVersion | Out-Null
         Write-Host "Failures JSON written to: $failJsonPath" -ForegroundColor Gray
       } catch {
         Write-Warning "Failed to write failures JSON: $_"
@@ -1087,6 +1020,11 @@ Write-Host "Configuration:" -ForegroundColor Yellow
 Write-Host "  Tests Path: $TestsPath"
 Write-Host ("  Integration Mode: {0}" -f $script:integrationModeResolved)
 Write-Host ("  Include Integration: {0}" -f ([bool]$includeIntegrationBool))
+Write-Host ("  Execution Pack: {0}" -f $script:executionPackResolved)
+if ($script:executionPackReason) { Write-Host ("    Pack Source: {0}" -f $script:executionPackReason) -ForegroundColor DarkGray }
+if ($script:executionPackRefineIncludePatterns.Count -gt 0) {
+  Write-Host ("    Pack Refinements: {0}" -f ($script:executionPackRefineIncludePatterns -join ', ')) -ForegroundColor DarkGray
+}
 if ($script:integrationModeReason) { Write-Host ("    Mode Source: {0}" -f $script:integrationModeReason) -ForegroundColor DarkGray }
 if ($legacyIncludeSpecified) { Write-Host ("  Legacy IncludeIntegration Argument: {0}" -f $IncludeIntegration) -ForegroundColor DarkGray }
 Write-Host "  Results Path: $ResultsPath"
@@ -1399,6 +1337,8 @@ function Write-SessionIndex {
       schemaVersion    = '1.0.0'
       generatedAtUtc   = (Get-Date).ToUniversalTime().ToString('o')
       resultsDir       = $ResultsDirectory
+      executionPack      = $script:executionPackResolved
+      executionPackSource = $script:executionPackReason
       includeIntegration = [bool]$includeIntegrationBool
       integrationMode    = $script:integrationModeResolved
       integrationSource  = $script:integrationModeReason
@@ -1462,6 +1402,7 @@ function Write-SessionIndex {
           $lines += ("- Status: {0}" -f $status)
           $lines += ("- Total: {0} | Passed: {1} | Failed: {2} | Errors: {3} | Skipped: {4}" -f $s.total,$s.passed,$s.failed,$s.errors,$s.skipped)
           $lines += ("- Duration (s): {0}" -f $s.duration_s)
+          if ($s.executionPack) { $lines += ("- Execution Pack: {0}" -f $s.executionPack) }
           $lines += ("- Include Integration: {0}" -f [bool]$includeIntegrationBool)
           $lines += ("- Integration Mode: {0}" -f $script:integrationModeResolved)
           if ($script:integrationModeReason) { $lines += ("- Integration Source: {0}" -f $script:integrationModeReason) }
@@ -1655,6 +1596,12 @@ function Invoke-ExecutionFinalizeHelper {
     $SummaryPayload,
     [Parameter(ParameterSetName = 'Build')]
     $ArtifactTrail,
+    [Parameter(ParameterSetName = 'Build')]
+    [Parameter(ParameterSetName = 'Reuse')]
+    $LeakReportPayload,
+    [Parameter(ParameterSetName = 'Build')]
+    [Parameter(ParameterSetName = 'Reuse')]
+    $PublicationPayload,
     [Parameter(ParameterSetName = 'Reuse')]
     [switch]$ReuseExistingContext
   )
@@ -1671,6 +1618,24 @@ function Invoke-ExecutionFinalizeHelper {
         return $false
       }
       $contextPath = $script:executionFinalizeContextPath
+      if ($null -ne $LeakReportPayload -or $null -ne $PublicationPayload) {
+        $existingContext = Get-Content -LiteralPath $contextPath -Raw | ConvertFrom-Json -ErrorAction Stop
+        foreach ($entry in @(
+          @{ Name = 'leakReportPayload'; Value = $LeakReportPayload },
+          @{ Name = 'publication'; Value = $PublicationPayload }
+        )) {
+          if ($null -eq $entry.Value) {
+            continue
+          }
+          $property = $existingContext.PSObject.Properties[$entry.Name]
+          if ($property) {
+            $property.Value = $entry.Value
+          } else {
+            Add-Member -InputObject $existingContext -Name $entry.Name -MemberType NoteProperty -Value $entry.Value
+          }
+        }
+        $existingContext | ConvertTo-Json -Depth 12 | Out-File -FilePath $contextPath -Encoding utf8 -ErrorAction Stop
+      }
     } else {
       $finalizeContext = [ordered]@{
         schema                   = 'pester-execution-finalize-context@v1'
@@ -1678,6 +1643,11 @@ function Invoke-ExecutionFinalizeHelper {
         repoRoot                 = $root
         resultsDir               = $resultsDir
         jsonSummaryPath          = $JsonSummaryPath
+        executionPack            = $script:executionPackResolved
+        executionPackSource      = $script:executionPackReason
+        executionPackBaseIncludePatterns = @($script:executionPackBaseIncludePatterns)
+        executionPackRefineIncludePatterns = @($script:executionPackRefineIncludePatterns)
+        executionPackEffectiveIncludePatterns = @($script:executionPackEffectiveIncludePatterns)
         includeIntegration       = [bool]$includeIntegrationBool
         integrationMode          = $script:integrationModeResolved
         integrationSource        = $script:integrationModeReason
@@ -1696,6 +1666,12 @@ function Invoke-ExecutionFinalizeHelper {
       if ($null -ne $ArtifactTrail) {
         $finalizeContext['artifactTrail'] = $ArtifactTrail
       }
+      if ($null -ne $LeakReportPayload) {
+        $finalizeContext['leakReportPayload'] = $LeakReportPayload
+      }
+      if ($null -ne $PublicationPayload) {
+        $finalizeContext['publication'] = $PublicationPayload
+      }
       $contextPath = Join-Path $resultsDir 'pester-execution-finalize-context.json'
       $finalizeContext | ConvertTo-Json -Depth 12 | Out-File -FilePath $contextPath -Encoding utf8 -ErrorAction Stop
       $script:executionFinalizeContextPath = $contextPath
@@ -1710,6 +1686,75 @@ function Invoke-ExecutionFinalizeHelper {
     Write-Warning "Failed to finalize execution side effects: $_"
     return $false
   }
+}
+
+function New-ExecutionPublicationPayload {
+  [CmdletBinding()]
+  param(
+    [Parameter()]
+    [object[]]$SelectedTests = @(),
+    [Parameter()]
+    [string]$DiscoveryDescriptor = 'manual-scan',
+    [Parameter()]
+    [string]$PartialLogPath
+  )
+
+  $selectedNames = @()
+  foreach ($item in @($SelectedTests)) {
+    if ($null -eq $item) { continue }
+    if ($item -is [System.IO.FileInfo]) {
+      $selectedNames += $item.Name
+      continue
+    }
+    if ($item -is [string]) {
+      $selectedNames += (Split-Path -Leaf $item)
+      continue
+    }
+    if ($item.PSObject.Properties['FullName']) {
+      $selectedNames += (Split-Path -Leaf $item.FullName)
+      continue
+    }
+    if ($item.PSObject.Properties['Name']) {
+      $selectedNames += [string]$item.Name
+    }
+  }
+  $selectedNames = @($selectedNames | Where-Object { $_ -and $_ -ne '' } | Sort-Object -Unique)
+
+  $ghCommand = $null
+  $workflowName = if ($env:GITHUB_WORKFLOW) { $env:GITHUB_WORKFLOW } else { 'ci-orchestrated.yml' }
+  $ghCommand = "gh workflow run `"$workflowName`""
+  if ($env:GITHUB_REPOSITORY) { $ghCommand += (" -R {0}" -f $env:GITHUB_REPOSITORY) }
+  if ($env:GITHUB_REF_NAME) { $ghCommand += (" -r `"{0}`"" -f $env:GITHUB_REF_NAME) }
+  $ghCommand += (" -f include_integration={0}" -f ([bool]$includeIntegrationBool).ToString().ToLowerInvariant())
+  if ($env:EV_SAMPLE_ID) { $ghCommand += (" -f sample_id={0}" -f $env:EV_SAMPLE_ID) }
+
+  $payload = [ordered]@{
+    disableStepSummary = [bool]$DisableStepSummary
+    selectedTests      = $selectedNames
+    includeIntegration = [bool]$includeIntegrationBool
+    integrationMode    = $script:integrationModeResolved
+    integrationSource  = $script:integrationModeReason
+    discovery          = $DiscoveryDescriptor
+    rerunCommand       = $ghCommand
+  }
+
+  if ($script:stuckGuardEnabled) {
+    $heartbeatCount = 0
+    if ($script:hbPath -and (Test-Path -LiteralPath $script:hbPath -PathType Leaf)) {
+      try {
+        $lines = Get-Content -LiteralPath $script:hbPath -ErrorAction SilentlyContinue
+        $heartbeatCount = @($lines | Where-Object { $_ -like '*"type":"beat"*' }).Count
+      } catch {}
+    }
+    $payload['guard'] = [ordered]@{
+      enabled        = [bool]$script:stuckGuardEnabled
+      heartbeats     = $heartbeatCount
+      heartbeatPath  = $script:hbPath
+      partialLogPath = $PartialLogPath
+    }
+  }
+
+  return [pscustomobject]$payload
 }
 
 # Optional pre-clean of LabVIEW if explicitly requested
@@ -1891,10 +1936,21 @@ if ($limitToSingle) {
     }
   }
   if ($patternFilters.Include.Applied) {
-    $includePatternsText = if ($patternFilters.Include.Patterns) { ($patternFilters.Include.Patterns -join ', ') } else { '' }
-    Write-Host (
-      "Applied IncludePatterns ({0}) -> kept {1}/{2} file(s)" -f $includePatternsText, $patternFilters.Include.After, $patternFilters.Include.Before
-    ) -ForegroundColor DarkGray
+    if ($script:executionPackResolved -and $script:executionPackResolved -ne 'full') {
+      $detail = if ($script:executionPackRefineIncludePatterns.Count -gt 0) {
+        "ExecutionPack={0}; refinements={1}" -f $script:executionPackResolved, ($script:executionPackRefineIncludePatterns -join ', ')
+      } else {
+        "ExecutionPack={0}" -f $script:executionPackResolved
+      }
+      Write-Host (
+        "Applied selection contract ({0}) -> kept {1}/{2} file(s)" -f $detail, $patternFilters.Include.After, $patternFilters.Include.Before
+      ) -ForegroundColor DarkGray
+    } else {
+      $includePatternsText = if ($patternFilters.Include.Patterns) { ($patternFilters.Include.Patterns -join ', ') } else { '' }
+      Write-Host (
+        "Applied IncludePatterns ({0}) -> kept {1}/{2} file(s)" -f $includePatternsText, $patternFilters.Include.After, $patternFilters.Include.Before
+      ) -ForegroundColor DarkGray
+    }
   }
   if ($patternFilters.Exclude.Applied -and $patternFilters.Exclude.Removed -gt 0) {
     $excludePatternsText = if ($patternFilters.Exclude.Patterns) { ($patternFilters.Exclude.Patterns -join ', ') } else { '' }
@@ -1995,7 +2051,8 @@ if (-not (Get-Variable -Name originalTestFileCount -Scope Script -ErrorAction Si
 }
 $selectedTestPaths = @($testFiles | ForEach-Object { $_.FullName })
 $selectionReasons = New-Object System.Collections.Generic.List[string]
-if ($IncludePatterns -and $IncludePatterns.Count -gt 0) { [void]$selectionReasons.Add('IncludePatterns') }
+if ($script:executionPackResolved -and $script:executionPackResolved -ne 'full') { [void]$selectionReasons.Add('ExecutionPack') }
+if ($script:executionPackRefineIncludePatterns -and $script:executionPackRefineIncludePatterns.Count -gt 0) { [void]$selectionReasons.Add('IncludePatterns') }
 if ($ExcludePatterns -and $ExcludePatterns.Count -gt 0) { [void]$selectionReasons.Add('ExcludePatterns') }
 if ($maxTestFilesApplied) { [void]$selectionReasons.Add('MaxTestFiles') }
 if ($selectedTestPaths.Count -lt $originalTestFileCount) { [void]$selectionReasons.Add('SelectionReduced') }
@@ -2037,6 +2094,10 @@ if ($testFiles.Count -eq 0) {
     duration_s               = 0.0
     timestamp                = (Get-Date).ToString('o')
     pesterVersion            = ''
+    executionPack            = $script:executionPackResolved
+    executionPackSource      = $script:executionPackReason
+    refineIncludePatterns    = @($script:executionPackRefineIncludePatterns)
+    effectiveIncludePatterns = @($script:executionPackEffectiveIncludePatterns)
     includeIntegration       = [bool]$includeIntegrationBool
     integrationMode          = $script:integrationModeResolved
     integrationSource        = $script:integrationModeReason
@@ -2051,6 +2112,9 @@ if ($testFiles.Count -eq 0) {
     resultsXmlCloseTagPresent = $true
     schemaVersion            = $SchemaSummaryVersion
   }
+  $earlyDiscoveryDescriptor = if ($usedNodeDiscovery) { 'manifest' } else { 'manual-scan' }
+  $publicationPayload = New-ExecutionPublicationPayload -SelectedTests @() -DiscoveryDescriptor $earlyDiscoveryDescriptor
+  $leakReportPayload = $null
 
   # Optional: run leak detection even when no tests discovered
   if ($DetectLeaks) {
@@ -2073,7 +2137,7 @@ if ($testFiles.Count -eq 0) {
         $runningJobs = @($pesterJobs | Where-Object { $_.state -eq 'Running' -or $_.state -eq 'NotStarted' })
         $leakDetected = (($procsAfter.Count -gt 0) -or ($runningJobs.Count -gt 0))
       }
-      $leakReport = [pscustomobject]@{
+      $leakReportPayload = [pscustomobject]@{
         schema         = 'pester-leak-report/v1'
         schemaVersion  = ${SchemaLeakReportVersion}
         generatedAt    = (Get-Date).ToString('o')
@@ -2091,12 +2155,10 @@ if ($testFiles.Count -eq 0) {
         stoppedJobs    = $stoppedJobs
         notes          = @('Leak = LabVIEW/LVCompare (or configured targets) still running or Pester jobs still active after test run')
       }
-      $leakPathOut = Join-Path $resultsDir 'pester-leak-report.json'
-      $leakReport | ConvertTo-Json -Depth 6 | Out-File -FilePath $leakPathOut -Encoding utf8 -ErrorAction SilentlyContinue
       if ($leakDetected -and $FailOnLeaks) { Write-Error 'Failing run due to detected leaks (processes/jobs)'; exit 1 }
     } catch { Write-Warning "Leak detection (early-exit) failed: $_" }
   }
-  Invoke-ExecutionFinalizeHelper -SummaryText $summaryTextEarly -SummaryPayload $jsonObj -ArtifactTrail $script:artifactTrail | Out-Null
+  Invoke-ExecutionFinalizeHelper -SummaryText $summaryTextEarly -SummaryPayload $jsonObj -ArtifactTrail $script:artifactTrail -LeakReportPayload $leakReportPayload -PublicationPayload $publicationPayload | Out-Null
   Write-Host 'No test files found. Placeholder artifacts emitted.' -ForegroundColor Yellow
   exit 0
 }
@@ -2562,6 +2624,10 @@ if (-not $script:UseSingleInvoker) {
       duration_s               = [math]::Round($testDuration.TotalSeconds, 6)
       timestamp                = (Get-Date).ToString('o')
       pesterVersion            = if ($loadedPester) { $loadedPester.Version.ToString() } else { '' }
+      executionPack            = $script:executionPackResolved
+      executionPackSource      = $script:executionPackReason
+      refineIncludePatterns    = @($script:executionPackRefineIncludePatterns)
+      effectiveIncludePatterns = @($script:executionPackEffectiveIncludePatterns)
       includeIntegration       = [bool]$includeIntegrationBool
       integrationMode          = $script:integrationModeResolved
       integrationSource        = $script:integrationModeReason
@@ -2880,221 +2946,9 @@ $summary = $summaryLines -join [Environment]::NewLine
 Write-Host ""
 Write-Host $summary -ForegroundColor $(if ($failed -eq 0 -and $errors -eq 0) { 'Green' } else { 'Red' })
 Write-Host ""
-
-# Emit high-level selection summary to GitHub Step Summary (if available)
-if ($env:GITHUB_STEP_SUMMARY -and -not $DisableStepSummary) {
-  try {
-    $selectedNames = @()
-    foreach ($item in $testFiles) {
-      if ($null -eq $item) { continue }
-      if ($item -is [System.IO.FileInfo]) {
-        $selectedNames += $item.Name
-      } elseif ($item -is [string]) {
-        $selectedNames += (Split-Path -Leaf $item)
-      } elseif ($item.PSObject.Properties['FullName']) {
-        $selectedNames += (Split-Path -Leaf $item.FullName)
-      }
-    }
-    $selectedNames = $selectedNames | Sort-Object -Unique
-    $discoveryDescriptor = if ($usedNodeDiscovery) { 'manifest' } else { 'manual-scan' }
-    $includeText = ([bool]$includeIntegrationBool).ToString().ToLowerInvariant()
-    $modeText = if ($script:integrationModeResolved) { $script:integrationModeResolved } else { 'auto' }
-    $modeSource = if ($script:integrationModeReason) { $script:integrationModeReason } else { 'auto' }
-    $repoSlug = $env:GITHUB_REPOSITORY
-    $refName = $env:GITHUB_REF_NAME
-    $sampleId = $env:EV_SAMPLE_ID
-    $workflowName = if ($env:GITHUB_WORKFLOW) { $env:GITHUB_WORKFLOW } else { 'ci-orchestrated.yml' }
-    $ghCommand = "gh workflow run `"$workflowName`""
-    if ($repoSlug) { $ghCommand += (" -R {0}" -f $repoSlug) }
-    if ($refName) { $ghCommand += (" -r `"{0}`"" -f $refName) }
-    $ghCommand += (" -f include_integration={0}" -f $includeText)
-    if ($sampleId) { $ghCommand += (" -f sample_id={0}" -f $sampleId) }
-
-    $stepSummaryLines = @()
-    $stepSummaryLines += ''
-    $stepSummaryLines += '### Selected Tests'
-    $stepSummaryLines += ''
-    if ($selectedNames.Count -eq 0) {
-      $stepSummaryLines += '- (none)'
-    } else {
-      foreach ($name in $selectedNames) { $stepSummaryLines += ("- {0}" -f $name) }
-    }
-    $stepSummaryLines += ''
-    $stepSummaryLines += '### Configuration'
-    $stepSummaryLines += ''
-    $stepSummaryLines += ("- IncludeIntegration: {0}" -f ([bool]$includeIntegrationBool))
-    $stepSummaryLines += ("- Integration Mode: {0}" -f $modeText)
-    $stepSummaryLines += ("- Integration Source: {0}" -f $modeSource)
-    $stepSummaryLines += ("- Discovery: {0}" -f $discoveryDescriptor)
-    if ($labviewPidTrackerLoaded -and $script:labviewPidTrackerPath) {
-      $stepSummaryLines += ''
-      $stepSummaryLines += '### LabVIEW PID Tracker'
-      $stepSummaryLines += ''
-      $stepSummaryLines += ("- Tracker Path: {0}" -f $script:labviewPidTrackerPath)
-
-      $initialPid = 'none'
-      $initialRunning = 'unknown'
-      $initialReused = 'unknown'
-      if ($script:labviewPidTrackerState) {
-        if ($script:labviewPidTrackerState.PSObject.Properties['Pid'] -and $script:labviewPidTrackerState.Pid) {
-          $initialPid = $script:labviewPidTrackerState.Pid
-        }
-        if ($script:labviewPidTrackerState.PSObject.Properties['Running']) {
-          try { $initialRunning = [bool]$script:labviewPidTrackerState.Running } catch { $initialRunning = 'unknown' }
-        }
-        if ($script:labviewPidTrackerState.PSObject.Properties['Reused']) {
-          try { $initialReused = [bool]$script:labviewPidTrackerState.Reused } catch { $initialReused = 'unknown' }
-        }
-      }
-      $stepSummaryLines += ("- Initial: pid={0}, running={1}, reused={2}" -f $initialPid,$initialRunning,$initialReused)
-
-      $finalPid = 'none'
-      $finalRunning = 'unknown'
-      $finalReused = 'unknown'
-      if ($script:labviewPidTrackerFinalState) {
-        if ($script:labviewPidTrackerFinalState.PSObject.Properties['Pid'] -and $script:labviewPidTrackerFinalState.Pid) {
-          $finalPid = $script:labviewPidTrackerFinalState.Pid
-        }
-        if ($script:labviewPidTrackerFinalState.PSObject.Properties['Running']) {
-          try { $finalRunning = [bool]$script:labviewPidTrackerFinalState.Running } catch { $finalRunning = 'unknown' }
-        }
-        if ($script:labviewPidTrackerFinalState.PSObject.Properties['Reused']) {
-          try { $finalReused = [bool]$script:labviewPidTrackerFinalState.Reused } catch { $finalReused = 'unknown' }
-        } elseif ($script:labviewPidTrackerState -and $script:labviewPidTrackerState.PSObject.Properties['Reused']) {
-          try { $finalReused = [bool]$script:labviewPidTrackerState.Reused } catch { $finalReused = 'unknown' }
-        }
-      }
-      $stepSummaryLines += ("- Final: pid={0}, running={1}, reused={2}" -f $finalPid,$finalRunning,$finalReused)
-
-      $finalContext = $null
-      $contextSource = $null
-      if ($script:labviewPidTrackerFinalState -and $script:labviewPidTrackerFinalState.PSObject.Properties['Context'] -and $script:labviewPidTrackerFinalState.Context) {
-        $finalContext = _Normalize-LabVIEWPidContext -Value $script:labviewPidTrackerFinalState.Context
-        $contextSource = 'tracker'
-        if ($script:labviewPidTrackerFinalState.PSObject.Properties['ContextSource'] -and $script:labviewPidTrackerFinalState.ContextSource) {
-          $contextDetail = [string]$script:labviewPidTrackerFinalState.ContextSource
-        } else {
-          $contextDetail = 'tracker'
-        }
-      } elseif ($script:labviewPidTrackerFinalizedContext) {
-        $finalContext = _Normalize-LabVIEWPidContext -Value $script:labviewPidTrackerFinalizedContext
-        if ($script:labviewPidTrackerFinalizedContextSource) {
-          $contextSource = $script:labviewPidTrackerFinalizedContextSource
-        } else {
-          $contextSource = 'cached'
-        }
-        if ($script:labviewPidTrackerFinalizedContextDetail) {
-          $contextDetail = $script:labviewPidTrackerFinalizedContextDetail
-        }
-      }
-      if (-not $finalContext -and $script:labviewPidTrackerFinalState -and $script:labviewPidTrackerFinalState.PSObject.Properties['Observation'] -and $script:labviewPidTrackerFinalState.Observation) {
-        try {
-          $obs = $script:labviewPidTrackerFinalState.Observation
-          if ($obs -and $obs.PSObject.Properties['context'] -and $obs.context) {
-            $finalContext = _Normalize-LabVIEWPidContext -Value $obs.context
-            if (-not $contextSource) {
-              $contextSource = if ($obs.PSObject.Properties['contextSource'] -and $obs.contextSource) { [string]$obs.contextSource } else { 'tracker' }
-            }
-            if (-not $contextDetail) { $contextDetail = $contextSource }
-          }
-        } catch {}
-      }
-      if (-not $finalContext -and $script:labviewPidTrackerSummaryContext) {
-        try {
-          $finalContext = _Normalize-LabVIEWPidContext -Value $script:labviewPidTrackerSummaryContext
-          if (-not $contextSource -and $script:labviewPidTrackerSummaryContext.PSObject.Properties['stage']) {
-            $contextSource = $script:labviewPidTrackerSummaryContext.stage
-          }
-          if (-not $contextDetail) { $contextDetail = $contextSource }
-        } catch {}
-      }
-      if (-not $finalContext) {
-        $finalContext = [pscustomobject]@{
-          stage             = 'post-summary'
-          total             = $total
-          failed            = $failed
-          errors            = $errors
-          skipped           = $skipped
-          discoveryFailures = $discoveryFailureCount
-          timedOut          = [bool]$script:timedOut
-        }
-        if ($script:labviewPidTrackerState -and $script:labviewPidTrackerState.PSObject.Properties['Pid'] -and $script:labviewPidTrackerState.Pid) {
-          $finalContext.pid = $script:labviewPidTrackerState.Pid
-        }
-        if (-not $contextSource) { $contextSource = 'dispatcher:summary' }
-        if (-not $contextDetail) { $contextDetail = $contextSource }
-      }
-      $contextLabel = $null
-      if ($contextSource -and $contextDetail -and $contextSource -ne $contextDetail) {
-        $contextLabel = " ($contextSource via $contextDetail)"
-      } elseif ($contextSource) {
-        $contextLabel = " ($contextSource)"
-      } elseif ($contextDetail) {
-        $contextLabel = " ($contextDetail)"
-      } else {
-        $contextLabel = ''
-      }
-      if ($finalContext -and $finalContext.PSObject.Properties['stage']) {
-        $stageValue = $finalContext.stage
-        $stepSummaryLines += ("- Final Context Stage{0}: {1}" -f $contextLabel,$stageValue)
-      } elseif ($finalContext) {
-        $ctxKeys = @($finalContext.PSObject.Properties.Name)
-        if ($ctxKeys.Count -gt 0) {
-          $stepSummaryLines += ("- Final Context Keys{0}: {1}" -f $contextLabel,($ctxKeys -join ', '))
-        }
-      } elseif ($contextSource) {
-        if ($contextDetail -and $contextDetail -ne $contextSource) {
-          $stepSummaryLines += ("- Final Context Source: {0} (via {1})" -f $contextSource,$contextDetail)
-        } else {
-          $stepSummaryLines += ("- Final Context Source: {0}" -f $contextSource)
-        }
-      }
-    }
-    $stepSummaryLines += ''
-    $stepSummaryLines += '### Re-run (gh)'
-    $stepSummaryLines += ''
-    $stepSummaryLines += ("- {0}" -f $ghCommand)
-    $summaryFile = $env:GITHUB_STEP_SUMMARY
-    if ($summaryFile) {
-      try {
-        $summaryDir = Split-Path -Parent $summaryFile
-        if ($summaryDir -and -not (Test-Path -LiteralPath $summaryDir)) {
-          New-Item -ItemType Directory -Force -Path $summaryDir | Out-Null
-        }
-        $summaryText = ($stepSummaryLines -join [Environment]::NewLine) + [Environment]::NewLine
-        $encoding = New-Object System.Text.UTF8Encoding($false)
-        [System.IO.File]::WriteAllText($summaryFile, $summaryText, $encoding)
-      } catch {
-        $errMsg = $_.Exception.Message
-        Write-Host ("Step summary append failed: {0}" -f $errMsg) -ForegroundColor DarkYellow
-      }
-    } else {
-      Write-Host 'Step summary append skipped: GITHUB_STEP_SUMMARY not set.' -ForegroundColor DarkYellow
-    }
-  } catch {
-    $errMsg = $_.Exception.Message
-    $warnLine = [string]::Concat('Step summary append failed: ', $errMsg)
-    Write-Host $warnLine -ForegroundColor DarkYellow
-  }
-}
-
-# Append optional Guard block to step summary (notice-only)
-if ($script:stuckGuardEnabled -and $env:GITHUB_STEP_SUMMARY) {
-  try {
-    $hbCount = 0; $last = ''
-    if (Test-Path -LiteralPath $script:hbPath) {
-      $lines = Get-Content -LiteralPath $script:hbPath -ErrorAction SilentlyContinue
-      $hbCount = @($lines | Where-Object { $_ -like '*"type":"beat"*' }).Count
-      $last = $lines | Select-Object -Last 1
-    }
-    $g = @('### Guard','')
-    $g += ('- Enabled: {0}' -f $script:stuckGuardEnabled)
-    $g += ('- Heartbeats: {0}' -f $hbCount)
-    if ($script:hbPath) { $g += ('- Heartbeat file: {0}' -f $script:hbPath) }
-    if ($partialLogPath) { $g += ('- Partial log: {0}' -f $partialLogPath) }
-    $g -join "`n" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8 -ErrorAction SilentlyContinue
-  } catch { Write-Host "::notice::Guard summary append failed: $_" }
-}
+$publicationDiscoveryDescriptor = if ($usedNodeDiscovery) { 'manifest' } else { 'manual-scan' }
+$publicationPayload = New-ExecutionPublicationPayload -SelectedTests $testFiles -DiscoveryDescriptor $publicationDiscoveryDescriptor -PartialLogPath $partialLogPath
+$leakReportPayload = $null
 
 # Optional: emit result shape diagnostics for $result.Tests (types and property presence)
 if ($EmitResultShapeDiagnostics) {
@@ -3158,7 +3012,7 @@ if ($EmitResultShapeDiagnostics) {
 }
 
 # Machine-readable JSON summary (adjacent enhancement for CI consumers)
-$jsonSummaryPath = Join-Path $resultsDir $JsonSummaryPath
+$jsonSummaryFullPath = Join-Path $resultsDir $JsonSummaryPath
 try {
   $jsonObj = [PSCustomObject]@{
     total              = $total
@@ -3169,6 +3023,10 @@ try {
     duration_s         = [math]::Round($testDuration.TotalSeconds, 6)
     timestamp          = (Get-Date).ToString('o')
     pesterVersion      = $loadedPester.Version.ToString()
+    executionPack      = $script:executionPackResolved
+    executionPackSource = $script:executionPackReason
+    refineIncludePatterns = @($script:executionPackRefineIncludePatterns)
+    effectiveIncludePatterns = @($script:executionPackEffectiveIncludePatterns)
     includeIntegration = [bool]$includeIntegrationBool
     meanTest_ms        = $meanMs
     p95Test_ms         = $p95Ms
@@ -3297,6 +3155,10 @@ try {
         totalDiscoveredFileCount = $originalTestFileCount
         selectedTestFileCount    = $selectedTestFileCount
         maxTestFilesApplied      = $maxTestFilesApplied
+        executionPack            = $script:executionPackResolved
+        executionPackSource      = $script:executionPackReason
+        refineIncludePatterns    = @($script:executionPackRefineIncludePatterns)
+        effectiveIncludePatterns = @($script:executionPackEffectiveIncludePatterns)
       }
       Add-Member -InputObject $jsonObj -Name environment -MemberType NoteProperty -Value $envBlock
       Add-Member -InputObject $jsonObj -Name run -MemberType NoteProperty -Value $runBlock
@@ -3479,55 +3341,6 @@ try {
 Write-Host "Results written to: $xmlPath" -ForegroundColor Gray
 Write-Host ""
 
-# Optional: Write diagnostics summary to GitHub Step Summary (Markdown)
-try {
-  $stepSummary = $env:GITHUB_STEP_SUMMARY
-  if ($stepSummary -and -not $DisableStepSummary) {
-    $total = $null; $hasPath = $null; $hasTags = $null
-    $diagJsonPath = Join-Path $resultsDir 'result-shapes.json'
-    if (Test-Path -LiteralPath $diagJsonPath -PathType Leaf) {
-      try {
-        $diagObj = Get-Content -LiteralPath $diagJsonPath -Raw | ConvertFrom-Json -ErrorAction Stop
-        $total = [int]($diagObj.totalEntries)
-        $hasPath = [int]($diagObj.overall.hasPath)
-        $hasTags = [int]($diagObj.overall.hasTags)
-      } catch {}
-    }
-    # Fallback: derive counts from $result.Tests when JSON not available
-    if ($null -eq $total -and $result -and $result.Tests) {
-      try {
-        $testsLocal = @($result.Tests)
-        $total = $testsLocal.Count
-        $hasPath = @($testsLocal | Where-Object { $_.PSObject.Properties.Name -contains 'Path' }).Count
-        $hasTags = @($testsLocal | Where-Object { $_.PSObject.Properties.Name -contains 'Tags' }).Count
-      } catch {}
-    }
-    if ($null -ne $total) {
-      function _pctMd { param([int]$n,[int]$d) if ($d -le 0) { return '0%' } ('{0:P1}' -f ([double]$n/[double]$d)) }
-      $pPath = _pctMd $hasPath $total
-      $pTags = _pctMd $hasTags $total
-      $md = @()
-      $md += '### Diagnostics Summary'
-      $md += ''
-      $md += '| Metric | Count | Percent |'
-      $md += '|---|---:|---:|'
-      $md += ("| Total entries | {0} | - |" -f $total)
-      $md += ("| Has Path | {0} | {1} |" -f $hasPath,$pPath)
-      $md += ("| Has Tags | {0} | {1} |" -f $hasTags,$pTags)
-      $mdText = ($md -join "`n") + "`n"
-      try {
-        $dir = Split-Path -Parent $stepSummary
-        if ($dir) { New-Item -ItemType Directory -Force -Path $dir -ErrorAction SilentlyContinue | Out-Null }
-        if (-not (Test-Path -LiteralPath $stepSummary -PathType Leaf)) {
-          New-Item -ItemType File -Path $stepSummary -Force | Out-Null
-        }
-      } catch {}
-      Add-Content -LiteralPath $stepSummary -Value $mdText -Encoding utf8
-      Write-Host ("Step summary updated: {0}" -f $stepSummary) -ForegroundColor Gray
-    }
-  }
-} catch { Write-Host "(warn) failed to write GitHub Step Summary: $_" -ForegroundColor DarkYellow }
-
 # Leak detection (processes/jobs) and report
 if ($DetectLeaks) {
   try {
@@ -3598,7 +3411,7 @@ if ($DetectLeaks) {
       $leakDetected = (($procsAfter.Count -gt 0) -or ($runningJobs.Count -gt 0))
     }
 
-    $leakReport = [pscustomobject]@{
+    $leakReportPayload = [pscustomobject]@{
       schema         = 'pester-leak-report/v1'
       schemaVersion  = ${SchemaLeakReportVersion}
       generatedAt    = (Get-Date).ToString('o')
@@ -3616,10 +3429,8 @@ if ($DetectLeaks) {
       stoppedJobs    = $stoppedJobs
       notes          = @('Leak = LabVIEW/LVCompare (or configured targets) still running or Pester jobs still active after test run')
     }
-    $leakPathOut = Join-Path $resultsDir 'pester-leak-report.json'
-    $leakReport | ConvertTo-Json -Depth 6 | Out-File -FilePath $leakPathOut -Encoding utf8 -ErrorAction Stop
     if ($leakDetected) {
-      Write-Warning "Leak detected: see $leakPathOut"
+      Write-Warning "Leak detected: pester-leak-report.json will be emitted during finalize."
       if ($FailOnLeaks) {
         Write-Error "Failing run due to detected leaks (processes/jobs)"
         exit 1
@@ -3648,12 +3459,21 @@ try {
 # same failure surface that the exit path will expose.
 if ($failed -gt 0 -or $errors -gt 0) {
   if ($null -ne $result) {
-    Write-FailureDiagnostics -PesterResult $result -ResultsDirectory $resultsDir -SkippedCount $skipped -FailuresSchemaVersion $SchemaFailuresVersion
+    Write-FailureDiagnostics -PesterResult $result -ResultsDirectory $resultsDir -SkippedCount $skipped -TotalCount $total -FailedCount $failed -ErrorCount $errors -FailuresSchemaVersion $SchemaFailuresVersion
   } elseif ($EmitFailuresJsonAlways) {
-    Ensure-FailuresJson -Directory $resultsDir -Force
+    Ensure-FailuresJson -Directory $resultsDir -SummaryObject $jsonObj -FailuresSchemaVersion $SchemaFailuresVersion -Force
   }
 } elseif ($EmitFailuresJsonAlways) {
-  Ensure-FailuresJson -Directory $resultsDir -Normalize -Quiet
+  Ensure-FailuresJson -Directory $resultsDir -SummaryObject $jsonObj -FailuresSchemaVersion $SchemaFailuresVersion -Normalize -Quiet
+}
+
+try {
+  $failurePayload = Sync-PesterFailurePayload -Directory $resultsDir -SummaryObject $jsonObj -SchemaVersion $SchemaFailuresVersion
+  if ($jsonSummaryFullPath) {
+    $jsonObj | ConvertTo-Json -Depth 10 | Out-File -FilePath $jsonSummaryFullPath -Encoding utf8 -ErrorAction Stop
+  }
+} catch {
+  Write-Warning "Failed to synchronize failure-detail payload: $_"
 }
 
 if ($TrackArtifacts -and $script:artifactTrail) {
@@ -3662,7 +3482,7 @@ if ($TrackArtifacts -and $script:artifactTrail) {
   } catch { Write-Warning "Failed to finalize artifact trail process snapshot: $_" }
 }
 
-Invoke-ExecutionFinalizeHelper -SummaryText $summary -SummaryPayload $jsonObj -ArtifactTrail $script:artifactTrail | Out-Null
+Invoke-ExecutionFinalizeHelper -SummaryText $summary -SummaryPayload $jsonObj -ArtifactTrail $script:artifactTrail -LeakReportPayload $leakReportPayload -PublicationPayload $publicationPayload | Out-Null
 
 # Exit with appropriate code
 if ($failed -gt 0 -or $errors -gt 0) {
@@ -3678,11 +3498,11 @@ Write-Host "✅ All tests passed!" -ForegroundColor Green
 if ($discoveryFailureCount -gt 0) {
   Write-Host "Discovery failures detected ($discoveryFailureCount) but test counts showed success; forcing failure exit." -ForegroundColor Red
   try {
-    if ($jsonSummaryPath -and (Test-Path -LiteralPath $jsonSummaryPath)) {
-      $adjust = Get-Content -LiteralPath $jsonSummaryPath -Raw | ConvertFrom-Json
+    if ($jsonSummaryFullPath -and (Test-Path -LiteralPath $jsonSummaryFullPath)) {
+      $adjust = Get-Content -LiteralPath $jsonSummaryFullPath -Raw | ConvertFrom-Json
       $adjust.errors = ($adjust.errors + $discoveryFailureCount)
       $adjust.discoveryFailures = $discoveryFailureCount
-      $adjust | ConvertTo-Json -Depth 4 | Out-File -FilePath $jsonSummaryPath -Encoding utf8
+      $adjust | ConvertTo-Json -Depth 4 | Out-File -FilePath $jsonSummaryFullPath -Encoding utf8
     }
   } catch { Write-Warning "Failed to adjust JSON summary for discovery failures: $_" }
   Write-Error "Test execution completed with discovery failures"
@@ -3734,9 +3554,8 @@ if ($discoveryFailureCount -gt 0) {
           stoppedJobs   = @()
           notes         = @('Final sweep leak report to ensure artifact presence; see main leak block for full details when enabled')
         }
-        $report | ConvertTo-Json -Depth 6 | Out-File -FilePath $finalLeakPath -Encoding utf8 -ErrorAction SilentlyContinue
         # Refresh finalize-owned artifacts so the late leak report is reflected in the manifest/session index.
-        Invoke-ExecutionFinalizeHelper -ReuseExistingContext | Out-Null
+        Invoke-ExecutionFinalizeHelper -ReuseExistingContext -LeakReportPayload $report | Out-Null
       }
     }
   } catch { Write-Warning "Failed to emit final sweep leak report: $_" }

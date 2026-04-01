@@ -646,6 +646,45 @@ exit 0
     ($output -join "`n") | Should -Match 'observedDockerHost=npipe:////./pipe/docker_engine'
   }
 
+  It 'normalizes provider-qualified base and head VI paths before building Docker mounts' {
+    $work = Join-Path $TestDrive 'provider-qualified-inputs'
+    New-Item -ItemType Directory -Path $work | Out-Null
+    & $script:NewDockerStub -WorkRoot $work | Out-Null
+
+    $logPath = Join-Path $work 'docker-log.ndjson'
+    Set-Item Env:DOCKER_STUB_LOG $logPath
+    Set-Item Env:DOCKER_STUB_OSTYPE 'windows'
+    Set-Item Env:DOCKER_STUB_IMAGE_EXISTS '1'
+    Set-Item Env:DOCKER_STUB_CONTEXT 'desktop-windows'
+    Set-Item Env:DOCKER_STUB_RUN_EXIT_CODE '1'
+    Set-Item Env:DOCKER_STUB_RUN_STDOUT 'CreateComparisonReport completed with diff.'
+
+    $baseVi = Join-Path $work 'Base.vi'
+    $headVi = Join-Path $work 'Head.vi'
+    Set-Content -LiteralPath $baseVi -Value 'base' -Encoding utf8
+    Set-Content -LiteralPath $headVi -Value 'head' -Encoding utf8
+    $providerBaseVi = "Microsoft.PowerShell.Core\FileSystem::$baseVi"
+    $providerHeadVi = "Microsoft.PowerShell.Core\FileSystem::$headVi"
+    $reportPath = Join-Path $work 'out\compare-report.html'
+
+    $output = & pwsh -NoLogo -NoProfile -File $script:RunnerScript `
+      -BaseVi $providerBaseVi `
+      -HeadVi $providerHeadVi `
+      -ReportPath $reportPath `
+      -RuntimeEngineReadyTimeoutSeconds 5 `
+      -RuntimeEngineReadyPollSeconds 1 2>&1
+    $LASTEXITCODE | Should -Be 1 -Because ($output -join "`n")
+
+    $capturePath = Join-Path (Split-Path -Parent $reportPath) 'ni-windows-container-capture.json'
+    Test-Path -LiteralPath $capturePath | Should -BeTrue
+
+    $capture = Get-Content -LiteralPath $capturePath -Raw | ConvertFrom-Json
+    [string]$capture.baseVi | Should -Be ([System.IO.Path]::GetFullPath($baseVi))
+    [string]$capture.headVi | Should -Be ([System.IO.Path]::GetFullPath($headVi))
+    [string]$capture.baseVi | Should -Not -Match 'Microsoft\.PowerShell\.Core\\FileSystem::'
+    [string]$capture.headVi | Should -Not -Match 'Microsoft\.PowerShell\.Core\\FileSystem::'
+  }
+
   It 'validates report flag labels against docker compare flags' {
     $work = Join-Path $TestDrive 'compare-report-flag-labels'
     New-Item -ItemType Directory -Path $work | Out-Null

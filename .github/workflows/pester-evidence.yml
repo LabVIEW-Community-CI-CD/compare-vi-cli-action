@@ -138,7 +138,7 @@ jobs:
         uses: actions/download-artifact@v5
         with:
           name: ${{ steps.artifact_name.outputs.name }}
-          path: .
+          path: tests/results
 
       - name: Ensure results directory
         shell: pwsh
@@ -158,19 +158,24 @@ jobs:
             "status=missing" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
             exit 0
           }
-          $receipt = Get-Content -LiteralPath $receiptPath -Raw | ConvertFrom-Json -ErrorAction Stop
-          if ($receipt.schema -ne 'pester-execution-receipt@v1') {
-            throw ("Unexpected execution receipt schema: {0}" -f $receipt.schema)
+          . (Join-Path (Get-Location) 'tools/PesterServiceModelSchema.ps1')
+          $receiptState = Test-PesterServiceModelSchemaContract `
+            -DocumentState (Read-PesterServiceModelJsonDocument -PathValue $receiptPath -ContractName 'execution-receipt') `
+            -ExpectedSchema 'pester-execution-receipt@v1'
+          if (-not $receiptState.valid) {
+            "present=true" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+            "status=unsupported-schema" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+            "dispatcher_exit_code=-1" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+            "execution_pack=" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+            "execution_pack_source=" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+            exit 0
           }
+          $receipt = $receiptState.document
           "present=true" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
           "status=$($receipt.status)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
           "dispatcher_exit_code=$($receipt.dispatcherExitCode)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
-
-      - name: Publish Pester summary
-        if: always()
-        continue-on-error: true
-        shell: pwsh
-        run: pwsh -File scripts/Write-PesterSummaryToStepSummary.ps1 -ResultsDir 'tests/results'
+          "execution_pack=$($receipt.selectionExecutionPack)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "execution_pack_source=$($receipt.selectionExecutionPackSource)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
 
       - name: Validate Pester summary schema-lite (notice-only)
         if: always()
@@ -240,6 +245,56 @@ jobs:
           upload: true
           artifact-name: session-index
 
+      - name: Write compact totals JSON
+        if: always()
+        shell: pwsh
+        run: pwsh -File tools/Write-PesterTotals.ps1 -ResultsDir 'tests/results'
+
+      - name: Classify evidence outcome
+        id: classify
+        if: always()
+        shell: pwsh
+        run: |
+          $rawArtifactDownload = if ('${{ steps.artifact_name.outputs.should_download }}' -eq 'true') { '${{ steps.download.outcome }}' } else { 'skipped' }
+          pwsh -File tools/Invoke-PesterEvidenceClassification.ps1 `
+            -ResultsDir 'tests/results' `
+            -ExecutionReceiptPath 'tests/execution-contract/pester-run-receipt.json' `
+            -ContextStatus '${{ inputs.context_status }}' `
+            -ReadinessStatus '${{ inputs.readiness_status }}' `
+            -SelectionStatus '${{ inputs.selection_status }}' `
+            -ExecutionJobResult '${{ inputs.execution_job_result }}' `
+            -DispatcherExitCode '${{ inputs.dispatcher_exit_code }}' `
+            -RawArtifactDownload $rawArtifactDownload
+
+      - name: Generate operator outcome
+        id: operator_outcome
+        if: always()
+        shell: pwsh
+        run: |
+          pwsh -File tools/Invoke-PesterOperatorOutcome.ps1 `
+            -ResultsDir 'tests/results' `
+            -ContinueOnError '${{ inputs.continue_on_error }}'
+
+      - name: Generate evidence provenance
+        id: evidence_provenance
+        if: always()
+        shell: pwsh
+        run: |
+          $rawArtifactDownload = if ('${{ steps.artifact_name.outputs.should_download }}' -eq 'true') { '${{ steps.download.outcome }}' } else { 'skipped' }
+          pwsh -File tools/Invoke-PesterEvidenceProvenance.ps1 `
+            -ResultsDir 'tests/results' `
+            -ExecutionReceiptPath 'tests/execution-contract/pester-run-receipt.json' `
+            -RawArtifactName '${{ steps.artifact_name.outputs.name }}' `
+            -RawArtifactDownload $rawArtifactDownload `
+            -ExecutionReceiptArtifactName '${{ inputs.execution_receipt_artifact_name }}' `
+            -OutputPath 'tests/results/pester-evidence-provenance.json'
+
+      - name: Publish Pester summary
+        if: always()
+        continue-on-error: true
+        shell: pwsh
+        run: pwsh -File scripts/Write-PesterSummaryToStepSummary.ps1 -ResultsDir 'tests/results'
+
       - name: Append session summary
         if: always()
         continue-on-error: true
@@ -251,137 +306,6 @@ jobs:
         continue-on-error: true
         shell: pwsh
         run: pwsh -File tools/Write-PesterTopFailures.ps1 -ResultsDir 'tests/results' -Top 10
-
-      - name: Write compact totals JSON
-        if: always()
-        shell: pwsh
-        run: |
-          $outDir = 'tests/results'
-          $sum = Join-Path $outDir 'pester-summary.json'
-          $obj = [ordered]@{
-            schema = 'pester-totals/v1'
-            includeIntegration = $null
-            status = 'missing-summary'
-          }
-          if (Test-Path $sum) {
-            try {
-              $js = Get-Content $sum -Raw | ConvertFrom-Json -ErrorAction Stop
-              $obj.total = $js.total
-              $obj.passed = $js.passed
-              $obj.failed = $js.failed
-              $obj.errors = $js.errors
-              $obj.duration_s = $js.duration_s
-              $obj.status = if (($js.failed + $js.errors) -gt 0) { 'fail' } else { 'ok' }
-            } catch {
-              $obj.status = 'unknown'
-            }
-          }
-          $obj | ConvertTo-Json -Depth 5 | Out-File -FilePath (Join-Path $outDir 'pester-totals.json') -Encoding utf8
-
-      - name: Classify evidence outcome
-        id: classify
-        if: always()
-        shell: pwsh
-        run: |
-          $resultsDir = 'tests/results'
-          $summaryPath = Join-Path $resultsDir 'pester-summary.json'
-          $classification = 'seam-defect'
-          $reasons = New-Object System.Collections.Generic.List[string]
-          $contextStatus = '${{ inputs.context_status }}'
-          $readinessStatus = '${{ inputs.readiness_status }}'
-          $selectionStatus = '${{ inputs.selection_status }}'
-          $executionJobResult = '${{ inputs.execution_job_result }}'
-          $executionReceiptPresent = '${{ steps.execution_receipt.outputs.present }}'
-          $executionReceiptStatus = '${{ steps.execution_receipt.outputs.status }}'
-          if ($contextStatus -ne 'ready') {
-            $reasons.Add(("context-status={0}" -f $contextStatus)) | Out-Null
-          }
-          if ($readinessStatus -ne 'ready') {
-            $reasons.Add(("readiness-status={0}" -f $readinessStatus)) | Out-Null
-          }
-          if ($selectionStatus -ne 'ready') {
-            $reasons.Add(("selection-status={0}" -f $selectionStatus)) | Out-Null
-          }
-          if ($executionJobResult -eq 'skipped') {
-            $reasons.Add('execution-job-skipped') | Out-Null
-          } elseif ($executionJobResult -eq 'cancelled') {
-            $reasons.Add('execution-job-cancelled') | Out-Null
-          } elseif ($executionJobResult -eq 'results-xml-truncated') {
-            $reasons.Add('execution-job-results-xml-truncated') | Out-Null
-          } elseif ($executionJobResult -eq 'invalid-results-xml') {
-            $reasons.Add('execution-job-invalid-results-xml') | Out-Null
-          } elseif ($executionJobResult -eq 'missing-results-xml') {
-            $reasons.Add('execution-job-missing-results-xml') | Out-Null
-          } elseif ($executionJobResult -eq 'seam-defect') {
-            $reasons.Add('execution-job-seam-defect') | Out-Null
-          } elseif ($executionJobResult -eq 'unknown') {
-            $reasons.Add('execution-job-unknown') | Out-Null
-          }
-          if ('${{ steps.artifact_name.outputs.should_download }}' -eq 'true' -and '${{ steps.download.outcome }}' -ne 'success') {
-            $reasons.Add(("raw-artifact-download={0}" -f '${{ steps.download.outcome }}')) | Out-Null
-          }
-          $dispatcherExitCode = '${{ inputs.dispatcher_exit_code }}'
-          if ([string]::IsNullOrWhiteSpace($dispatcherExitCode)) { $dispatcherExitCode = '-1' }
-          if ($executionReceiptPresent -ne 'true') {
-            $reasons.Add('execution-receipt-missing') | Out-Null
-          } elseif (($contextStatus -ne 'ready' -and $executionJobResult -in @('skipped','cancelled')) -or $executionReceiptStatus -eq 'context-blocked') {
-            $classification = 'context-blocked'
-          } elseif ($readinessStatus -ne 'ready' -and $executionJobResult -in @('skipped','cancelled')) {
-            $classification = 'readiness-blocked'
-          } elseif (($selectionStatus -ne 'ready' -and $executionJobResult -in @('skipped','cancelled')) -or $executionReceiptStatus -eq 'selection-blocked') {
-            $classification = 'selection-blocked'
-          } elseif ($executionReceiptStatus -eq 'results-xml-truncated') {
-            $classification = 'results-xml-truncated'
-            $reasons.Add('execution-receipt-results-xml-truncated') | Out-Null
-          } elseif ($executionReceiptStatus -eq 'invalid-results-xml') {
-            $classification = 'invalid-results-xml'
-            $reasons.Add('execution-receipt-invalid-results-xml') | Out-Null
-          } elseif ($executionReceiptStatus -eq 'missing-results-xml') {
-            $classification = 'missing-results-xml'
-            $reasons.Add('execution-receipt-missing-results-xml') | Out-Null
-          } elseif ($executionReceiptStatus -eq 'seam-defect') {
-            $reasons.Add('execution-receipt-seam-defect') | Out-Null
-          } elseif ($executionReceiptStatus -eq 'test-failures') {
-            $classification = 'test-failures'
-          } elseif (Test-Path -LiteralPath $summaryPath) {
-            try {
-              $summary = Get-Content -LiteralPath $summaryPath -Raw | ConvertFrom-Json -ErrorAction Stop
-              if ('${{ steps.execution_receipt.outputs.dispatcher_exit_code }}' -and '${{ steps.execution_receipt.outputs.dispatcher_exit_code }}' -ne $dispatcherExitCode) {
-                $reasons.Add('dispatcher-exit-mismatch') | Out-Null
-              }
-              if (($summary.PSObject.Properties.Name -contains 'resultsXmlStatus') -and [string]$summary.resultsXmlStatus -like 'truncated*') {
-                $classification = 'results-xml-truncated'
-                $reasons.Add(("results-xml-status={0}" -f [string]$summary.resultsXmlStatus)) | Out-Null
-              } elseif (($summary.PSObject.Properties.Name -contains 'resultsXmlStatus') -and [string]$summary.resultsXmlStatus -like 'invalid*') {
-                $classification = 'invalid-results-xml'
-                $reasons.Add(("results-xml-status={0}" -f [string]$summary.resultsXmlStatus)) | Out-Null
-              } elseif (($summary.failed + $summary.errors) -gt 0 -or $dispatcherExitCode -ne '0') {
-                $classification = 'test-failures'
-              } else {
-                $classification = 'ok'
-              }
-            } catch {
-              $classification = 'seam-defect'
-              $reasons.Add('summary-unparseable') | Out-Null
-            }
-          } else {
-            $reasons.Add('summary-missing') | Out-Null
-          }
-          $receipt = [ordered]@{
-            schema             = 'pester-evidence-classification@v1'
-            generatedAtUtc     = [DateTime]::UtcNow.ToString('o')
-            contextStatus      = $contextStatus
-            readinessStatus    = $readinessStatus
-            selectionStatus    = $selectionStatus
-            executionJobResult = $executionJobResult
-            rawArtifactDownload = if ('${{ steps.artifact_name.outputs.should_download }}' -eq 'true') { '${{ steps.download.outcome }}' } else { 'skipped' }
-            dispatcherExitCode = [int]$dispatcherExitCode
-            summaryPresent     = Test-Path -LiteralPath $summaryPath
-            classification     = $classification
-            reasons            = @($reasons)
-          }
-          $receipt | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath (Join-Path $resultsDir 'pester-evidence-classification.json') -Encoding UTF8
-          "classification=$classification" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
 
       - name: Generate dev dashboard report
         if: always()
@@ -399,4 +323,13 @@ jobs:
 
       - name: Propagate gate outcome
         if: ${{ steps.classify.outputs.classification != 'ok' && inputs.continue_on_error != 'true' }}
-        run: exit 1
+        shell: bash
+        run: |
+          echo "::error title=Pester gate outcome::classification=${{ steps.classify.outputs.classification }};next_action=${{ steps.operator_outcome.outputs.next_action }}"
+          if [[ -f tests/results/pester-evidence-classification.json ]]; then
+            cat tests/results/pester-evidence-classification.json
+          fi
+          if [[ -f tests/results/pester-operator-outcome.json ]]; then
+            cat tests/results/pester-operator-outcome.json
+          fi
+          exit 1

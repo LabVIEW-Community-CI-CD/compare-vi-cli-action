@@ -25,11 +25,17 @@ param(
   [switch]$EmitFailureBadge,
   [switch]$Compact,
   [string]$CommentPath,
-  [string]$BadgeJsonPath
+  [string]$BadgeJsonPath,
+  [string]$OperatorOutcomePath = 'pester-operator-outcome.json'
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+
+$failurePayloadTool = Join-Path (Split-Path -Parent $PSScriptRoot) 'tools' 'PesterFailurePayload.ps1'
+if (Test-Path -LiteralPath $failurePayloadTool -PathType Leaf) {
+  . $failurePayloadTool
+}
 
 function Get-SummaryValue {
   param(
@@ -54,6 +60,34 @@ function Get-SummaryValue {
   return $null
 }
 
+function Get-OperatorOutcome {
+  param(
+    [Parameter(Mandatory = $true)][string]$ResultsDir,
+    [string]$OutcomePath
+  )
+
+  if ([string]::IsNullOrWhiteSpace($OutcomePath)) {
+    return $null
+  }
+
+  $resolvedPath = if ([System.IO.Path]::IsPathRooted($OutcomePath)) {
+    $OutcomePath
+  } else {
+    Join-Path $ResultsDir $OutcomePath
+  }
+
+  if (-not (Test-Path -LiteralPath $resolvedPath -PathType Leaf)) {
+    return $null
+  }
+
+  try {
+    return (Get-Content -LiteralPath $resolvedPath -Raw | ConvertFrom-Json -ErrorAction Stop)
+  } catch {
+    Write-Warning ("Failed to parse operator outcome: {0}" -f $_.Exception.Message)
+    return $null
+  }
+}
+
 if (-not $env:GITHUB_STEP_SUMMARY -and -not $CommentPath) {
   Write-Warning 'GITHUB_STEP_SUMMARY not set and no -CommentPath provided; skipping summary emission.'
   return
@@ -62,6 +96,7 @@ if (-not $env:GITHUB_STEP_SUMMARY -and -not $CommentPath) {
 $summaryPath = Join-Path $ResultsDir 'pester-summary.json'
 $txtPath = Join-Path $ResultsDir 'pester-summary.txt'
 $xmlPath = Join-Path $ResultsDir 'pester-results.xml'
+$operatorOutcome = Get-OperatorOutcome -ResultsDir $ResultsDir -OutcomePath $OperatorOutcomePath
 
 $_accumulatedLines = [System.Collections.Generic.List[string]]::new()
 function Add-Line($s) { $_accumulatedLines.Add([string]$s) | Out-Null }
@@ -117,10 +152,15 @@ if ($EmitFailureBadge -or $Compact) {
     $status = if ($failedCount -gt 0) { 'failed' } else { 'passed' }
     $failJsonFile = Join-Path $ResultsDir 'pester-failures.json'
     $failedNames = @()
+    $failureDetailsStatus = [string](Get-SummaryValue -InputObject $totals -PropertyNames @('failureDetailsStatus'))
+    $failureDetailsReason = [string](Get-SummaryValue -InputObject $totals -PropertyNames @('failureDetailsReason'))
     if (Test-Path $failJsonFile) {
       try {
         $fj = Get-Content $failJsonFile -Raw | ConvertFrom-Json
-        $failedNames = @($fj.results | Where-Object { $_.result -eq 'Failed' } | ForEach-Object { $_.Name })
+        $detailState = Get-PesterFailureDetailState -FailurePayload $fj -Summary $totals
+        $failureDetailsStatus = $detailState.detailStatus
+        $failureDetailsReason = $detailState.unavailableReason
+        $failedNames = @($detailState.entries | Where-Object { $_.result -eq 'Failed' } | ForEach-Object { $_.name })
       } catch { }
     }
     $badgeObj = [pscustomobject]@{
@@ -134,6 +174,13 @@ if ($EmitFailureBadge -or $Compact) {
       badgeMarkdown = $badge
       badgeText = ($badge -replace '\*','')
       failedTests = $failedNames
+      failureDetailsStatus = $failureDetailsStatus
+      failureDetailsReason = $failureDetailsReason
+      classification = if ($operatorOutcome) { [string]$operatorOutcome.classification } else { '' }
+      gateStatus = if ($operatorOutcome) { [string]$operatorOutcome.gateStatus } else { '' }
+      nextActionId = if ($operatorOutcome) { [string]$operatorOutcome.nextActionId } else { '' }
+      nextAction = if ($operatorOutcome) { [string]$operatorOutcome.nextAction } else { '' }
+      reasons = if ($operatorOutcome) { @($operatorOutcome.reasons) } else { @() }
       generatedAt = (Get-Date).ToUniversalTime().ToString('o')
     }
     try {
@@ -169,18 +216,34 @@ if ($Compact) {
   if ($duration -ne $null) { $pieces += ("{0}s" -f $duration) }
   Add-Line ''
   Add-Line ("**Totals:** {0}" -f ($pieces -join ' • '))
+  $executionPack = Get-SummaryValue -InputObject $totals -PropertyNames @('executionPack','ExecutionPack')
+  if ($executionPack) {
+    Add-Line ("**Pack:** {0}" -f $executionPack)
+  }
   if ($failedCount -gt 0) {
     # failed test names (short)
     $failJsonPath = Join-Path $ResultsDir 'pester-failures.json'
     if (Test-Path $failJsonPath) {
       try {
         $failData = Get-Content $failJsonPath -Raw | ConvertFrom-Json
-        $failedNames = @($failData.results | Where-Object { $_.result -eq 'Failed' } | ForEach-Object { $_.Name })
+        $detailState = Get-PesterFailureDetailState -FailurePayload $failData -Summary $totals
+        $failedNames = @($detailState.entries | Where-Object { $_.result -eq 'Failed' } | ForEach-Object { $_.name })
         if ($failedNames.Count) {
           Add-Line ("**Failures:** {0}" -f ($failedNames -join ', '))
+        } elseif ($detailState.detailStatus -eq 'unavailable') {
+          $reasonSuffix = if ($detailState.unavailableReason) { " ({0})" -f $detailState.unavailableReason } else { '' }
+          Add-Line ("**Failure Details:** unavailable{0}" -f $reasonSuffix)
         }
       } catch { Write-Warning 'Compact mode: failed to parse failure names.' }
+    } elseif ([string](Get-SummaryValue -InputObject $totals -PropertyNames @('failureDetailsStatus')) -eq 'unavailable') {
+      $reasonValue = [string](Get-SummaryValue -InputObject $totals -PropertyNames @('failureDetailsReason'))
+      $reasonSuffix = if ($reasonValue) { " ({0})" -f $reasonValue } else { '' }
+      Add-Line ("**Failure Details:** unavailable{0}" -f $reasonSuffix)
     }
+  }
+  if ($operatorOutcome -and [string]$operatorOutcome.classification -ne 'ok') {
+    Add-Line ("**Gate Outcome:** {0} ({1})" -f [string]$operatorOutcome.classification, [string]$operatorOutcome.gateStatus)
+    Add-Line ("**Next Action:** {0}" -f [string]$operatorOutcome.nextAction)
   }
   Flush-Outputs
   Write-Host 'Pester summary (compact) written.' -ForegroundColor Green
@@ -199,13 +262,28 @@ $skippedValue = Get-SummaryValue -InputObject $totals -PropertyNames @('Skipped'
 if ($skippedValue -ne $null) { Add-Line ("| Skipped | {0} |" -f $skippedValue) }
 $durationValue = Get-SummaryValue -InputObject $totals -PropertyNames @('Duration','duration')
 if ($durationValue -ne $null) { Add-Line ("| Duration (s) | {0} |" -f $durationValue) }
+$executionPackValue = Get-SummaryValue -InputObject $totals -PropertyNames @('executionPack','ExecutionPack')
+if ($executionPackValue) { Add-Line ("| Execution Pack | {0} |" -f $executionPackValue) }
+
+if ($operatorOutcome -and [string]$operatorOutcome.classification -ne 'ok') {
+  Add-Line ''
+  Add-Line '### Operator Outcome'
+  Add-Line ''
+  Add-Line ("- Gate status: {0}" -f [string]$operatorOutcome.gateStatus)
+  Add-Line ("- Classification: {0}" -f [string]$operatorOutcome.classification)
+  if (@($operatorOutcome.reasons).Count -gt 0) {
+    Add-Line ("- Reasons: {0}" -f ((@($operatorOutcome.reasons)) -join ', '))
+  }
+  Add-Line ("- Next action: {0}" -f [string]$operatorOutcome.nextAction)
+}
 
 # Optional failed test details from failures JSON if present
 $failJson = Join-Path $ResultsDir 'pester-failures.json'
 if (Test-Path $failJson) {
   try {
     $failData = Get-Content $failJson -Raw | ConvertFrom-Json
-    $failed = @($failData.results | Where-Object { $_.result -eq 'Failed' })
+    $detailState = Get-PesterFailureDetailState -FailurePayload $failData -Summary $totals
+    $failed = @($detailState.entries | Where-Object { $_.result -eq 'Failed' })
     if ($failed.Count) {
       Add-Line ''
       switch ($FailedTestsCollapseStyle) {
@@ -244,8 +322,17 @@ if (Test-Path $failJson) {
         }
       }
       if ($FailedTestsCollapseStyle -like 'Details*') { Add-Line '</details>' }
+    } elseif ($detailState.detailStatus -eq 'unavailable') {
+      Add-Line ''
+      $reasonSuffix = if ($detailState.unavailableReason) { " ({0})" -f $detailState.unavailableReason } else { '' }
+      Add-Line ("Failure details unavailable{0}." -f $reasonSuffix)
     }
   } catch { Write-Warning ("Failed to parse failure JSON: {0}" -f $_.Exception.Message) }
+} elseif ([string](Get-SummaryValue -InputObject $totals -PropertyNames @('failureDetailsStatus')) -eq 'unavailable') {
+  Add-Line ''
+  $reasonValue = [string](Get-SummaryValue -InputObject $totals -PropertyNames @('failureDetailsReason'))
+  $reasonSuffix = if ($reasonValue) { " ({0})" -f $reasonValue } else { '' }
+  Add-Line ("Failure details unavailable{0}." -f $reasonSuffix)
 }
 
 Flush-Outputs

@@ -1,0 +1,80 @@
+{
+  "schema_version": "1.0.0",
+  "phase_guidance": {
+    "foundation": {
+      "mode": "local-first",
+      "preferred_commands": [
+        "node --test tools/priority/__tests__/pester-service-model-local-ci.test.mjs tools/priority/__tests__/pester-service-model-local-harness-contract.test.mjs tools/priority/__tests__/pester-service-model-workflow-contract.test.mjs",
+        "npm run tests:execution:local",
+        "npm run tests:replay:representative",
+        "npm run priority:pester:local-ci"
+      ],
+      "stop_conditions": [
+        "planned local coverage exists for the selected requirement",
+        "local execution harness or packet contract proofs pass for the edited code refs",
+        "the ranked backlog no longer selects the same requirement at the top without change"
+      ],
+      "escalate_when": [
+        "the remaining debt is hosted-only proof",
+        "the local harness can no longer reproduce the active seam"
+      ]
+    },
+    "execution-governance": {
+      "mode": "local-first",
+      "preferred_commands": [
+        "node --test tools/priority/__tests__/pester-service-model-local-ci.test.mjs tools/priority/__tests__/pester-service-model-local-harness-contract.test.mjs tools/priority/__tests__/pester-service-model-workflow-contract.test.mjs",
+        "npm run tests:execution:local",
+        "npm run tests:replay:representative",
+        "npm run priority:pester:local-ci"
+      ],
+      "stop_conditions": [
+        "the edited execution boundary is proven locally",
+        "the next-requirement artifact no longer ranks the edited requirement first"
+      ],
+      "escalate_when": [
+        "the next proof depends on a retained integration or hosted run"
+      ]
+    },
+    "promotion-governance": {
+      "mode": "packet-first",
+      "preferred_commands": [
+        "node --test tools/priority/__tests__/pester-service-model-local-ci.test.mjs tools/priority/__tests__/pester-service-model-workflow-contract.test.mjs",
+        "npm run priority:pester:local-ci"
+      ],
+      "stop_conditions": [
+        "the packet retains representative comparison evidence and provenance"
+      ],
+      "escalate_when": [
+        "the packet is green and the next step is a mounted or hosted comparison proof"
+      ]
+    },
+    "evidence-governance": {
+      "mode": "local-first",
+      "preferred_commands": [
+        "node --test tools/priority/__tests__/pester-service-model-local-ci.test.mjs tools/priority/__tests__/pester-service-model-workflow-contract.test.mjs",
+        "npm run priority:pester:local-ci"
+      ],
+      "stop_conditions": [
+        "the packet stays coherent across SRS, RTM, test plan, and knowledgebase"
+      ],
+      "escalate_when": [
+        "the remaining debt is representative hosted proof or promotion evidence"
+      ]
+    },
+    "autonomy": {
+      "mode": "local-first",
+      "preferred_commands": [
+        "node --test tools/priority/__tests__/pester-service-model-local-ci.test.mjs tools/priority/__tests__/pester-service-model-local-harness-contract.test.mjs",
+        "npm run tests:windows-surface:probe",
+        "npm run priority:pester:local-ci"
+      ],
+      "stop_conditions": [
+        "the autonomy artifacts still select a bounded next requirement",
+        "the worktree and packet stay aligned"
+      ],
+      "escalate_when": [
+        "the next action depends on hosted comparison evidence"
+      ]
+    }
+  }
+}

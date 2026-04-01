@@ -1,0 +1,48 @@
+{
+  "schema": "pester-promotion-comparison@v1",
+  "schemaVersion": "1.0.0",
+  "generatedAtUtc": "2026-03-31T23:59:59Z",
+  "baselineLabel": "legacy-required-gate",
+  "candidateLabel": "service-model-integration-rail",
+  "decisionState": "blocked-pending-representative-expansion",
+  "summary": "The first governed comparison slice shows the service model localizing failure at evidence after execution, while the current baseline still owns release truth. Promotion stays blocked until representative passing and failure-localization comparisons expand beyond this first slice.",
+  "comparisons": [
+    {
+      "comparisonId": "dispatcher-first-slice-baseline-vs-service-model",
+      "packId": "dispatcher",
+      "representativeness": "first-governed-slice",
+      "requirementCoverage": [
+        "REQ-PSM-004",
+        "REQ-PSM-005",
+        "REQ-PSM-006",
+        "REQ-PSM-020",
+        "REQ-PSM-021"
+      ],
+      "baseline": {
+        "workflow": "test-pester.yml",
+        "runId": "23795198442",
+        "runUrl": "https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/actions/runs/23795198442",
+        "headSha": "c472531eb586da3ad9bff45e9385d42e38b34a2e",
+        "ref": "release/v0.6.10",
+        "conclusion": "failure",
+        "packIdentity": "legacy-monolith"
+      },
+      "candidate": {
+        "workflow": "pester-service-model-on-label.yml",
+        "runId": "23818978524",
+        "runUrl": "https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/actions/runs/23818978524",
+        "headSha": "077ceaa05453b505b1fd6a722d488cdcd9fc781b",
+        "ref": "integration/pester-service-model",
+        "conclusion": "failure",
+        "packIdentity": "dispatcher"
+      },
+      "observedDeltas": [
+        "The service model retained trusted-router, context, selection, and readiness receipts before the active seam surfaced.",
+        "The service model isolated the failure at evidence after execution dispatch instead of collapsing the outcome into one monolithic red gate.",
+        "The current baseline remains the required gate and therefore still defines release truth despite lower failure localization."
+      ],
+      "decision": "not-ready",
+      "nextAction": "Collect at least one passing representative comparison and one additional failure-localization comparison before promotion beyond the integration rail."
+    }
+  ]
+}

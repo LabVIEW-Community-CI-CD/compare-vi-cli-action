@@ -18,17 +18,22 @@ on:
       - 'docs/architecture/pester-service-model-control-plane.md'
       - 'docs/architecture/ADR-2078-pester-service-model-requirements.md'
       - 'docs/cm-plan-pester-service-model.md'
+      - 'docs/pester-service-model-promotion-comparison.json'
       - 'docs/release-procedure-pester-service-model.md'
       - 'docs/requirements-pester-service-model-srs.md'
       - 'docs/rtm-pester-service-model.csv'
+      - 'docs/schemas/pester-derived-provenance-v1.schema.json'
+      - 'docs/schemas/pester-promotion-comparison-v1.schema.json'
       - 'docs/testing/pester-service-model-test-plan.md'
       - 'docs/pester-service-model-quality-report.md'
       - 'docs/pester-service-model-information-item-map.md'
       - 'tools/priority/materialize-pester-service-model-release-evidence.mjs'
+      - 'tools/priority/pester-service-model-provenance.mjs'
       - 'tools/priority/render-pester-service-model-promotion-dossier.mjs'
       - 'tools/priority/write-node-test-coverage-xml.mjs'
       - 'tools/priority/__tests__/pester-service-model-workflow-contract.test.mjs'
       - 'tools/priority/__tests__/pester-service-model-quality-workflow-contract.test.mjs'
+      - 'tools/priority/__tests__/pester-service-model-release-evidence-provenance.test.mjs'
       - 'tools/priority/__tests__/pester-service-model-release-evidence-workflow-contract.test.mjs'
       - 'tools/priority/__tests__/write-node-test-coverage-xml.test.mjs'
   push:
@@ -49,17 +54,22 @@ on:
       - 'docs/architecture/pester-service-model-control-plane.md'
       - 'docs/architecture/ADR-2078-pester-service-model-requirements.md'
       - 'docs/cm-plan-pester-service-model.md'
+      - 'docs/pester-service-model-promotion-comparison.json'
       - 'docs/release-procedure-pester-service-model.md'
       - 'docs/requirements-pester-service-model-srs.md'
       - 'docs/rtm-pester-service-model.csv'
+      - 'docs/schemas/pester-derived-provenance-v1.schema.json'
+      - 'docs/schemas/pester-promotion-comparison-v1.schema.json'
       - 'docs/testing/pester-service-model-test-plan.md'
       - 'docs/pester-service-model-quality-report.md'
       - 'docs/pester-service-model-information-item-map.md'
       - 'tools/priority/materialize-pester-service-model-release-evidence.mjs'
+      - 'tools/priority/pester-service-model-provenance.mjs'
       - 'tools/priority/render-pester-service-model-promotion-dossier.mjs'
       - 'tools/priority/write-node-test-coverage-xml.mjs'
       - 'tools/priority/__tests__/pester-service-model-workflow-contract.test.mjs'
       - 'tools/priority/__tests__/pester-service-model-quality-workflow-contract.test.mjs'
+      - 'tools/priority/__tests__/pester-service-model-release-evidence-provenance.test.mjs'
       - 'tools/priority/__tests__/pester-service-model-release-evidence-workflow-contract.test.mjs'
       - 'tools/priority/__tests__/write-node-test-coverage-xml.test.mjs'
 
@@ -93,6 +103,7 @@ jobs:
           node --test --experimental-test-coverage \
             tools/priority/__tests__/pester-service-model-workflow-contract.test.mjs \
             tools/priority/__tests__/pester-service-model-quality-workflow-contract.test.mjs \
+            tools/priority/__tests__/pester-service-model-release-evidence-provenance.test.mjs \
             tools/priority/__tests__/write-node-test-coverage-xml.test.mjs \
             2>&1 | tee tests/results/_agent/pester-service-model/node-test-coverage.log
 
@@ -125,16 +136,21 @@ jobs:
         shell: bash
         run: |
           node tools/priority/materialize-pester-service-model-release-evidence.mjs \
+            --output-dir tests/results/_agent/pester-service-model/release-evidence \
             --version v0.1.0 \
             --upstream-issue "$PSM_UPSTREAM_ISSUE" \
             --fork-issue "$PSM_FORK_ISSUE" \
             --fork-basis-commit "$PSM_FORK_BASIS_COMMIT" \
             --fork-basis-url "$PSM_FORK_BASIS_URL"
           node tools/priority/render-pester-service-model-promotion-dossier.mjs \
+            --release-evidence-dir tests/results/_agent/pester-service-model/release-evidence \
+            --output tests/results/_agent/pester-service-model/release-evidence/promotion-dossier.md \
             --upstream-issue "$PSM_UPSTREAM_ISSUE" \
             --fork-issue "$PSM_FORK_ISSUE" \
             --fork-basis-commit "$PSM_FORK_BASIS_COMMIT" \
             --fork-basis-url "$PSM_FORK_BASIS_URL"
+          test -f tests/results/_agent/pester-service-model/release-evidence/release-evidence-provenance.json
+          test -f tests/results/_agent/pester-service-model/release-evidence/promotion-dossier-provenance.json
 
       - name: Upload release-evidence bundle
         uses: actions/upload-artifact@v7

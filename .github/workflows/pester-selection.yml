@@ -3,6 +3,10 @@ name: Pester selection
 on:
   workflow_call:
     inputs:
+      execution_pack:
+        required: false
+        type: string
+        default: 'full'
       include_integration:
         required: false
         type: string
@@ -29,6 +33,12 @@ on:
         value: ${{ jobs.selection.outputs.receipt_artifact_name }}
   workflow_dispatch:
     inputs:
+      execution_pack:
+        description: 'Named execution pack or test group to resolve before execution'
+        required: false
+        default: 'full'
+        type: choice
+        options: ['full', 'comparevi', 'dispatcher', 'workflow', 'fixtures', 'psummary', 'schema', 'loop']
       include_integration:
         description: "Include Integration-tagged tests in the execution pack"
         required: false
@@ -78,26 +88,27 @@ jobs:
         with:
           value: ${{ inputs.include_integration || 'false' }}
 
-      - name: Shape include patterns
-        id: include_patterns
+      - name: Resolve execution pack
+        id: execution_pack
         shell: pwsh
         env:
+          RAW_EXECUTION_PACK: ${{ inputs.execution_pack || github.event.inputs.execution_pack || 'full' }}
           RAW_INCLUDE_PATTERNS: ${{ inputs.include_patterns || '' }}
         run: |
-          $raw = $env:RAW_INCLUDE_PATTERNS
-          $tokens = New-Object System.Collections.Generic.List[string]
-          foreach ($candidate in ($raw -split "[`r`n,;]")) {
-            $token = $candidate.Trim()
-            if ([string]::IsNullOrWhiteSpace($token)) { continue }
-            $leaf = Split-Path -Leaf $token
-            if ([string]::IsNullOrWhiteSpace($leaf)) { continue }
-            if (-not $tokens.Contains($leaf)) {
-              $tokens.Add($leaf) | Out-Null
-            }
-          }
-          $patternsJson = @($tokens.ToArray()) | ConvertTo-Json -Compress
-          if (-not $patternsJson) { $patternsJson = '[]' }
-          "patterns_json=$patternsJson" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          . (Join-Path (Get-Location) 'tools/PesterExecutionPacks.ps1')
+          $resolution = Resolve-PesterExecutionPack -ExecutionPack $env:RAW_EXECUTION_PACK -RefineIncludePatterns $env:RAW_INCLUDE_PATTERNS
+          $basePatternsJson = @($resolution.baseIncludePatterns) | ConvertTo-Json -Compress
+          if (-not $basePatternsJson) { $basePatternsJson = '[]' }
+          $refinePatternsJson = @($resolution.refineIncludePatterns) | ConvertTo-Json -Compress
+          if (-not $refinePatternsJson) { $refinePatternsJson = '[]' }
+          $effectivePatternsJson = @($resolution.effectiveIncludePatterns) | ConvertTo-Json -Compress
+          if (-not $effectivePatternsJson) { $effectivePatternsJson = '[]' }
+          "execution_pack=$($resolution.executionPack)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "execution_pack_source=$($resolution.executionPackSource)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "execution_pack_description=$($resolution.executionPackDescription)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "base_patterns_json=$basePatternsJson" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "refine_patterns_json=$refinePatternsJson" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "effective_patterns_json=$effectivePatternsJson" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
 
       - name: Resolve dispatcher profile
         id: dispatcher_profile
@@ -121,16 +132,24 @@ jobs:
           New-Item -ItemType Directory -Force -Path $outDir | Out-Null
           $includeIntegration = '${{ steps.include_integration.outputs.normalized }}'
           $integrationMode = if ($includeIntegration -eq 'true') { 'include' } else { 'exclude' }
-          $includePatterns = '${{ steps.include_patterns.outputs.patterns_json }}' | ConvertFrom-Json -ErrorAction Stop
+          $baseIncludePatterns = '${{ steps.execution_pack.outputs.base_patterns_json }}' | ConvertFrom-Json -ErrorAction Stop
+          $refineIncludePatterns = '${{ steps.execution_pack.outputs.refine_patterns_json }}' | ConvertFrom-Json -ErrorAction Stop
+          $effectiveIncludePatterns = '${{ steps.execution_pack.outputs.effective_patterns_json }}' | ConvertFrom-Json -ErrorAction Stop
           $receipt = [ordered]@{
             schema         = 'pester-selection-receipt@v1'
             generatedAtUtc = [DateTime]::UtcNow.ToString('o')
             status         = 'ready'
             sampleId       = '${{ inputs.sample_id || github.event.inputs.sample_id || '' }}'
             selection      = [ordered]@{
+              executionPack                    = '${{ steps.execution_pack.outputs.execution_pack }}'
+              executionPackSource              = '${{ steps.execution_pack.outputs.execution_pack_source }}'
+              executionPackDescription         = '${{ steps.execution_pack.outputs.execution_pack_description }}'
               includeIntegrationNormalized = $includeIntegration
               integrationMode              = $integrationMode
-              includePatterns              = @($includePatterns)
+              baseIncludePatterns          = @($baseIncludePatterns)
+              refineIncludePatterns        = @($refineIncludePatterns)
+              effectiveIncludePatterns     = @($effectiveIncludePatterns)
+              includePatterns              = @($effectiveIncludePatterns)
               fixtureRequired              = ($includeIntegration -eq 'true')
             }
             dispatcherProfile = [ordered]@{

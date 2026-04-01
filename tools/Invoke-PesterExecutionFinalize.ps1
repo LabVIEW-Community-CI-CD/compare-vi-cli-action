@@ -7,6 +7,11 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+$failurePayloadTool = Join-Path $PSScriptRoot 'PesterFailurePayload.ps1'
+if (Test-Path -LiteralPath $failurePayloadTool -PathType Leaf) {
+  . $failurePayloadTool
+}
+
 function Read-JsonObject {
   param([Parameter(Mandatory = $true)][string]$PathValue)
 
@@ -15,6 +20,20 @@ function Read-JsonObject {
   }
 
   return (Get-Content -LiteralPath $PathValue -Raw | ConvertFrom-Json -ErrorAction Stop)
+}
+
+function Write-JsonFile {
+  param(
+    [Parameter(Mandatory = $true)][string]$PathValue,
+    [Parameter(Mandatory = $true)]$Payload,
+    [int]$Depth = 10
+  )
+
+  $dir = Split-Path -Parent $PathValue
+  if ($dir -and -not (Test-Path -LiteralPath $dir -PathType Container)) {
+    New-Item -ItemType Directory -Path $dir -Force | Out-Null
+  }
+  $Payload | ConvertTo-Json -Depth $Depth | Set-Content -LiteralPath $PathValue -Encoding UTF8
 }
 
 function Set-ObjectProperty {
@@ -30,6 +49,22 @@ function Set-ObjectProperty {
   } else {
     Add-Member -InputObject $InputObject -Name $Name -MemberType NoteProperty -Value $Value
   }
+}
+
+function Write-LeakReportFromPayload {
+  param(
+    [Parameter(Mandatory = $true)][string]$ResultsDirectory,
+    $Payload
+  )
+
+  if ($null -eq $Payload) {
+    return $null
+  }
+
+  $outputPath = Join-Path $ResultsDirectory 'pester-leak-report.json'
+  Write-JsonFile -PathValue $outputPath -Payload $Payload -Depth 10
+  Write-Host ("Leak report written to: {0}" -f $outputPath) -ForegroundColor Gray
+  return $outputPath
 }
 
 function Get-RunnerProfileSnapshot {
@@ -425,7 +460,8 @@ function Write-SessionIndex {
     [Parameter(Mandatory = $true)][string]$SummaryJsonPath,
     [Parameter(Mandatory = $true)][bool]$IncludeIntegration,
     [Parameter()][string]$IntegrationMode,
-    [Parameter()][string]$IntegrationSource
+    [Parameter()][string]$IntegrationSource,
+    $PublicationContext
   )
 
   if (-not (Test-Path -LiteralPath $ResultsDirectory -PathType Container)) {
@@ -670,6 +706,60 @@ function Write-SessionIndex {
     }
   } catch {}
 
+  if ($PublicationContext) {
+    try {
+      $publicationLines = @()
+      $selectedTests = @()
+      if ($PublicationContext.PSObject.Properties.Name -contains 'selectedTests') {
+        $selectedTests = @($PublicationContext.selectedTests | Where-Object { $_ -and "$_" -ne '' })
+      }
+      $publicationLines += '### Selected Tests'
+      $publicationLines += ''
+      if ($selectedTests.Count -eq 0) {
+        $publicationLines += '- (none)'
+      } else {
+        foreach ($testName in ($selectedTests | Select-Object -Unique)) {
+          $publicationLines += ("- {0}" -f $testName)
+        }
+      }
+      $publicationLines += ''
+      $publicationLines += '### Configuration'
+      $publicationLines += ''
+      $publicationLines += ("- IncludeIntegration: {0}" -f $IncludeIntegration)
+      $publicationLines += ("- Integration Mode: {0}" -f $IntegrationMode)
+      if ($IntegrationSource) { $publicationLines += ("- Integration Source: {0}" -f $IntegrationSource) }
+      if ($PublicationContext.PSObject.Properties.Name -contains 'discovery' -and $PublicationContext.discovery) {
+        $publicationLines += ("- Discovery: {0}" -f [string]$PublicationContext.discovery)
+      }
+      if ($PublicationContext.PSObject.Properties.Name -contains 'rerunCommand' -and $PublicationContext.rerunCommand) {
+        $publicationLines += ''
+        $publicationLines += '### Re-run (gh)'
+        $publicationLines += ''
+        $publicationLines += ("- {0}" -f [string]$PublicationContext.rerunCommand)
+      }
+      if ($PublicationContext.PSObject.Properties.Name -contains 'guard' -and $PublicationContext.guard) {
+        $publicationLines += ''
+        $publicationLines += '### Guard'
+        $publicationLines += ''
+        $publicationLines += ("- Enabled: {0}" -f [bool]$PublicationContext.guard.enabled)
+        $publicationLines += ("- Heartbeats: {0}" -f [int]$PublicationContext.guard.heartbeats)
+        if ($PublicationContext.guard.PSObject.Properties.Name -contains 'heartbeatPath' -and $PublicationContext.guard.heartbeatPath) {
+          $publicationLines += ("- Heartbeat file: {0}" -f [string]$PublicationContext.guard.heartbeatPath)
+        }
+        if ($PublicationContext.guard.PSObject.Properties.Name -contains 'partialLogPath' -and $PublicationContext.guard.partialLogPath) {
+          $publicationLines += ("- Partial log: {0}" -f [string]$PublicationContext.guard.partialLogPath)
+        }
+      }
+      if ($idx['stepSummary']) {
+        $idx['stepSummary'] = $idx['stepSummary'] + "`n`n" + ($publicationLines -join "`n")
+      } else {
+        $idx['stepSummary'] = ($publicationLines -join "`n")
+      }
+    } catch {
+      Write-Warning ("Failed to enrich session index publication block: {0}" -f $_.Exception.Message)
+    }
+  }
+
   $dest = Join-Path $ResultsDirectory 'session-index.json'
   $idx | ConvertTo-Json -Depth 6 | Out-File -FilePath $dest -Encoding utf8 -ErrorAction Stop
   Write-Host ("Session index written to: {0}" -f $dest) -ForegroundColor Gray
@@ -680,13 +770,20 @@ $resolvedContextPath = [System.IO.Path]::GetFullPath($ContextPath)
 $context = Read-JsonObject -PathValue $resolvedContextPath
 $resultsDir = [System.IO.Path]::GetFullPath([string]$context.resultsDir)
 $repoRoot = [System.IO.Path]::GetFullPath([string]$context.repoRoot)
-$jsonSummaryLeaf = if ([string]::IsNullOrWhiteSpace([string]$context.jsonSummaryPath)) { 'pester-summary.json' } else { [string]$context.jsonSummaryPath }
+$jsonSummaryLeaf = if ([string]::IsNullOrWhiteSpace([string]$context.jsonSummaryPath)) {
+  'pester-summary.json'
+} else {
+  Split-Path -Leaf ([string]$context.jsonSummaryPath)
+}
 $summaryPath = Join-Path $resultsDir 'pester-summary.txt'
 $summaryJsonPath = Join-Path $resultsDir $jsonSummaryLeaf
 $artifactTrailPath = Join-Path $resultsDir 'pester-artifacts-trail.json'
+$publicationContext = if ($context.PSObject.Properties['publication']) { $context.publication } else { $null }
+$publicationToolPath = Join-Path $PSScriptRoot 'Invoke-PesterExecutionPublication.ps1'
 $summaryTextValue = if ($context.PSObject.Properties['summaryText']) { [string]$context.summaryText } else { $null }
 $hasSummaryPayload = [bool]$context.PSObject.Properties['summaryPayload']
 $hasArtifactTrail = [bool]$context.PSObject.Properties['artifactTrail']
+$hasLeakReportPayload = [bool]$context.PSObject.Properties['leakReportPayload']
 
 if (-not (Test-Path -LiteralPath $resultsDir -PathType Container)) {
   New-Item -ItemType Directory -Path $resultsDir -Force | Out-Null
@@ -698,8 +795,14 @@ if (-not [string]::IsNullOrWhiteSpace($summaryTextValue)) {
   Write-Host ("Summary written to: {0}" -f $summaryPath) -ForegroundColor Gray
 }
 
-if ($hasSummaryPayload -and $null -ne $context.summaryPayload) {
-  $context.summaryPayload | ConvertTo-Json -Depth 12 | Out-File -FilePath $summaryJsonPath -Encoding utf8 -ErrorAction Stop
+$summaryPayloadToWrite = if ($hasSummaryPayload -and $null -ne $context.summaryPayload) { $context.summaryPayload } else { $null }
+if ($null -ne $summaryPayloadToWrite) {
+  try {
+    Sync-PesterFailurePayload -Directory $resultsDir -SummaryObject $summaryPayloadToWrite -SchemaVersion ([string]$context.failuresSchemaVersion) | Out-Null
+  } catch {
+    Write-Warning ("Failed to synchronize failure-detail payload during finalize: {0}" -f $_.Exception.Message)
+  }
+  $summaryPayloadToWrite | ConvertTo-Json -Depth 12 | Out-File -FilePath $summaryJsonPath -Encoding utf8 -ErrorAction Stop
   Write-Host ("JSON summary written to: {0}" -f $summaryJsonPath) -ForegroundColor Gray
 }
 
@@ -708,9 +811,20 @@ if ($hasArtifactTrail -and $null -ne $context.artifactTrail) {
   Write-Host ("Artifact trail written to: {0}" -f $artifactTrailPath) -ForegroundColor Gray
 }
 
+if ($hasLeakReportPayload -and $null -ne $context.leakReportPayload) {
+  Write-LeakReportFromPayload -ResultsDirectory $resultsDir -Payload $context.leakReportPayload | Out-Null
+}
+
 Copy-CompareReportsAndWriteIndex -RepoRoot $repoRoot -ResultsDirectory $resultsDir
-$sessionIndexPath = Write-SessionIndex -ResultsDirectory $resultsDir -SummaryJsonPath $jsonSummaryLeaf -IncludeIntegration ([bool]$context.includeIntegration) -IntegrationMode ([string]$context.integrationMode) -IntegrationSource ([string]$context.integrationSource)
+$sessionIndexPath = Write-SessionIndex -ResultsDirectory $resultsDir -SummaryJsonPath $jsonSummaryLeaf -IncludeIntegration ([bool]$context.includeIntegration) -IntegrationMode ([string]$context.integrationMode) -IntegrationSource ([string]$context.integrationSource) -PublicationContext $publicationContext
 $manifestPath = Write-ArtifactManifest -Directory $resultsDir -SummaryJsonPath $jsonSummaryLeaf -ManifestVersion ([string]$context.manifestVersion) -SummarySchemaVersion ([string]$context.summarySchemaVersion) -FailuresSchemaVersion ([string]$context.failuresSchemaVersion) -LeakReportSchemaVersion ([string]$context.leakReportSchemaVersion) -DiagnosticsSchemaVersion ([string]$context.diagnosticsSchemaVersion)
+
+if (Test-Path -LiteralPath $publicationToolPath -PathType Leaf) {
+  & $publicationToolPath -ContextPath $resolvedContextPath | Out-Host
+  if ($LASTEXITCODE -ne 0) {
+    throw "Invoke-PesterExecutionPublication.ps1 failed with exit code $LASTEXITCODE."
+  }
+}
 
 if ($env:GITHUB_OUTPUT) {
   "summary_path=$summaryPath" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8

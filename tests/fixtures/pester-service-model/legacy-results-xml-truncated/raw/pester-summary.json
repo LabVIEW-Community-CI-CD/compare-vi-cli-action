@@ -1,0 +1,15 @@
+{
+  "total": 4,
+  "passed": 2,
+  "failed": 1,
+  "errors": 0,
+  "skipped": 1,
+  "timestamp": "2026-03-31T21:26:48.0203952Z",
+  "resultsXmlStatus": "truncated-root",
+  "resultsXmlSummarySource": "root-attributes",
+  "resultsXmlCloseTagPresent": false,
+  "resultsXmlSizeBytes": 512,
+  "resultsXmlParseError": "Unexpected end of file.",
+  "executionPostprocessStatus": "results-xml-truncated",
+  "executionPostprocessSchema": "pester-execution-postprocess@v1"
+}
