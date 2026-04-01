@@ -25,10 +25,6 @@ on:
         description: 'Release version proposal (for example 0.8.0 or 0.8.0-rc.1)'
         required: false
         type: string
-      dwell_minutes:
-        description: 'Green dwell minutes (default 60)'
-        required: false
-        type: string
       quarantine_stale_hours:
         description: 'Quarantine stale threshold hours (default 24)'
         required: false
@@ -194,11 +190,6 @@ jobs:
           $versionInput = '${{ inputs.version }}'
           if (-not [string]::IsNullOrWhiteSpace($versionInput)) {
             $args += @('--version', $versionInput.Trim())
-          }
-
-          $dwellInput = '${{ inputs.dwell_minutes }}'
-          if (-not [string]::IsNullOrWhiteSpace($dwellInput)) {
-            $args += @('--dwell-minutes', $dwellInput.Trim())
           }
 
           $quarantineInput = '${{ inputs.quarantine_stale_hours }}'

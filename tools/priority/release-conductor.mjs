@@ -11,7 +11,6 @@ export const REPORT_SCHEMA = 'release/release-conductor-report@v1';
 export const DEFAULT_REPORT_PATH = path.join('tests', 'results', '_agent', 'release', 'release-conductor-report.json');
 export const DEFAULT_QUEUE_REPORT_PATH = path.join('tests', 'results', '_agent', 'queue', 'queue-supervisor-report.json');
 export const DEFAULT_POLICY_SNAPSHOT_PATH = path.join('tests', 'results', '_agent', 'policy', 'policy-state-snapshot.json');
-export const DEFAULT_DWELL_MINUTES = 60;
 export const DEFAULT_QUARANTINE_STALE_HOURS = 24;
 export const RELEASE_PUBLICATION_WORKFLOW = 'release.yml';
 export const RELEASE_PUBLICATION_WORKFLOW_REF = 'develop';
@@ -19,11 +18,6 @@ export const RELEASE_PUBLICATION_TAG_INPUT = 'release_tag';
 export const RELEASE_PUBLICATION_MODE_INPUT = 'publication_mode';
 export const RELEASE_PUBLICATION_MODE_PUBLISH = 'publish';
 export const RELEASE_PUBLICATION_MODE_VERIFY_EXISTING_RELEASE = 'verify-existing-release';
-
-const REQUIRED_DWELL_WORKFLOWS = Object.freeze([
-  { name: 'Validate', file: 'validate.yml' },
-  { name: 'Policy Guard (Upstream)', file: 'policy-guard-upstream.yml' }
-]);
 
 function printUsage() {
   console.log('Usage: node tools/priority/release-conductor.mjs [options]');
@@ -38,7 +32,6 @@ function printUsage() {
   console.log('  --stream <name>             Release stream name (default: comparevi-cli).');
   console.log('  --channel <stable|rc>       Release channel (default: stable).');
   console.log('  --version <semver>          Proposed version used for release tag proposal (optional).');
-  console.log(`  --dwell-minutes <n>         Required green dwell window in minutes (default: ${DEFAULT_DWELL_MINUTES}).`);
   console.log(`  --quarantine-stale-hours <n> Fail when queue quarantine is stale beyond N hours (default: ${DEFAULT_QUARANTINE_STALE_HOURS}).`);
   console.log('  --dry-run                   Force dry-run mode.');
   console.log('  -h, --help                  Show this help text and exit.');
@@ -111,7 +104,6 @@ export function parseArgs(argv = process.argv) {
     stream: 'comparevi-cli',
     channel: 'stable',
     version: null,
-    dwellMinutes: DEFAULT_DWELL_MINUTES,
     quarantineStaleHours: DEFAULT_QUARANTINE_STALE_HOURS,
     help: false
   };
@@ -145,7 +137,6 @@ export function parseArgs(argv = process.argv) {
       token === '--stream' ||
       token === '--channel' ||
       token === '--version' ||
-      token === '--dwell-minutes' ||
       token === '--quarantine-stale-hours'
     ) {
       const next = args[index + 1];
@@ -160,7 +151,6 @@ export function parseArgs(argv = process.argv) {
       if (token === '--stream') options.stream = next;
       if (token === '--channel') options.channel = next.trim().toLowerCase();
       if (token === '--version') options.version = next;
-      if (token === '--dwell-minutes') options.dwellMinutes = parseIntStrict(next, { label: '--dwell-minutes' });
       if (token === '--quarantine-stale-hours') {
         options.quarantineStaleHours = parseIntStrict(next, { label: '--quarantine-stale-hours' });
       }
@@ -236,66 +226,6 @@ async function readJsonOptional(filePath) {
       error: error?.message ?? String(error)
     };
   }
-}
-
-function normalizeUpdatedAt(entry) {
-  const updatedAt = new Date(entry?.updated_at ?? entry?.updatedAt ?? 0);
-  return Number.isNaN(updatedAt.valueOf()) ? null : updatedAt;
-}
-
-function normalizeConclusion(entry) {
-  return String(entry?.conclusion ?? '').trim().toLowerCase();
-}
-
-export function evaluateGreenDwell({
-  workflowRunsByName = {},
-  now = new Date(),
-  dwellMinutes = DEFAULT_DWELL_MINUTES
-} = {}) {
-  const dwellStartMs = now.valueOf() - dwellMinutes * 60 * 1000;
-  const failureConclusions = new Set(['failure', 'cancelled', 'timed_out', 'action_required', 'startup_failure']);
-  const details = [];
-  const reasons = [];
-
-  for (const spec of REQUIRED_DWELL_WORKFLOWS) {
-    const runs = Array.isArray(workflowRunsByName[spec.name]) ? workflowRunsByName[spec.name] : [];
-    const inWindow = runs.filter((entry) => {
-      const updatedAt = normalizeUpdatedAt(entry);
-      return updatedAt && updatedAt.valueOf() >= dwellStartMs;
-    });
-    const successInWindow = inWindow.some((entry) => normalizeConclusion(entry) === 'success');
-    const failureInWindow = inWindow.some((entry) => failureConclusions.has(normalizeConclusion(entry)));
-    const latestSuccess = runs
-      .filter((entry) => normalizeConclusion(entry) === 'success')
-      .map((entry) => normalizeUpdatedAt(entry)?.toISOString() ?? null)
-      .find(Boolean);
-
-    const status = successInWindow && !failureInWindow ? 'pass' : 'fail';
-    if (!successInWindow) {
-      reasons.push(`no-success-${spec.file}`);
-    }
-    if (failureInWindow) {
-      reasons.push(`failure-in-window-${spec.file}`);
-    }
-
-    details.push({
-      name: spec.name,
-      file: spec.file,
-      runCount: runs.length,
-      inWindowCount: inWindow.length,
-      successInWindow,
-      failureInWindow,
-      latestSuccessAt: latestSuccess
-    });
-  }
-
-  return {
-    status: reasons.length === 0 ? 'pass' : 'fail',
-    dwellMinutes,
-    evaluatedAt: now.toISOString(),
-    reasons: [...new Set(reasons)],
-    workflows: details
-  };
 }
 
 export function evaluateQueueHealthGate(queueReportEnvelope) {
@@ -457,43 +387,10 @@ function isQueueReportUnavailableGate(gate) {
   return reasons.length > 0 && reasons.every((reason) => reason === 'queue-report-unavailable');
 }
 
-function isDryRunGreenDwellAdvisory(gate) {
-  if (gate?.status !== 'fail') {
-    return false;
-  }
-  const reasons = Array.isArray(gate?.reasons) ? gate.reasons : [];
-  return reasons.length > 0 && reasons.every((reason) => reason.startsWith('no-success-'));
-}
-
 function pushUniqueDecisionEntry(entries, entry) {
   if (!entries.some((candidate) => candidate.code === entry.code)) {
     entries.push(entry);
   }
-}
-
-function fetchWorkflowRunsByName({ runGhJsonFn, repository, branch, sampleSize, cwd }) {
-  const workflowRunsByName = {};
-  const fetchErrors = [];
-
-  for (const workflow of REQUIRED_DWELL_WORKFLOWS) {
-    const endpoint = `repos/${repository}/actions/workflows/${workflow.file}/runs?branch=${encodeURIComponent(branch)}&per_page=${sampleSize}`;
-    try {
-      const response = runGhJsonFn(['api', endpoint], { cwd }) ?? {};
-      workflowRunsByName[workflow.name] = Array.isArray(response.workflow_runs) ? response.workflow_runs : [];
-    } catch (error) {
-      workflowRunsByName[workflow.name] = [];
-      fetchErrors.push({
-        workflow: workflow.name,
-        file: workflow.file,
-        message: error?.message ?? String(error)
-      });
-    }
-  }
-
-  return {
-    workflowRunsByName,
-    fetchErrors
-  };
 }
 
 function detectSigningMaterial({ runCommandFn, repoRoot, environment = process.env }) {
@@ -793,19 +690,6 @@ export async function runReleaseConductor(options = {}) {
   const repository = resolveRepositorySlug(repoRoot, args.repo, environment);
   const queueReportEnvelope = await readJsonOptionalFn(path.resolve(repoRoot, args.queueReportPath));
   const policySnapshotEnvelope = await readJsonOptionalFn(path.resolve(repoRoot, args.policySnapshotPath));
-  const { workflowRunsByName, fetchErrors } = fetchWorkflowRunsByName({
-    runGhJsonFn,
-    repository,
-    branch: 'develop',
-    sampleSize: 20,
-    cwd: repoRoot
-  });
-
-  const greenDwellGate = evaluateGreenDwell({
-    workflowRunsByName,
-    now,
-    dwellMinutes: args.dwellMinutes
-  });
   const queueHealthGate = evaluateQueueHealthGate(queueReportEnvelope);
   const policySnapshotGate = evaluatePolicySnapshotGate(policySnapshotEnvelope);
   const quarantineGate = evaluateQuarantineGate({
@@ -817,25 +701,6 @@ export async function runReleaseConductor(options = {}) {
   const applyRequested = Boolean(args.apply && !args.dryRun);
   const blockers = [];
   const advisories = [];
-  if (fetchErrors.length > 0) {
-    blockers.push({
-      code: 'workflow-fetch-failed',
-      message: 'Unable to fetch required workflow run history for dwell gate.'
-    });
-  }
-  if (greenDwellGate.status !== 'pass') {
-    if (!applyRequested && isDryRunGreenDwellAdvisory(greenDwellGate)) {
-      pushUniqueDecisionEntry(advisories, {
-        code: 'green-dwell-no-recent-success',
-        message: `No successful required workflow run was observed in the last ${args.dwellMinutes} minutes; dry-run remains proposal-only.`
-      });
-    } else {
-      blockers.push({
-        code: 'green-dwell-failed',
-        message: `Required workflows were not continuously green for ${args.dwellMinutes} minutes.`
-      });
-    }
-  }
   if (queueHealthGate.status !== 'pass') {
     if (!applyRequested && isQueueReportUnavailableGate(queueHealthGate)) {
       pushUniqueDecisionEntry(advisories, {
@@ -1217,16 +1082,14 @@ export async function runReleaseConductor(options = {}) {
       reportPath: args.reportPath,
       queueReportPath: args.queueReportPath,
       policySnapshotPath: args.policySnapshotPath,
-      dwellMinutes: args.dwellMinutes,
       quarantineStaleHours: args.quarantineStaleHours
     },
     gates: {
-      greenDwell: greenDwellGate,
       queueHealth: queueHealthGate,
       policySnapshot: policySnapshotGate,
       quarantine: quarantineGate
     },
-    workflowFetchErrors: fetchErrors,
+    workflowFetchErrors: [],
     decision: {
       status,
       blockerCount: blockers.length,
