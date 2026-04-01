@@ -13,10 +13,13 @@ release surfaces.
 - [ ] CI is green on the release branch (`lint`, `pester / normalize`,
       `smoke-gate`, `Policy Guard (Upstream) / policy-guard`,
       `commit-integrity`, and any active release workflows).
-- [ ] `node tools/npm/run-script.mjs lint` completes without errors on the
-      release branch.
-- [ ] Optional: run `pwsh -File tools/PrePush-Checks.ps1` locally for early
-      actionlint and YAML parity.
+- [ ] Local lint equivalents complete without errors on the release branch:
+      `node tools/npm/run-script.mjs lint:md`
+      and
+      `pwsh -File tools/PrePush-Checks.ps1`.
+- [ ] Optional: run
+      `node tools/npm/run-script.mjs priority:release:conductor:test`
+      locally to preflight the release helper packet.
 - [ ] Verify a clean working tree (`git status`).
 
 ## 2. Version & Metadata Consistency
