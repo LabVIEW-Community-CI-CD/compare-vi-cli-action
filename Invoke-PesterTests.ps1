@@ -1204,11 +1204,6 @@ Write-Host "  Script Root: $root"
 Write-Host "  Tests Directory: $testsDir"; if ($limitToSingle) { Write-Host "  Single Test File: $singleTestFile" }
 Write-Host "  Results Directory: $resultsDir"
 Write-Host ""
-$script:dispatcherEventsPath = Join-Path $resultsDir 'dispatcher-events.ndjson'
-Write-DispatcherEventLine -Level info -Phase 'lifecycle' -Message 'Dispatcher session initialized.' -Data @{
-  testsDir   = $testsDir
-  resultsDir = $resultsDir
-}
 
 # Validate tests directory exists
 if (-not (Test-Path -LiteralPath $testsDir -PathType Container)) {
@@ -1304,6 +1299,27 @@ function _Build-Snapshot {
     }
   }
   return $index
+}
+
+# Artifact tracking pre-snapshot (optional). Capture before any dispatcher-owned
+# result files are written so isolated runs report those files as created rather
+# than modified.
+$script:artifactTrail = $null
+$script:executionFinalizeContextPath = $null
+$preIndex = $null
+$artifactRoots = @()
+if ($TrackArtifacts) {
+  if (-not $ArtifactGlobs -or $ArtifactGlobs.Count -eq 0) {
+    $ArtifactGlobs = @('tests/results','results','tmp-agg/results','scratch-schema-test/results')
+  }
+  $artifactRoots = _Resolve-ArtifactRoots -Roots $ArtifactGlobs -Base $root
+  try { $preIndex = _Build-Snapshot -Roots $artifactRoots -Base $root } catch { $preIndex = @{} }
+}
+
+$script:dispatcherEventsPath = Join-Path $resultsDir 'dispatcher-events.ndjson'
+Write-DispatcherEventLine -Level info -Phase 'lifecycle' -Message 'Dispatcher session initialized.' -Data @{
+  testsDir   = $testsDir
+  resultsDir = $resultsDir
 }
 
 # Hard gate: never start tests while LabVIEW.exe is running
@@ -1763,19 +1779,6 @@ if ($CleanLabVIEW) {
   _Stop-ProcsSafely -Names @('LabVIEW')
   Start-Sleep -Milliseconds 200
   _Report-Procs -Names @('LabVIEW')
-}
-
-# Artifact tracking pre-snapshot (optional)
-$script:artifactTrail = $null
-$script:executionFinalizeContextPath = $null
-$preIndex = $null
-$artifactRoots = @()
-if ($TrackArtifacts) {
-  if (-not $ArtifactGlobs -or $ArtifactGlobs.Count -eq 0) {
-    $ArtifactGlobs = @('tests/results','results','tmp-agg/results','scratch-schema-test/results')
-  }
-  $artifactRoots = _Resolve-ArtifactRoots -Roots $ArtifactGlobs -Base $root
-  try { $preIndex = _Build-Snapshot -Roots $artifactRoots -Base $root } catch { $preIndex = @{} }
 }
 
 # Count test files (respect single file mode)

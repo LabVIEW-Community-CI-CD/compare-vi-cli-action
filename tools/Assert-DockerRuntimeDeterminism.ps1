@@ -974,9 +974,18 @@ if ($ExpectedOsType -eq 'windows') {
     $hostAlignmentOk = $false
     $reason = "RUNNER_OS is '$runnerOsRaw', expected Windows."
   }
-} elseif (-not [string]::IsNullOrWhiteSpace($runnerOsNormalized) -and $runnerOsNormalized -ne 'linux') {
-  $hostAlignmentOk = $false
-  $reason = "RUNNER_OS is '$runnerOsRaw', expected Linux for linux lane."
+} elseif (-not [string]::IsNullOrWhiteSpace($runnerOsNormalized)) {
+  # Linux Docker lanes are valid on Windows Docker Desktop / native-wsl hosts,
+  # but non-Windows hosts still need a Linux runner identity.
+  if ($hostIsWindows) {
+    if ($runnerOsNormalized -notin @('windows', 'linux')) {
+      $hostAlignmentOk = $false
+      $reason = "RUNNER_OS is '$runnerOsRaw', expected Windows or Linux for linux lane on a Windows host."
+    }
+  } elseif ($runnerOsNormalized -ne 'linux') {
+    $hostAlignmentOk = $false
+    $reason = "RUNNER_OS is '$runnerOsRaw', expected Linux for linux lane."
+  }
 }
 
 $observedDockerHost = if ([string]::IsNullOrWhiteSpace($env:DOCKER_HOST)) { $null } else { $env:DOCKER_HOST.Trim() }
