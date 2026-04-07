@@ -313,7 +313,7 @@
     "fill-range": "^7.1.1",
     "glob-parent": "^5.1.2",
     "globby": "^14.0.2",
-    "ignore": "^5.3.2",
+    "ignore": "^7.0.5",
     "is-extglob": "^2.1.1",
     "is-glob": "^4.0.3",
     "is-number": "^7.0.0",
