@@ -134,7 +134,7 @@ jobs:
         run: node tools/npm/cli.mjs ci
 
       - name: Download context receipt artifact
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v8
         with:
           name: ${{ inputs.context_artifact_name }}
           path: tests/context
@@ -159,7 +159,7 @@ jobs:
           "standing_priority_issue=$($receipt.standingPriority.issueNumber)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
 
       - name: Download readiness receipt artifact
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v8
         with:
           name: ${{ inputs.readiness_artifact_name }}
           path: tests/readiness
@@ -193,7 +193,7 @@ jobs:
           "freshness_window_seconds=$freshnessWindowSeconds" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
 
       - name: Download selection receipt artifact
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v8
         with:
           name: ${{ inputs.selection_artifact_name }}
           path: tests/selection

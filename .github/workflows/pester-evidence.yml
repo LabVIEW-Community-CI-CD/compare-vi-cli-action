@@ -126,7 +126,7 @@ jobs:
           "should_download=$shouldDownload" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
 
       - name: Download execution receipt artifact
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v8
         with:
           name: ${{ inputs.execution_receipt_artifact_name }}
           path: tests/execution-contract
@@ -135,7 +135,7 @@ jobs:
         id: download
         if: ${{ steps.artifact_name.outputs.should_download == 'true' }}
         continue-on-error: true
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v8
         with:
           name: ${{ steps.artifact_name.outputs.name }}
           path: tests/results
