@@ -1,4 +1,5 @@
 name: Pester service-model pilot on trusted PR label
+# Router proof branch: same-owner upstream develop PR exercise
 
 on:
   pull_request_target:
