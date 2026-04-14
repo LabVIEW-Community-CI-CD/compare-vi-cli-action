@@ -407,7 +407,7 @@ jobs:
 
       - name: Create GitHub Release with assets (CHANGELOG)
         if: env.RELEASE_PUBLICATION_MODE == 'publish' && steps.notes.outputs.fallback == 'false'
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ env.RELEASE_TAG }}
           body_path: RELEASE_NOTES.md
@@ -420,7 +420,7 @@ jobs:
 
       - name: Create GitHub Release with assets (auto notes)
         if: env.RELEASE_PUBLICATION_MODE == 'publish' && steps.notes.outputs.fallback == 'true'
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ env.RELEASE_TAG }}
           generate_release_notes: true
