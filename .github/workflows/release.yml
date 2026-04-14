@@ -433,7 +433,7 @@ jobs:
 
       - name: Dispatch Publish Tools Image workflow
         if: env.RELEASE_PUBLICATION_MODE == 'publish'
-        uses: actions/github-script@v8
+        uses: actions/github-script@v9
         with:
           script: |
             const releaseVersion = '${{ steps.comparevi_tools.outputs.comparevi_tools_release_version }}';
