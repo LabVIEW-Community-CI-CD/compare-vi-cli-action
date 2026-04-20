@@ -92,7 +92,7 @@ jobs:
 
       - name: Upload consumer fork sync artifacts
         if: ${{ always() && hashFiles('tests/results/_agent/handoff/consumer-fork-sync.json') != '' }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: consumer-fork-sync-${{ github.run_id }}
           path: tests/results/_agent/handoff/consumer-fork-sync.json
