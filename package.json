@@ -326,7 +326,7 @@
     "mdurl": "^2.0.0",
     "merge2": "^1.4.1",
     "micromatch": "^4.0.8",
-    "path-type": "^5.0.0",
+    "path-type": "^6.0.0",
     "picomatch": "^2.3.2",
     "punycode.js": "^2.3.1",
     "queue-microtask": "^1.2.3",
