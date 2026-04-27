@@ -311,7 +311,7 @@
     "fast-glob": "^3.3.3",
     "fastq": "^1.20.1",
     "fill-range": "^7.1.1",
-    "glob-parent": "^5.1.2",
+    "glob-parent": "^6.0.2",
     "globby": "^14.0.2",
     "ignore": "^7.0.5",
     "is-extglob": "^2.1.1",
