@@ -105,7 +105,7 @@ jobs:
 
       - name: Evaluate monthly window and requested dispatches
         id: eval
-        uses: actions/github-script@v8
+        uses: actions/github-script@v9
         with:
           script: |
             const fs = require('fs');
@@ -203,7 +203,7 @@ jobs:
     if: needs.evaluate-window.outputs.should_run == 'true' && needs.evaluate-window.outputs.publish_tools == 'true'
     steps:
       - name: Dispatch Publish Tools Image workflow
-        uses: actions/github-script@v8
+        uses: actions/github-script@v9
         with:
           script: |
             await github.rest.actions.createWorkflowDispatch({
@@ -224,7 +224,7 @@ jobs:
     if: needs.evaluate-window.outputs.should_run == 'true' && needs.evaluate-window.outputs.publish_shared == 'true'
     steps:
       - name: Dispatch Publish CompareVi.Shared workflow
-        uses: actions/github-script@v8
+        uses: actions/github-script@v9
         with:
           script: |
             await github.rest.actions.createWorkflowDispatch({
