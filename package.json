@@ -295,7 +295,7 @@
     "js-yaml": "4.1.1",
     "markdownlint-cli2": "0.21.0",
     "tsx": "^4.20.6",
-    "typescript": "5.4.5"
+    "typescript": "6.0.3"
   },
   "description": "<!-- ci: bootstrap status checks -->",
   "main": "index.js",
