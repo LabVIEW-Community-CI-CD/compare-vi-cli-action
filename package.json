@@ -290,7 +290,7 @@
     "@types/js-yaml": "^4.0.9",
     "@types/mocha": "^10.0.10",
     "@types/node": "20.11.30",
-    "ajv": "8.18.0",
+    "ajv": "8.20.0",
     "ajv-formats": "3.0.1",
     "js-yaml": "4.1.1",
     "markdownlint-cli2": "0.21.0",
