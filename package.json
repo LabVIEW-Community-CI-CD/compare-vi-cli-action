@@ -339,7 +339,7 @@
     "undici-types": "^5.26.5",
     "unicorn-magic": "^0.4.0",
     "zod": "^3.25.76",
-    "zod-to-json-schema": "^3.24.6"
+    "zod-to-json-schema": "^3.25.2"
   },
   "repository": {
     "type": "git",
