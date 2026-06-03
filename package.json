@@ -336,7 +336,7 @@
     "to-regex-range": "^5.0.1",
     "uc.micro": "^2.1.0",
     "undici": "^6.24.0",
-    "undici-types": "^5.26.5",
+    "undici-types": "^8.3.0",
     "unicorn-magic": "^0.4.0",
     "zod": "^3.25.76",
     "zod-to-json-schema": "^3.25.2"
