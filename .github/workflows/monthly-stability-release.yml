@@ -69,7 +69,7 @@ jobs:
       shared_version: ${{ steps.eval.outputs.shared_version }}
       shared_channel: ${{ steps.eval.outputs.shared_channel }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: Enforce rollback drill health gate
         shell: bash
@@ -245,7 +245,7 @@ jobs:
     needs: [evaluate-window, approval-gate, publish-tools, publish-shared]
     if: always()
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: Download rollback drill health artifact
         uses: actions/download-artifact@v8

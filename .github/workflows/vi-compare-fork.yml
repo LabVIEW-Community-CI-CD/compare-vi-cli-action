@@ -27,7 +27,7 @@ jobs:
       COMPARE_TIMEOUT_SECONDS: 600
     steps:
       - name: Checkout base (parent repository)
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
         with:
           ref: ${{ env.BASE_SHA }}
           fetch-depth: 0

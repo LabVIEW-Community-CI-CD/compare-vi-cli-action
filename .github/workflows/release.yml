@@ -50,7 +50,7 @@ jobs:
           fi
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
 
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           ref: ${{ steps.release_target.outputs.tag }}
 
@@ -130,13 +130,13 @@ jobs:
       RELEASE_TAG: ${{ needs.certification-matrix.outputs.target_tag }}
       RELEASE_PUBLICATION_MODE: ${{ needs.certification-matrix.outputs.publication_mode }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           ref: ${{ env.RELEASE_TAG }}
 
       - name: Checkout replay automation surfaces
         if: ${{ github.event_name == 'workflow_dispatch' }}
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
         with:
           ref: develop
           path: .release-automation
@@ -459,7 +459,7 @@ jobs:
       matrix:
         os: [windows-latest, ubuntu-latest, macos-latest]
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: Download CLI artifacts
         uses: actions/download-artifact@v8
@@ -732,7 +732,7 @@ jobs:
       RELEASE_TAG: ${{ needs.release.outputs.target_tag }}
       RELEASE_PUBLICATION_MODE: ${{ needs.certification-matrix.outputs.publication_mode }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: Download certification matrix artifact
         uses: actions/download-artifact@v8
