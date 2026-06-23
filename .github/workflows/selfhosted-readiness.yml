@@ -52,7 +52,7 @@ jobs:
       LV_IDLE_WAIT_SECONDS: ${{ vars.LV_IDLE_WAIT_SECONDS || '2' }}
       LV_IDLE_MAX_WAIT_SECONDS: ${{ vars.LV_IDLE_MAX_WAIT_SECONDS || '5' }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           repository: ${{ inputs.checkout_repository || github.repository }}
           ref: ${{ inputs.checkout_ref || github.sha }}

@@ -60,7 +60,7 @@ jobs:
       standing_priority_issue: ${{ steps.receipt.outputs.standing_priority_issue }}
       standing_priority_reason: ${{ steps.receipt.outputs.reason }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           repository: ${{ inputs.checkout_repository || github.repository }}
           ref: ${{ inputs.checkout_ref || github.sha }}

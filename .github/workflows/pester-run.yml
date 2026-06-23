@@ -124,7 +124,7 @@ jobs:
       selection_execution_pack: ${{ steps.selection_receipt.outputs.execution_pack }}
       selection_execution_pack_source: ${{ steps.selection_receipt.outputs.execution_pack_source }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           repository: ${{ inputs.checkout_repository || github.repository }}
           ref: ${{ inputs.checkout_ref || github.sha }}

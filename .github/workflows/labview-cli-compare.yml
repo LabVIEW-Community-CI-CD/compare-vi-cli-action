@@ -31,7 +31,7 @@ jobs:
       # Enable cleanup at the end of the job
       UNBLOCK_GUARD: '1'
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: Validate native LV32 host-plane readiness
         id: host_plane

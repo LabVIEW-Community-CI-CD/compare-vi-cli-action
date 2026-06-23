@@ -67,7 +67,7 @@ jobs:
       DOWNSTREAM_PILOT_REPO: ${{ vars.DOWNSTREAM_PILOT_REPO }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 

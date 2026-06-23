@@ -14,7 +14,7 @@ jobs:
   agent-review-policy:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v5
+    - uses: actions/checkout@v7
       with:
         repository: ${{ github.repository }}
         ref: ${{ github.event.pull_request.base.sha || github.sha }}

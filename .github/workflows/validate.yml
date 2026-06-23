@@ -65,7 +65,7 @@ jobs:
     if: needs.smoke-gate.outputs.skip != 'true'
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v5
+    - uses: actions/checkout@v7
       with:
         repository: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name || github.repository }}
         ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
@@ -402,7 +402,7 @@ jobs:
       run_vi_history: ${{ steps.plan.outputs.run_vi_history }}
       vi_history_reason: ${{ steps.plan.outputs.vi_history_reason }}
     steps:
-    - uses: actions/checkout@v5
+    - uses: actions/checkout@v7
       with:
         repository: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name || github.repository }}
         ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
@@ -482,7 +482,7 @@ jobs:
           $lines -join "`n" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
         }
     - if: env.VALIDATE_SCOPE_RUN_FIXTURES == 'true'
-      uses: actions/checkout@v5
+      uses: actions/checkout@v7
       with:
         repository: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name || github.repository }}
         ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
@@ -608,7 +608,7 @@ jobs:
     env:
       PREPUSH_SKIP_LEGACY_FIXTURE_CHECKS: '1'
     steps:
-    - uses: actions/checkout@v5
+    - uses: actions/checkout@v7
       with:
         repository: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name || github.repository }}
         ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
@@ -685,7 +685,7 @@ jobs:
     needs: lint
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v5
+    - uses: actions/checkout@v7
       with:
         repository: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name || github.repository }}
         ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
@@ -714,7 +714,7 @@ jobs:
     needs: lint
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v5
+    - uses: actions/checkout@v7
       with:
         repository: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name || github.repository }}
         ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
@@ -747,7 +747,7 @@ jobs:
     needs: lint
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v5
+    - uses: actions/checkout@v7
       with:
         repository: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name || github.repository }}
         ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
@@ -780,7 +780,7 @@ jobs:
     needs: lint
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v5
+    - uses: actions/checkout@v7
       with:
         repository: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name || github.repository }}
         ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
@@ -828,7 +828,7 @@ jobs:
     needs: lint
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v5
+    - uses: actions/checkout@v7
       with:
         repository: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name || github.repository }}
         ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
@@ -1038,7 +1038,7 @@ jobs:
     env:
       SESSION_INDEX_V2_CONTRACT_ENFORCE: ${{ vars.SESSION_INDEX_V2_CONTRACT_ENFORCE || 'false' }}
     steps:
-    - uses: actions/checkout@v5
+    - uses: actions/checkout@v7
       with:
         repository: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name || github.repository }}
         ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
@@ -1104,7 +1104,7 @@ jobs:
       run:
         shell: pwsh
     steps:
-    - uses: actions/checkout@v5
+    - uses: actions/checkout@v7
       with:
         repository: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name || github.repository }}
         ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
@@ -1199,7 +1199,7 @@ jobs:
       requested_history_scenario_set: ${{ steps.plan.outputs.requested_history_scenario_set }}
       downgraded_history_core: ${{ steps.plan.outputs.downgraded_history_core }}
     steps:
-    - uses: actions/checkout@v5
+    - uses: actions/checkout@v7
       with:
         repository: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name || github.repository }}
         ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
@@ -1286,7 +1286,7 @@ jobs:
         }
 
     - if: needs.vi-history-scenarios-plan.outputs.execute_lanes == 'true'
-      uses: actions/checkout@v5
+      uses: actions/checkout@v7
       with:
         repository: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name || github.repository }}
         ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
@@ -1500,7 +1500,7 @@ jobs:
       required_labels: ${{ steps.plan.outputs.required_labels }}
       matching_runner_count: ${{ steps.plan.outputs.matching_runner_count }}
     steps:
-    - uses: actions/checkout@v5
+    - uses: actions/checkout@v7
       with:
         repository: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name || github.repository }}
         ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
@@ -1617,7 +1617,7 @@ jobs:
           $lines -join "`n" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
         }
 
-    - uses: actions/checkout@v5
+    - uses: actions/checkout@v7
       with:
         repository: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name || github.repository }}
         ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
@@ -1869,7 +1869,7 @@ jobs:
       required_labels: ${{ steps.plan.outputs.required_labels }}
       matching_runner_count: ${{ steps.plan.outputs.matching_runner_count }}
     steps:
-    - uses: actions/checkout@v5
+    - uses: actions/checkout@v7
       with:
         repository: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name || github.repository }}
         ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
@@ -1947,7 +1947,7 @@ jobs:
           )
           $lines -join "`n" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
         }
-    - uses: actions/checkout@v5
+    - uses: actions/checkout@v7
       with:
         repository: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name || github.repository }}
         ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}

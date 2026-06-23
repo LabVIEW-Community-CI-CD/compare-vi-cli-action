@@ -19,7 +19,7 @@ jobs:
     timeout-minutes: 3
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
 
       - name: Run Runbook Core Phases
         id: host_runbook
