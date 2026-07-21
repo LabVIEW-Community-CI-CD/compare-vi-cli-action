@@ -42,7 +42,7 @@ jobs:
           pwsh -NoLogo -NoProfile -File tools/Assert-PromotionContractAlignment.ps1 -OutputJsonPath tests/results/promotion-contract/publish-shared-alignment.json -StepSummaryPath $env:GITHUB_STEP_SUMMARY
 
       - name: Setup .NET
-        uses: actions/setup-dotnet@v5
+        uses: actions/setup-dotnet@v6
         with:
           dotnet-version: '8.0.x'
 
