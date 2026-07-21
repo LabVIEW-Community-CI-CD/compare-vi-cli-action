@@ -105,7 +105,7 @@ jobs:
       run: |
         ./tools/Check-PRMergeable.ps1 -Number ${{ github.event.pull_request.number }} -FailOnConflict
     - name: Setup Python for workflow enclave
-      uses: actions/setup-python@v6
+      uses: actions/setup-python@v7
       with:
         python-version: '3.12'
     - name: Workflow drift check
